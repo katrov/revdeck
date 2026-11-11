@@ -11,26 +11,25 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: DEV
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
           cache: npm
+      # Trusted publishing needs npm >= 11.5.1; Node 24 may ship an older one.
+      - name: Install npm with OIDC support
+        run: npm install -g npm@^11.15
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - name: Verify npm token
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Verify OIDC permissions
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error title=NPM_TOKEN is not set::Add an npm granular access token with 'Bypass 2FA' and read/write access to revdeck under Settings > Secrets and variables > Actions."
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "::error title=id-token is not writable::The publish job needs 'permissions: id-token: write' for trusted publishing."
             exit 1
           fi
-          npm whoami
       - name: Publish to npm
         run: |
           npm publish --provenance --access public 2>&1 | tee "$RUNNER_TEMP/publish.log"
@@ -41,8 +40,6 @@ jobs:
             echo "::error title=npm publish failed::$summary"
             exit "$code"
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: GitHub release
         uses: softprops/action-gh-release@v3
         with:

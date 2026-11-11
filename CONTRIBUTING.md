@@ -87,11 +87,20 @@ npm version minor
 git push --follow-tags
 ```
 
-The `release` workflow publishes to npm with provenance and creates a GitHub release. It needs an
-`NPM_TOKEN` repository secret: a granular npm token with read/write access to `revdeck` and
-**Bypass 2FA** enabled (or a classic Automation token). Without it the publish step fails with
-`ENEEDAUTH`; the workflow now reports that explicitly before publishing. The version in
-`src/version.ts` must match `package.json`. `prepublishOnly` re-runs build, typecheck and tests.
+The `release` workflow publishes to npm with provenance and creates a GitHub release. It uses
+[trusted publishing](https://docs.npmjs.com/trusted-publishers): GitHub Actions gets a short-lived
+OIDC token, so no npm token is stored in the repository and provenance is generated automatically.
+
+Requirements, all configured once on npmjs.com (package `revdeck` → Settings → Trusted publishing):
+
+- publisher `katrov/revdeck`, workflow file `release.yml`, environment left empty;
+- "stage only" disabled, so tagged releases publish straight away.
+
+The workflow runs on Node 24 and installs npm >= 11.15 because trusted publishing requires npm
+11.5.1 or newer. If `id-token` is not writable the "Verify OIDC permissions" step fails with a
+clear error; `ENEEDAUTH` from npm means the trusted publisher entry does not match the repo,
+workflow file or environment. The version in `src/version.ts` must match `package.json`.
+`prepublishOnly` re-runs build, typecheck and tests.
 
 ## Security
 
