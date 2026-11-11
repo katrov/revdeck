@@ -32,7 +32,15 @@ jobs:
           fi
           npm whoami
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: |
+          npm publish --provenance --access public 2>&1 | tee "$RUNNER_TEMP/publish.log"
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            summary=$(grep -E '^npm error' "$RUNNER_TEMP/publish.log" | head -10 | tr '\n' ' ')
+            [ -z "$summary" ] && summary=$(tail -5 "$RUNNER_TEMP/publish.log" | tr '\n' ' ')
+            echo "::error title=npm publish failed::$summary"
+            exit "$code"
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: GitHub release
