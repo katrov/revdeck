@@ -21,12 +21,12 @@ export const reviewConfigSchema = z.object({
             /** База для локального diff, когда ревью идёт по ветке. */
             base: z.string().min(1).optional(),
         })
-        .default({}),
+        .prefault({}),
     output: z
         .object({
             language: z.enum(['auto', 'ru', 'en']).default('auto'),
         })
-        .default({}),
+        .prefault({}),
     rules: z
         .object({
             /** Общие документы, если ни одна строка map не подошла. Пусто — автообнаружение. */
@@ -44,7 +44,7 @@ export const reviewConfigSchema = z.object({
             /** Пути, которые не ревьюятся (сгенерированный код и т.п.). */
             ignore: z.array(z.string().min(1)).default([]),
         })
-        .default({}),
+        .prefault({}),
     checks: z
         .array(
             z.object({
@@ -64,7 +64,7 @@ export const reviewConfigSchema = z.object({
             requireApproval: z.boolean().default(true),
             maxComments: z.number().int().positive().max(200).default(50),
         })
-        .default({}),
+        .prefault({}),
 });
 
 export type ReviewConfig = z.infer<typeof reviewConfigSchema>;
