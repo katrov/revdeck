@@ -59,7 +59,7 @@ export function databasePath(): string {
 export async function ensureDir(dir: string, mode = 0o700): Promise<void> {
     await mkdir(dir, { recursive: true, mode });
     const info = await lstat(dir);
-    if (!info.isDirectory()) throw new Error(`${dir}: ожидался каталог`);
+    if (!info.isDirectory()) throw new Error(`${dir}: expected a directory`);
     if (process.platform !== 'win32') {
         const { chmod } = await import('node:fs/promises');
         await chmod(dir, mode);
@@ -79,9 +79,9 @@ export function isInside(root: string, target: string): boolean {
  */
 export async function readTextNoFollow(file: string, maxBytes = 4 * 1024 * 1024): Promise<string> {
     const info = await lstat(file);
-    if (info.isSymbolicLink()) throw new Error(`${path.basename(file)}: символическая ссылка, чтение отменено`);
-    if (!info.isFile()) throw new Error(`${path.basename(file)}: не обычный файл`);
-    if (info.size > maxBytes) throw new Error(`${path.basename(file)}: файл больше ${Math.round(maxBytes / 1024)} КБ`);
+    if (info.isSymbolicLink()) throw new Error(`${path.basename(file)}: symbolic link, read refused`);
+    if (!info.isFile()) throw new Error(`${path.basename(file)}: not a regular file`);
+    if (info.size > maxBytes) throw new Error(`${path.basename(file)}: file is larger than ${Math.round(maxBytes / 1024)} KB`);
     const handle = await open(file, 'r');
     try {
         return await handle.readFile({ encoding: 'utf8' });

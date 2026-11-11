@@ -1,3 +1,4 @@
+import { setLocale } from '../src/core/locale.js';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -11,6 +12,8 @@ async function root(): Promise<string> {
     await writeFile(path.join(dir, 'guide.md'), '# Guide\n\n## Python\n\n- py rule\n\n## Go\n\n- go rule\n');
     return dir;
 }
+
+setLocale('ru');
 
 describe('buildEffectiveRules', () => {
     it('selects documents and sections by path', async () => {

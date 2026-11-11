@@ -1,3 +1,5 @@
+export type Locale = 'ru' | 'en';
+
 export type Level = 'blocker' | 'major' | 'minor' | 'question';
 export type FindingStatus = 'draft' | 'accepted' | 'rejected' | 'published' | 'fixed' | 'stale';
 export type Decision = 'accept' | 'reject' | 'discuss';

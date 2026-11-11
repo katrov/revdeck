@@ -4,15 +4,16 @@ import path from 'node:path';
 import { AuthError, ProviderError } from '../core/errors.js';
 import { redact } from '../core/redact.js';
 import type { Platform } from '../core/types.js';
+import { tr } from '../core/locale.js';
 
 /** JSON из stdout CLI; ошибка разбора не должна превращаться в «пустой ответ». */
 export function parseJson<T>(stdout: string, source: string): T {
     const text = stdout.trim();
-    if (!text) throw new ProviderError(`${source}: пустой ответ`);
+    if (!text) throw new ProviderError(tr(`${source}: пустой ответ`, `${source}: empty response`));
     try {
         return JSON.parse(text) as T;
     } catch {
-        throw new ProviderError(`${source}: ответ не является JSON (${redact(text).slice(0, 200)})`);
+        throw new ProviderError(tr(`${source}: ответ не является JSON (${redact(text).slice(0, 200)})`, `${source}: response is not JSON (${redact(text).slice(0, 200)})`));
     }
 }
 
@@ -23,12 +24,12 @@ export function cliError(error: unknown, platform: Platform, host: string): neve
     if (/(auth|unauthor|401|403|not logged|token|credential|forbidden)/.test(lower)) {
         const hint =
             platform === 'gitlab'
-                ? `войдите в glab на этом хосте: glab auth login --hostname ${host}`
-                : `войдите в gh: GH_HOST=${host} gh auth login`;
-        throw new AuthError(`${platform}: ${message || 'нет авторизации'}`, hint);
+                ? tr(`войдите в glab на этом хосте: glab auth login --hostname ${host}`, `log in to glab for this host: glab auth login --hostname ${host}`)
+                : tr(`войдите в gh: GH_HOST=${host} gh auth login`, `log in to gh: GH_HOST=${host} gh auth login`);
+        throw new AuthError(`${platform}: ${message || tr('нет авторизации', 'not authenticated')}`, hint);
     }
-    if (/(not found|404)/.test(lower)) throw new ProviderError(`${platform}: ${message}`, 'проверьте номер ревью и доступ к проекту');
-    throw new ProviderError(`${platform}: ${message || 'команда завершилась с ошибкой'}`);
+    if (/(not found|404)/.test(lower)) throw new ProviderError(`${platform}: ${message}`, tr('проверьте номер ревью и доступ к проекту', 'check the review number and project access'));
+    throw new ProviderError(`${platform}: ${message || tr('команда завершилась с ошибкой', 'the command failed')}`);
 }
 
 /** Временный файл с JSON-телом 0600 для `--input`; удаляется после вызова. */

@@ -1,4 +1,5 @@
 import { redact } from '../core/redact.js';
+import { locale, type Locale } from '../core/locale.js';
 
 export interface CliWriters {
     out(text: string): void;
@@ -30,17 +31,18 @@ export function truncate(value: string, max = 400): string {
     return single.length > max ? `${single.slice(0, max)}…` : single;
 }
 
-export function when(iso: string): string {
+export function when(iso: string, language: Locale = locale()): string {
     if (!iso) return '';
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return iso;
     const diff = Date.now() - date.getTime();
     const minutes = Math.round(diff / 60000);
-    if (minutes < 1) return 'только что';
-    if (minutes < 60) return `${minutes} мин назад`;
+    const en = language === 'en';
+    if (minutes < 1) return en ? 'just now' : 'только что';
+    if (minutes < 60) return en ? `${minutes} min ago` : `${minutes} мин назад`;
     const hours = Math.round(minutes / 60);
-    if (hours < 24) return `${hours} ч назад`;
-    return date.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+    if (hours < 24) return en ? `${hours} h ago` : `${hours} ч назад`;
+    return date.toLocaleString(en ? 'en-US' : 'ru-RU', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 export function pad(value: string, width: number): string {

@@ -4,6 +4,7 @@ import type { Runner } from '../core/exec.js';
 import { currentBranch, gitRemote } from '../core/git.js';
 import { ProviderError } from '../core/errors.js';
 import { parseReviewUrl } from '../core/refs.js';
+import { tr } from '../core/locale.js';
 
 export interface ProviderOptions {
     root: string;
@@ -83,12 +84,12 @@ export async function projectContext(root: string, config: ReviewConfig, overrid
     const project = overrides.project ?? config.provider.project ?? remote?.project;
     if (!platform) {
         throw new ProviderError(
-            'не удалось определить платформу: укажите provider.type в .revdeck.yml или --platform',
-            'git remote не похож на GitHub/GitLab (самостоятельный хост определите явно)',
+            tr('не удалось определить платформу: укажите provider.type в .revdeck.yml или --platform', 'could not determine the platform: set provider.type in .revdeck.yml or pass --platform'),
+            tr('git remote не похож на GitHub/GitLab (самостоятельный хост определите явно)', 'git remote does not look like GitHub/GitLab (set a self-hosted platform explicitly)'),
         );
     }
     if (!host || !project) {
-        throw new ProviderError('не удалось определить хост и проект', 'укажите project и host в .revdeck.yml или передайте URL ревью');
+        throw new ProviderError(tr('не удалось определить хост и проект', 'could not determine host and project'), tr('укажите project и host в .revdeck.yml или передайте URL ревью', 'set project and host in .revdeck.yml or pass the review URL'));
     }
     return { platform, host, project };
 }
@@ -111,15 +112,15 @@ export async function resolveReviewRef(
     if (input && /^[^#!]+[#!]\d+$/.test(input.trim())) {
         return parseReviewUrl(input);
     }
-    if (input) throw new ProviderError(`не удалось разобрать ревью: ${input}`);
+    if (input) throw new ProviderError(tr(`не удалось разобрать ревью: ${input}`, `could not parse the review: ${input}`));
     // Без номера ищем открытое ревью текущей ветки.
     const branch = options.branch ?? (await currentBranch(root));
     if (!branch || branch === 'HEAD') {
-        throw new ProviderError('не удалось определить ветку для поиска ревью', 'передайте номер ревью явно');
+        throw new ProviderError(tr('не удалось определить ветку для поиска ревью', 'could not determine the branch to search for a review'), tr('передайте номер ревью явно', 'pass the review number explicitly'));
     }
     const probe = await createProvider({ ...context, number: 0 }, { root });
     const found = await probe.findByBranch(branch);
-    if (!found) throw new ProviderError(`открытое ревью для ветки ${branch} не найдено`, 'передайте номер ревью явно');
+    if (!found) throw new ProviderError(tr(`открытое ревью для ветки ${branch} не найдено`, `no open review found for branch ${branch}`), tr('передайте номер ревью явно', 'pass the review number explicitly'));
     return found;
 }
 

@@ -9,6 +9,8 @@ import { diffStats, changedPaths, findNewLine, linePosition, snippetAround } fro
 import { sanitizeBody } from '../core/sanitize.js';
 import { mergeFindings, validateFinding, applyDecisions, fingerprintOf, levelOrder } from '../core/findings.js';
 import { canonicalJson } from '../core/canonical.js';
+import { resolveOutputLanguage, tr } from '../core/locale.js';
+import type { Locale } from '../core/locale.js';
 import { reviewId as makeReviewId } from '../core/refs.js';
 import type { ReviewConfig } from '../core/config.js';
 import type {
@@ -145,11 +147,11 @@ export class ReviewService {
 
     async refreshReview(id: string): Promise<Review> {
         const meta = this.store.getReview(id);
-        if (!meta) throw new Error(`ревью ${id} не найдено: сначала откройте его`);
+        if (!meta) throw new Error(tr(`ревью ${id} не найдено: сначала откройте его`, `review ${id} not found: open it first`));
         const loaded = await loadConfig(meta.row.root).catch((error) => ({
             config: meta.snapshot.config,
             path: meta.snapshot.configPath,
-            warnings: [`конфиг недоступен: ${redact(messageOf(error))}`],
+            warnings: [tr(`конфиг недоступен: ${redact(messageOf(error))}`, `config unavailable: ${redact(messageOf(error))}`)],
         }));
         const provider = await this.providerFactory(
             { platform: meta.row.platform as Platform, host: meta.row.host, project: meta.row.project, number: meta.row.number },
@@ -171,7 +173,7 @@ export class ReviewService {
         try {
             info = await provider.info();
         } catch (error) {
-            throw new Error(`не удалось прочитать ревью: ${redact(messageOf(error))}`);
+            throw new Error(tr(`не удалось прочитать ревью: ${redact(messageOf(error))}`, `could not read the review: ${redact(messageOf(error))}`));
         }
         const syncedAt = this.now().toISOString();
         // Частичная деградация: если не удалось получить diff или треды, показываем кеш и причину.
@@ -185,7 +187,7 @@ export class ReviewService {
         try {
             threads = await provider.threads();
         } catch (error) {
-            errors.push(`треды: ${redact(messageOf(error))}`);
+            errors.push(`${tr('треды', 'threads')}: ${redact(messageOf(error))}`);
         }
         info.stats = diffStats(diff);
         this.store.saveReview(info, root, syncedAt);
@@ -218,7 +220,7 @@ export class ReviewService {
 
     getReview(id: string): Review {
         const stored = this.store.getReview(id);
-        if (!stored) throw new Error(`ревью ${id} не найдено`);
+        if (!stored) throw new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`));
         const { row, snapshot } = stored;
         const info = this.store.info(id) ?? fallbackInfo(row);
         const draftMap = new Map(this.store.listDrafts(id).map((draft) => [draft.threadId, draft]));
@@ -329,7 +331,7 @@ export class ReviewService {
 
     setFindings(id: string, raw: unknown): Finding[] {
         const review = this.getReview(id);
-        if (!Array.isArray(raw)) throw new Error('findings: ожидался массив');
+        if (!Array.isArray(raw)) throw new Error(tr('findings: ожидался массив', 'findings: expected an array'));
         const existing = this.store.listFindings(id);
         const knownIds = new Set(existing.map((finding) => finding.id));
         const knownPrints = new Set(existing.map((finding) => finding.fingerprint));
@@ -347,17 +349,17 @@ export class ReviewService {
             if (!known) {
                 const file = review.diff.find((entry) => entry.path === value.file);
                 if (!file) {
-                    errors.push(`#${index + 1}: файла ${value.file} нет в diff`);
+                    errors.push(tr(`#${index + 1}: файла ${value.file} нет в diff`, `#${index + 1}: file ${value.file} is not in the diff`));
                     continue;
                 }
                 if (value.line !== null && !findNewLine(review.diff, value.file, value.line)) {
-                    errors.push(`#${index + 1}: строка ${value.file}:${value.line} не входит в diff`);
+                    errors.push(tr(`#${index + 1}: строка ${value.file}:${value.line} не входит в diff`, `#${index + 1}: line ${value.file}:${value.line} is not in the diff`));
                     continue;
                 }
             }
             drafts.push(value);
         }
-        if (errors.length) throw new Error(`замечания отклонены:\n${errors.join('\n')}`);
+        if (errors.length) throw new Error(tr(`замечания отклонены:\n${errors.join('\n')}`, `findings rejected:\n${errors.join('\n')}`));
         const merged = mergeFindings(this.store.listFindings(id), drafts, { now: this.now().toISOString() });
         this.store.replaceFindings(id, merged);
         this.emit(id);
@@ -390,7 +392,7 @@ export class ReviewService {
     ): ReplyDraft {
         const review = this.getReview(id);
         const thread = review.threads.find((item) => item.id === threadId);
-        if (!thread) throw new Error(`треда ${threadId} нет в этом ревью`);
+        if (!thread) throw new Error(tr(`треда ${threadId} нет в этом ревью`, `thread ${threadId} is not in this review`));
         const previous = this.store.getDraft(id, threadId) ?? EMPTY_DRAFT(threadId);
         const body = patch.body !== undefined ? String(patch.body).slice(0, 64 * 1024) : previous.body;
         const resolve = patch.resolve !== undefined ? Boolean(patch.resolve) : previous.resolve;
@@ -417,7 +419,7 @@ export class ReviewService {
     addNote(id: string, input: { file: string; line: number; side?: Side; text: string; toAgent?: boolean }): LineNote {
         const review = this.getReview(id);
         if (!findNewLine(review.diff, input.file, input.line)) {
-            throw new Error(`строка ${input.file}:${input.line} не входит в diff`);
+            throw new Error(tr(`строка ${input.file}:${input.line} не входит в diff`, `line ${input.file}:${input.line} is not in the diff`));
         }
         const timestamp = this.now().toISOString();
         const note: LineNote = {
@@ -447,7 +449,7 @@ export class ReviewService {
         patch: { text?: string; toAgent?: boolean; agentAction?: string; agentReply?: string; posted?: string; discussionId?: string; noteId?: string; error?: string },
     ): LineNote {
         const existing = this.store.listNotes(id).find((note) => note.id === noteId);
-        if (!existing) throw new Error(`комментария ${noteId} нет`);
+        if (!existing) throw new Error(tr(`комментария ${noteId} нет`, `comment ${noteId} not found`));
         const next: LineNote = {
             ...existing,
             text: patch.text !== undefined ? String(patch.text).slice(0, 16_000) : existing.text,
@@ -470,7 +472,7 @@ export class ReviewService {
     deleteNote(id: string, noteId: string): void {
         const existing = this.store.listNotes(id).find((note) => note.id === noteId);
         if (!existing) return;
-        if (existing.posted) throw new Error('комментарий уже опубликован: удалять его нужно в платформе');
+        if (existing.posted) throw new Error(tr('комментарий уже опубликован: удалять его нужно в платформе', 'the comment is already published: delete it in the platform'));
         this.store.deleteNote(id, noteId);
         this.emit(id);
     }
@@ -481,34 +483,34 @@ export class ReviewService {
         const review = this.getReview(id);
         const items: PublishItem[] = [];
         const warnings: string[] = [];
-        const max = this.configOf(id)?.publish.maxComments ?? 50;
+        const max = this.configOf(id)?.publish?.maxComments ?? 50;
         for (const itemId of ids) {
             if (items.length >= max) {
-                warnings.push(`достигнут лимит ${max} комментариев за раз`);
+                warnings.push(tr(`достигнут лимит ${max} комментариев за раз`, `limit of ${max} comments per batch reached`));
                 break;
             }
             if (kind === 'reply') {
                 const thread = review.threads.find((item) => item.id === itemId);
                 const draft = review.drafts.find((item) => item.threadId === itemId);
                 if (!thread || !draft) {
-                    warnings.push(`тред ${itemId} не найден`);
+                    warnings.push(tr(`тред ${itemId} не найден`, `thread ${itemId} not found`));
                     continue;
                 }
                 const body = draft.body.trim();
                 const alreadyPosted = body !== '' && draft.posted.trim() === body;
                 const resolveChanged = draft.resolve !== thread.resolved;
                 if (!body && !resolveChanged) {
-                    warnings.push(`тред ${thread.id.substring(0, 8)}: нечего публиковать`);
+                    warnings.push(tr(`тред ${thread.id.substring(0, 8)}: нечего публиковать`, `thread ${thread.id.substring(0, 8)}: nothing to publish`));
                     continue;
                 }
                 if (body && alreadyPosted && !resolveChanged) {
-                    warnings.push(`тред ${thread.id.substring(0, 8)}: ответ уже опубликован`);
+                    warnings.push(tr(`тред ${thread.id.substring(0, 8)}: ответ уже опубликован`, `thread ${thread.id.substring(0, 8)}: reply already published`));
                     continue;
                 }
                 if (body) {
                     const check = sanitizeBody(body, review.info.ref.platform);
                     if (!check.ok) {
-                        warnings.push(`тред ${thread.id.substring(0, 8)}: ${check.reason}`);
+                        warnings.push(tr(`тред ${thread.id.substring(0, 8)}: ${check.reason}`, `thread ${thread.id.substring(0, 8)}: ${check.reason}`));
                         continue;
                     }
                 }
@@ -518,17 +520,17 @@ export class ReviewService {
             if (kind === 'finding') {
                 const finding = review.findings.find((item) => item.id === itemId);
                 if (!finding) {
-                    warnings.push(`замечание ${itemId} не найдено`);
+                    warnings.push(tr(`замечание ${itemId} не найдено`, `finding ${itemId} not found`));
                     continue;
                 }
                 if (finding.status === 'published') {
-                    warnings.push(`замечание ${finding.id} уже опубликовано`);
+                    warnings.push(tr(`замечание ${finding.id} уже опубликовано`, `finding ${finding.id} is already published`));
                     continue;
                 }
                 const body = finding.comment.trim();
                 const check = sanitizeBody(body, review.info.ref.platform);
                 if (!check.ok) {
-                    warnings.push(`замечание ${finding.id}: ${check.reason}`);
+                    warnings.push(tr(`замечание ${finding.id}: ${check.reason}`, `finding ${finding.id}: ${check.reason}`));
                     continue;
                 }
                 const finalBody = finding.file && finding.line === null ? `\`${finding.file}\`: ${body}` : body;
@@ -544,16 +546,16 @@ export class ReviewService {
             }
             const note = review.notes.find((item) => item.id === itemId);
             if (!note) {
-                warnings.push(`комментарий ${itemId} не найден`);
+                warnings.push(tr(`комментарий ${itemId} не найден`, `comment ${itemId} not found`));
                 continue;
             }
             if (note.posted) {
-                warnings.push(`комментарий ${note.id} уже опубликован`);
+                warnings.push(tr(`комментарий ${note.id} уже опубликован`, `comment ${note.id} is already published`));
                 continue;
             }
             const check = sanitizeBody(note.text, review.info.ref.platform);
             if (!check.ok) {
-                warnings.push(`комментарий ${note.id}: ${check.reason}`);
+                warnings.push(tr(`комментарий ${note.id}: ${check.reason}`, `comment ${note.id}: ${check.reason}`));
                 continue;
             }
             items.push({ kind, id: note.id, body: note.text, file: note.file, line: note.line, side: note.side });
@@ -569,9 +571,9 @@ export class ReviewService {
     approve(id: string, kind: PublishKind, ids: string[], expectedHash: string): Approval {
         const preview = this.previewPublish(id, kind, ids);
         if (preview.plan.hash !== expectedHash) {
-            throw new Error('набор изменений изменился после подтверждения: обновите страницу и подтвердите заново');
+            throw new Error(tr('набор изменений изменился после подтверждения: обновите страницу и подтвердите заново', 'the plan changed after confirmation: refresh and confirm again'));
         }
-        if (!preview.plan.items.length) throw new Error('нечего публиковать: в выбранных элементах нет изменений');
+        if (!preview.plan.items.length) throw new Error(tr('нечего публиковать: в выбранных элементах нет изменений', 'nothing to publish: the selected items have no changes'));
         const approval: Approval = {
             id: randomBytes(16).toString('hex'),
             reviewId: id,
@@ -597,14 +599,14 @@ export class ReviewService {
 
     async publish(id: string, approvalId: string): Promise<PublishResult> {
         const approval = this.store.getApproval(approvalId);
-        if (!approval) throw new Error('подтверждение не найдено');
-        if (approval.reviewId !== id) throw new Error('подтверждение выдано для другого ревью');
-        if (approval.usedAt) throw new Error('подтверждение уже использовано');
-        if (new Date(approval.expiresAt).getTime() < this.now().getTime()) throw new Error('подтверждение истекло');
+        if (!approval) throw new Error(tr('подтверждение не найдено', 'approval not found'));
+        if (approval.reviewId !== id) throw new Error(tr('подтверждение выдано для другого ревью', 'the approval belongs to another review'));
+        if (approval.usedAt) throw new Error(tr('подтверждение уже использовано', 'the approval has already been used'));
+        if (new Date(approval.expiresAt).getTime() < this.now().getTime()) throw new Error(tr('подтверждение истекло', 'the approval has expired'));
         this.store.markApprovalUsed(approvalId);
 
         const stored = this.store.getReview(id);
-        if (!stored) throw new Error(`ревью ${id} не найдено`);
+        if (!stored) throw new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`));
         const provider = await this.providerFactory(
             { platform: stored.row.platform as Platform, host: stored.row.host, project: stored.row.project, number: stored.row.number },
             stored.row.root,
@@ -621,7 +623,7 @@ export class ReviewService {
                 if (item.kind === 'reply') {
                     const thread = review.threads.find((entry) => entry.id === item.id);
                     const draft = this.store.getDraft(id, item.id) ?? EMPTY_DRAFT(item.id);
-                    if (!thread) throw new Error('тред больше не существует');
+                    if (!thread) throw new Error(tr('тред больше не существует', 'the thread no longer exists'));
                     const body = String(item.body ?? '').trim();
                     if (body && draft.posted.trim() !== body) {
                         const check = sanitizeBody(body, platform);
@@ -646,7 +648,7 @@ export class ReviewService {
                 }
                 if (item.kind === 'finding') {
                     const finding = review.findings.find((entry) => entry.id === item.id);
-                    if (!finding) throw new Error('замечание не найдено');
+                    if (!finding) throw new Error(tr('замечание не найдено', 'finding not found'));
                     if (finding.status === 'published') {
                         result.ok = true;
                         result.skipped = true;
@@ -655,7 +657,7 @@ export class ReviewService {
                     }
                     const body = String(item.body ?? '').trim();
                     const position = finding.line !== null ? linePosition(review.diff, finding.file, finding.line) : null;
-                    if (finding.line !== null && !position) throw new Error(`строка ${finding.file}:${finding.line} не входит в diff`);
+                    if (finding.line !== null && !position) throw new Error(tr(`строка ${finding.file}:${finding.line} не входит в diff`, `line ${finding.file}:${finding.line} is not in the diff`));
                     const created = await provider.createThread({
                         file: finding.file,
                         line: finding.line,
@@ -672,14 +674,14 @@ export class ReviewService {
                     continue;
                 }
                 const note = review.notes.find((entry) => entry.id === item.id);
-                if (!note) throw new Error('комментарий не найден');
+                if (!note) throw new Error(tr('комментарий не найден', 'comment not found'));
                 if (note.posted) {
                     result.ok = true;
                     result.skipped = true;
                     continue;
                 }
                 const position = linePosition(review.diff, note.file, note.line);
-                if (!position) throw new Error(`строка ${note.file}:${note.line} не входит в diff`);
+                if (!position) throw new Error(tr(`строка ${note.file}:${note.line} не входит в diff`, `line ${note.file}:${note.line} is not in the diff`));
                 const created = await provider.createThread({
                     file: note.file,
                     line: note.line,
@@ -735,27 +737,43 @@ export class ReviewService {
 
     // ---------------------------------------------------------------- rules & checks
 
-    async rules(id: string): Promise<{ markdown: string; configPath: string | null; warnings: string[]; checks: CommandCheck[]; language: 'auto' | 'ru' | 'en' }> {
+    async rules(id: string): Promise<{ markdown: string; configPath: string | null; warnings: string[]; checks: CommandCheck[]; language: Locale }> {
         const stored = this.store.getReview(id);
-        if (!stored) throw new Error(`ревью ${id} не найдено`);
+        if (!stored) throw new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`));
+        const info = this.store.info(id);
+        const texts = [
+            info?.title ?? '',
+            info?.description ?? '',
+            ...stored.snapshot.threads.flatMap((thread) => thread.notes.map((note) => note.body)),
+        ];
+        let config = stored.snapshot.config;
+        let configPath = stored.snapshot.configPath;
+        if (!config?.rules) {
+            // Снимок мог быть сделан старой версией без output/rules — перечитываем конфиг.
+            const loaded = await loadConfig(stored.row.root);
+            config = loaded.config;
+            configPath = loaded.path;
+        }
+        const language = resolveOutputLanguage(config.output?.language ?? 'auto', texts);
         const effective = await buildEffectiveRules({
             root: stored.row.root,
-            config: stored.snapshot.config,
-            configPath: stored.snapshot.configPath,
+            config,
+            configPath,
             files: changedPaths(stored.snapshot.diff),
+            language,
         });
         return {
-            markdown: renderRules(effective),
+            markdown: renderRules(effective, { language }),
             configPath: effective.configPath,
             warnings: effective.warnings,
             checks: effective.checks,
-            language: stored.snapshot.config.output.language,
+            language,
         };
     }
 
     async runChecks(id: string, options: { allowRun: boolean; ids?: string[] }): Promise<CheckResult[]> {
         const stored = this.store.getReview(id);
-        if (!stored) throw new Error(`ревью ${id} не найдено`);
+        if (!stored) throw new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`));
         const { checks } = await this.rules(id);
         const matched = checks.filter((check) => check.matched && (!options.ids?.length || options.ids.includes(check.id)));
         const results: CheckResult[] = [];
@@ -766,7 +784,7 @@ export class ReviewService {
                     name: check.name,
                     argv: check.argv,
                     status: 'skipped',
-                    output: 'запуск не подтверждён: используйте revdeck checks --run --yes',
+                    output: tr('запуск не подтверждён: используйте revdeck checks --run --yes', 'run not confirmed: use revdeck checks --run --yes'),
                     durationMs: 0,
                 });
                 continue;
@@ -775,7 +793,7 @@ export class ReviewService {
             try {
                 const { stdout, stderr, code } = await this.runImpl(check.argv[0]!, check.argv.slice(1), {
                     cwd: stored.row.root,
-                    timeoutMs: stored.snapshot.config.checks.find((item) => item.id === check.id)?.timeoutMs ?? 300_000,
+                    timeoutMs: stored.snapshot.config.checks?.find((item) => item.id === check.id)?.timeoutMs ?? 300_000,
                     maxBuffer: 16 * 1024 * 1024,
                 });
                 results.push({

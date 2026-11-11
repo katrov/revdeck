@@ -1,4 +1,5 @@
 import type { Platform } from './types.js';
+import { tr } from './locale.js';
 
 /**
  * Проверка текста, который уйдёт в публичный комментарий.
@@ -37,15 +38,15 @@ export function sanitizeBody(body: string, platform: Platform, options: Sanitize
     const maxLength = options.maxLength ?? MAX_LENGTH;
     const checkQuickActions = options.quickActions ?? platform === 'gitlab';
 
-    if (text.trim() === '') return { ok: false, reason: 'текст пуст', text };
-    if (text.length > maxLength) return { ok: false, reason: `текст длиннее ${maxLength} символов`, text };
-    if (CONTROL_OR_HIDDEN.test(text)) return { ok: false, reason: 'в тексте есть управляющие или невидимые символы', text };
-    if (HTML_COMMENT.test(text)) return { ok: false, reason: 'в тексте есть HTML-комментарий', text };
-    if (HTML_TAG.test(text)) return { ok: false, reason: 'в тексте есть HTML-тег', text };
-    if (MD_IMAGE.test(text)) return { ok: false, reason: 'в тексте есть картинка: замените ссылкой', text };
-    if (MASS_MENTION.test(text)) return { ok: false, reason: 'массовое упоминание: укажите конкретных людей', text };
+    if (text.trim() === '') return { ok: false, reason: tr('текст пуст', 'the text is empty'), text };
+    if (text.length > maxLength) return { ok: false, reason: tr(`текст длиннее ${maxLength} символов`, `the text is longer than ${maxLength} characters`), text };
+    if (CONTROL_OR_HIDDEN.test(text)) return { ok: false, reason: tr('в тексте есть управляющие или невидимые символы', 'the text contains control or invisible characters'), text };
+    if (HTML_COMMENT.test(text)) return { ok: false, reason: tr('в тексте есть HTML-комментарий', 'the text contains an HTML comment'), text };
+    if (HTML_TAG.test(text)) return { ok: false, reason: tr('в тексте есть HTML-тег', 'the text contains an HTML tag'), text };
+    if (MD_IMAGE.test(text)) return { ok: false, reason: tr('в тексте есть картинка: замените ссылкой', 'the text contains an image: replace it with a link'), text };
+    if (MASS_MENTION.test(text)) return { ok: false, reason: tr('массовое упоминание: укажите конкретных людей', 'mass mention: name specific people'), text };
     if (checkQuickActions && QUICK_ACTION.test(text)) {
-        return { ok: false, reason: 'строка-команда GitLab (/approve, /merge …): перефразируйте', text };
+        return { ok: false, reason: tr('строка-команда GitLab (/approve, /merge …): перефразируйте', 'GitLab quick action line (/approve, /merge …): rephrase it'), text };
     }
     return { ok: true, reason: '', text };
 }

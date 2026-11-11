@@ -8,7 +8,7 @@ export function reviewId(ref: ReviewRef): string {
 
 export function parseReviewId(id: string): ReviewRef {
     const match = /^(gitlab|github):([^/]+)\/(.+)!(\d+)$/.exec(id);
-    if (!match) throw new Error(`некорректный id ревью: ${id}`);
+    if (!match) throw new Error(`invalid review id: ${id}`);
     return {
         platform: match[1] as Platform,
         host: match[2]!,
@@ -51,8 +51,8 @@ export function parseReviewUrl(input: string): ReviewRef {
         };
     }
     throw new Error(
-        'не удалось разобрать ссылку на MR/PR: ожидается https://<хост>/<проект>/-/merge_requests/<N> ' +
-            'или https://<хост>/<owner>/<repo>/pull/<N>, либо project!N / owner/repo#N',
+        'could not parse the MR/PR reference: expected https://<host>/<project>/-/merge_requests/<N> ' +
+            'or https://<host>/<owner>/<repo>/pull/<N>, or project!N / owner/repo#N',
     );
 }
 

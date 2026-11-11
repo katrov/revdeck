@@ -30,7 +30,11 @@ skill: агент вызывает команды через shell.
 ```json
 {
   "mcpServers": {
-    "revdeck": { "command": "npx", "args": ["-y", "revdeck", "mcp"] }
+    "revdeck": {
+      "command": "npx",
+      "args": ["-y", "revdeck", "mcp"],
+      "env": { "REVDECK_LANG": "en" }
+    }
   }
 }
 ```
@@ -50,6 +54,8 @@ MCP-клиент DSH подключается в профиле Cordis:
     transport: stdio
     command: npx
     args: ['-y', 'revdeck', 'mcp']
+    env:
+      REVDECK_LANG: en
 ```
 
 Инструменты появятся как `mcp__revdeck__*`. MCP prompt templates DSH не поддерживает, поэтому

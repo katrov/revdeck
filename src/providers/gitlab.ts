@@ -5,6 +5,7 @@ import { ProviderError } from '../core/errors.js';
 import { redact } from '../core/redact.js';
 import { run as realRun, type Runner } from '../core/exec.js';
 import { parseJson, cliError, query, withTempJson } from './util.js';
+import { tr } from '../core/locale.js';
 import type { CreateThreadInput, CreatedThread, ListOptions, Provider, ProviderOptions, ReviewListItem } from './provider.js';
 
 interface GlUser {
@@ -113,7 +114,7 @@ export class GitLabProvider implements Provider {
         const items: T[] = [];
         for (let page = 1; page <= 50; page++) {
             const chunk = await this.json<T[]>([query(endpoint, { ...params, per_page: 100, page })]);
-            if (!Array.isArray(chunk)) throw new ProviderError('GitLab: ожидался массив в ответе на список');
+            if (!Array.isArray(chunk)) throw new ProviderError(tr('GitLab: ожидался массив в ответе на список', 'GitLab: expected an array in the list response'));
             items.push(...chunk);
             if (chunk.length < 100) break;
         }
@@ -272,7 +273,7 @@ export class GitLabProvider implements Provider {
     async createThread(input: CreateThreadInput): Promise<CreatedThread> {
         const info = await this.info();
         if (!info.commit.head || info.commit.head === EMPTY_SHA) {
-            throw new ProviderError('GitLab не вернул SHA ревизий: комментарий к строке невозможен');
+            throw new ProviderError(tr('GitLab не вернул SHA ревизий: комментарий к строке невозможен', 'GitLab did not return revision SHAs: a line comment is not possible'));
         }
         const payload =
             input.line === null
@@ -294,7 +295,7 @@ export class GitLabProvider implements Provider {
             this.json<GlDiscussion>(['--method', 'POST', this.endpoint('/discussions'), '--input', file]),
         );
         const note = created.notes?.[0];
-        if (!note) throw new ProviderError('GitLab не вернул созданное обсуждение');
+        if (!note) throw new ProviderError(tr('GitLab не вернул созданное обсуждение', 'GitLab did not return the created discussion'));
         return { discussionId: String(created.id), noteId: String(note.id) };
     }
 }

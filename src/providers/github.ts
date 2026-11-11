@@ -4,6 +4,7 @@ import { parseUnifiedDiff } from '../core/diff.js';
 import { ProviderError } from '../core/errors.js';
 import { run as realRun, type Runner } from '../core/exec.js';
 import { parseJson, cliError, query, withTempJson } from './util.js';
+import { tr } from '../core/locale.js';
 import type { CreateThreadInput, CreatedThread, ListOptions, Provider, ProviderOptions, ReviewListItem } from './provider.js';
 
 interface GhUser {
@@ -117,7 +118,7 @@ export class GitHubProvider implements Provider {
         this.run = options.runImpl ?? realRun;
         const [owner, name, ...rest] = ref.project.split('/');
         if (!owner || !name || rest.length) {
-            throw new ProviderError(`GitHub: проект должен быть owner/repo, получено ${ref.project}`);
+            throw new ProviderError(tr(`GitHub: проект должен быть owner/repo, получено ${ref.project}`, `GitHub: project must be owner/repo, got ${ref.project}`));
         }
         this.owner = owner;
         this.name = name;
@@ -157,7 +158,7 @@ export class GitHubProvider implements Provider {
         const items: T[] = [];
         for (let page = 1; page <= 50; page++) {
             const chunk = await this.json<T[]>([query(endpoint, { ...params, per_page: 100, page })]);
-            if (!Array.isArray(chunk)) throw new ProviderError('GitHub: ожидался массив в ответе на список');
+            if (!Array.isArray(chunk)) throw new ProviderError(tr('GitHub: ожидался массив в ответе на список', 'GitHub: expected an array in the list response'));
             items.push(...chunk);
             if (chunk.length < 100) break;
         }
@@ -172,7 +173,7 @@ export class GitHubProvider implements Provider {
         }
         const data = await this.json<{ data?: T; errors?: { message: string }[] }>(args);
         if (data.errors?.length) throw new ProviderError(`GitHub GraphQL: ${data.errors.map((item) => item.message).join('; ')}`);
-        if (!data.data) throw new ProviderError('GitHub GraphQL: пустой ответ');
+        if (!data.data) throw new ProviderError(tr('GitHub GraphQL: пустой ответ', 'GitHub GraphQL: empty response'));
         return data.data;
     }
 
@@ -235,7 +236,7 @@ export class GitHubProvider implements Provider {
                 after,
             });
             const connection = data.repository?.pullRequest?.reviewThreads;
-            if (!connection) throw new ProviderError('GitHub: треды ревью не найдены (нет доступа?)');
+            if (!connection) throw new ProviderError(tr('GitHub: треды ревью не найдены (нет доступа?)', 'GitHub: review threads not found (no access?)'));
             nodes.push(...connection.nodes);
             if (!connection.pageInfo.hasNextPage) break;
             after = connection.pageInfo.endCursor;
@@ -315,7 +316,7 @@ export class GitHubProvider implements Provider {
 
     async reply(thread: Thread, body: string): Promise<Note> {
         const root = thread.notes[0]?.id;
-        if (!root) throw new ProviderError('в треде нет комментария, на который можно ответить');
+        if (!root) throw new ProviderError(tr('в треде нет комментария, на который можно ответить', 'the thread has no comment to reply to'));
         const comment = await withTempJson({ body }, async (file) =>
             this.json<GhComment>(['--method', 'POST', `${this.pullBase}/comments/${root}/replies`, '--input', file]),
         );
@@ -338,7 +339,7 @@ export class GitHubProvider implements Provider {
 
     async react(noteId: string, emoji: string): Promise<{ active: boolean }> {
         const content = REACTIONS[emoji];
-        if (!content) throw new ProviderError(`GitHub не поддерживает реакцию ${emoji}`);
+        if (!content) throw new ProviderError(tr(`GitHub не поддерживает реакцию ${emoji}`, `GitHub does not support reaction ${emoji}`));
         const base = `repos/${this.repo}/pulls/comments/${noteId}/reactions`;
         const existing = await this.json<{ id: number; content: string; user: GhUser | null }[]>([query(base, { per_page: 100 })]);
         const me = await this.currentUser();
@@ -361,7 +362,7 @@ export class GitHubProvider implements Provider {
             return { discussionId: `issue-${comment.id}`, noteId: String(comment.id) };
         }
         const info = await this.info();
-        if (!info.commit.head) throw new ProviderError('GitHub не вернул head SHA: комментарий к строке невозможен');
+        if (!info.commit.head) throw new ProviderError(tr('GitHub не вернул head SHA: комментарий к строке невозможен', 'GitHub did not return the head SHA: a line comment is not possible'));
         const payload = {
             body: input.body,
             commit_id: info.commit.head,

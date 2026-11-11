@@ -1,6 +1,7 @@
 <script lang="ts">
     import { app, loadReview, notify, setTab } from '../lib/state.svelte';
     import type { Tab } from '../lib/types';
+    import { t } from '../lib/i18n.svelte';
 
     let { onclose, onpublish }: { onclose: () => void; onpublish: () => void } = $props();
 
@@ -23,32 +24,32 @@
         const review = app.review;
         const list: Action[] = [];
         const tabs: [Tab, string][] = [
-            ['overview', 'Обзор'],
-            ['threads', 'Треды'],
-            ['findings', 'Замечания'],
+            ['overview', t('Обзор', 'Overview')],
+            ['threads', t('Треды', 'Threads')],
+            ['findings', t('Замечания', 'Findings')],
             ['diff', 'Diff'],
-            ['rules', 'Правила'],
+            ['rules', t('Правила', 'Rules')],
         ];
-        for (const [id, label] of tabs) list.push({ id: `tab-${id}`, label: `Перейти: ${label}`, hint: '1–5', run: () => setTab(id) });
+        for (const [id, label] of tabs) list.push({ id: `tab-${id}`, label: `${t('Перейти:', 'Go to:')} ${label}`, hint: '1–5', run: () => setTab(id) });
         if (review) {
-            list.push({ id: 'refresh', label: 'Обновить ревью', hint: 'r', run: () => void loadReview(review.id, { refresh: true }) });
-            list.push({ id: 'publish', label: 'Опубликовать изменения', hint: 'p', run: onpublish });
+            list.push({ id: 'refresh', label: t('Обновить ревью', 'Refresh review'), hint: 'r', run: () => void loadReview(review.id, { refresh: true }) });
+            list.push({ id: 'publish', label: t('Опубликовать изменения', 'Publish changes'), hint: 'p', run: onpublish });
             list.push({
                 id: 'copy-context',
-                label: 'Скопировать команду контекста',
+                label: t('Скопировать команду контекста', 'Copy context command'),
                 hint: 'CLI',
                 run: () => {
                     void navigator.clipboard?.writeText(`revdeck context ${review.info.ref.number}`).then(
-                        () => notify('Команда скопирована', 'ok'),
-                        () => notify('Не удалось скопировать', 'error'),
+                        () => notify(t('Команда скопирована', 'Command copied'), 'ok'),
+                        () => notify(t('Не удалось скопировать', 'Could not copy'), 'error'),
                     );
                 },
             });
-            list.push({ id: 'platform', label: 'Открыть в платформе', hint: '↗', run: () => window.open(review.info.webUrl, '_blank', 'noopener') });
+            list.push({ id: 'platform', label: t('Открыть в платформе', 'Open in platform'), hint: '↗', run: () => window.open(review.info.webUrl, '_blank', 'noopener') });
         }
         for (const item of app.reviews) {
             if (item.id === review?.id) continue;
-            list.push({ id: `review-${item.id}`, label: `Открыть: #${item.number} ${item.title}`, hint: item.project, run: () => void loadReview(item.id) });
+            list.push({ id: `review-${item.id}`, label: `${t('Открыть:', 'Open:')} #${item.number} ${item.title}`, hint: item.project, run: () => void loadReview(item.id) });
         }
         return list;
     });
@@ -87,15 +88,15 @@
 </script>
 
 <div class="overlay" style="padding-top: 6vh">
-    <button class="backdrop" type="button" aria-label="Закрыть" onclick={onclose}></button>
-    <div class="palette" role="dialog" aria-modal="true" aria-label="Команды">
+    <button class="backdrop" type="button" aria-label={t('Закрыть', 'Close')} onclick={onclose}></button>
+    <div class="palette" role="dialog" aria-modal="true" aria-label={t('Команды', 'Commands')}>
         <input
             bind:this={input}
             type="text"
             value={query}
             oninput={(event) => (query = event.currentTarget.value)}
             onkeydown={onKeydown}
-            placeholder="Команда… (↑↓, Enter)"
+            placeholder={t('Команда… (↑↓, Enter)', 'Command… (↑↓, Enter)')}
         />
         <div style="max-height: 50vh; overflow: auto">
             {#each filtered as action, i (action.id)}
@@ -104,7 +105,7 @@
                     <span class="muted small" style="float: right">{action.hint}</span>
                 </button>
             {:else}
-                <p class="muted small" style="padding: 12px">Ничего не найдено.</p>
+                <p class="muted small" style="padding: 12px">{t('Ничего не найдено.', 'Nothing found.')}</p>
             {/each}
         </div>
     </div>

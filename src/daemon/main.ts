@@ -8,6 +8,7 @@ import { parseArgs } from 'node:util';
 import { daemonInfoPath, ensureDir, databasePath, logPath, runtimeDir, socketPath, stateDir, writeFileAtomic } from '../core/paths.js';
 import { redactLine } from '../core/redact.js';
 import { PROTOCOL_VERSION, VERSION } from '../version.js';
+import { detectLocale, setLocale, tr } from '../core/locale.js';
 import { Store } from './store.js';
 import { ReviewService } from './service.js';
 import { startHttpServer } from './http.js';
@@ -25,6 +26,7 @@ export interface DaemonInfo {
 }
 
 async function main(): Promise<void> {
+    setLocale(detectLocale());
     const { values } = parseArgs({
         options: {
             port: { type: 'string' },
@@ -53,7 +55,7 @@ async function main(): Promise<void> {
 
     const existing = await runningDaemon();
     if (existing) {
-        process.stdout.write(`revdeck daemon уже запущен (pid ${existing.pid}): ${existing.url}/\n`);
+        process.stdout.write(`revdeck daemon ${tr('уже запущен', 'is already running')} (pid ${existing.pid}): ${existing.url}/\n`);
         return;
     }
 
@@ -61,7 +63,7 @@ async function main(): Promise<void> {
     await ensureDir(runtimeDir(), 0o700);
     const lock = await acquireLock();
     if (!lock) {
-        process.stdout.write('revdeck daemon уже запускается или запущен\n');
+        process.stdout.write(`revdeck daemon ${tr('уже запускается или запущен', 'is already starting or running')}\n`);
         return;
     }
     const token = (await import('node:crypto')).randomBytes(32).toString('hex');
@@ -97,8 +99,8 @@ async function main(): Promise<void> {
         [
             `revdeck daemon ${VERSION} (pid ${process.pid})`,
             `UI:      ${http.url}/?t=${token}`,
-            `сокет:   ${socket}`,
-            `состояние: ${stateDir()}`,
+            `${tr('сокет', 'socket')}:   ${socket}`,
+            `${tr('состояние', 'state')}: ${stateDir()}`,
             '',
         ].join('\n'),
     );

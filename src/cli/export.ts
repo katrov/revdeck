@@ -4,6 +4,7 @@ import { ensureDaemon, type DaemonClient } from '../client.js';
 import type { ReviewView } from '../daemon/view.js';
 import type { ReviewSummary } from '../core/types.js';
 import { writers } from './format.js';
+import { tr } from '../core/locale.js';
 
 async function reviewFor(client: DaemonClient, root: string, arg: string | undefined): Promise<ReviewView> {
     if (arg && /^(gitlab|github):/.test(arg)) {
@@ -19,7 +20,7 @@ async function reviewFor(client: DaemonClient, root: string, arg: string | undef
         const { review } = await client.request<{ review: ReviewView }>('reviews.get', { review: reviews[0]!.id });
         return review;
     }
-    throw new Error('укажите номер ревью');
+    throw new Error(tr('укажите номер ревью', 'pass a review number'));
 }
 
 async function serializeDiff(client: DaemonClient, review: ReviewView): Promise<string> {
@@ -127,7 +128,7 @@ export async function exportReview(root: string, arg: string | undefined, dir: s
         await write(`${base}-published.json`, published);
         await writeFile(path.join(target, `${base}.diff`), await serializeDiff(client, review), { mode: 0o644 });
         files.push(`${base}.diff`);
-        writers.out(`экспортировано в ${path.relative(root, target)}: ${files.join(', ')}`);
+        writers.out(`${tr('экспортировано в', 'exported to')} ${path.relative(root, target)}: ${files.join(', ')}`);
     } finally {
         client.close();
     }
@@ -149,13 +150,13 @@ export async function importReview(root: string, arg: string | undefined, dir: s
         const summary = await read<ReviewSummary>(`${base}-summary.json`);
         if (summary) {
             await client.request('summary.put', { review: review.id, summary });
-            writers.out('✔ выжимка');
+            writers.out(`✔ ${tr('выжимка', 'summary')}`);
         }
         const findings = await read<{ findings?: unknown[] } | unknown[]>(`${base}-findings.json`);
         if (findings) {
             const list = Array.isArray(findings) ? findings : (findings.findings ?? []);
             await client.request('findings.put', { review: review.id, findings: list });
-            writers.out(`✔ замечания: ${list.length}`);
+            writers.out(`✔ ${tr('замечания', 'findings')}: ${list.length}`);
         }
         const replies = await read<{ replies?: { discussion_id: string; reply: string; resolve?: boolean }[] }>(`${base}-replies.json`);
         if (replies?.replies) {
@@ -166,7 +167,7 @@ export async function importReview(root: string, arg: string | undefined, dir: s
                     patch: { body: reply.reply, resolve: Boolean(reply.resolve) },
                 });
             }
-            writers.out(`✔ черновики ответов: ${replies.replies.length}`);
+            writers.out(`✔ ${tr('черновики ответов', 'reply drafts')}: ${replies.replies.length}`);
         }
         const notes = await read<{ notes?: { file: string; line: number; text: string; to_agent?: boolean; agent_reply?: string }[] }>(`${base}-notes.json`);
         if (notes?.notes) {
@@ -182,7 +183,7 @@ export async function importReview(root: string, arg: string | undefined, dir: s
                     await client.request('notes.update', { review: review.id, noteId: added.note.id, patch: { agentReply: note.agent_reply } });
                 }
             }
-            writers.out(`✔ комментарии к строкам: ${notes.notes.length}`);
+            writers.out(`✔ ${tr('комментарии к строкам', 'line comments')}: ${notes.notes.length}`);
         }
     } finally {
         client.close();

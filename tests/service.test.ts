@@ -1,3 +1,4 @@
+import { setLocale } from '../src/core/locale.js';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -151,6 +152,8 @@ async function open() {
     return service.openReview(root, { input: 'https://gitlab.com/group/proj/-/merge_requests/7' });
 }
 
+setLocale('ru');
+
 describe('ReviewService', () => {
     it('opens a review and builds a view with snippets', async () => {
         const review = await open();
@@ -249,7 +252,7 @@ describe('ReviewService', () => {
         expect(rules.markdown).toContain('Правило нейминга');
         expect(rules.markdown).not.toContain('Нет.');
         expect(rules.checks).toEqual([]);
-        expect(rules.language).toBe('auto');
+        expect(rules.language).toBe('en');
     });
 
     it('reports multiple reviews', async () => {

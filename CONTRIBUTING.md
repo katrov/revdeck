@@ -59,6 +59,15 @@ Rules of thumb:
 Add a `SPECS` entry in `src/cli/init.ts` with the skill target, MCP config path or command file, then
 document it in `docs/integrations.md`. `init` must never overwrite files it does not own.
 
+## Translations
+
+- UI strings live next to their components: `t('русский', 'English')` in `ui/src/lib/i18n.svelte.ts`'s
+  `t` helper. Keep both languages in the same edit.
+- CLI strings use `tr('русский', 'English')` from `src/core/locale.ts`.
+- The skill has two human-maintained packs: `skills/revdeck/ru/` and `skills/revdeck/en/`. They must
+  keep the same structure and semantics; do not machine-translate the review procedure.
+- Tests that assert message text should pin the locale with `setLocale('ru')` or be language-agnostic.
+
 ## Pull requests
 
 - One logical change per PR; include tests for behavior changes.

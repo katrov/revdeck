@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { LEVELS, type Decision, type Finding, type FindingStatus, type Level } from './types.js';
 import { normalizeLevel } from './refs.js';
+import { tr } from './locale.js';
 
 export interface FindingDraft {
     id?: string;
@@ -22,24 +23,24 @@ const LEVEL_ORDER: Record<Level, number> = { blocker: 0, major: 1, minor: 2, que
 
 /** Проверяет и нормализует замечание, пришедшее от агента (CLI/MCP). */
 export function validateFinding(raw: unknown): FindingValidation {
-    if (!raw || typeof raw !== 'object') return { value: null, error: 'замечание должно быть объектом' };
+    if (!raw || typeof raw !== 'object') return { value: null, error: tr('замечание должно быть объектом', 'a finding must be an object') };
     const item = raw as Record<string, unknown>;
     const file = typeof item.file === 'string' ? item.file.trim() : '';
     const title = typeof item.title === 'string' ? item.title.trim() : '';
     const body = typeof item.body === 'string' ? item.body.trim() : '';
     const comment = typeof item.comment === 'string' ? item.comment.trim() : body;
-    if (!file) return { value: null, error: 'не указан file' };
-    if (!title) return { value: null, error: 'не указан title' };
-    if (!comment) return { value: null, error: 'пустой comment' };
+    if (!file) return { value: null, error: tr('не указан file', 'file is required') };
+    if (!title) return { value: null, error: tr('не указан title', 'title is required') };
+    if (!comment) return { value: null, error: tr('пустой comment', 'comment is empty') };
     const line = item.line === null || item.line === undefined || item.line === '' ? null : Number(item.line);
-    if (line !== null && (!Number.isInteger(line) || line < 1)) return { value: null, error: `некорректный line: ${String(item.line)}` };
+    if (line !== null && (!Number.isInteger(line) || line < 1)) return { value: null, error: tr(`некорректный line: ${String(item.line)}`, `invalid line: ${String(item.line)}`) };
     const endLine = item.endLine === null || item.endLine === undefined ? null : Number(item.endLine);
     if (endLine !== null && (!Number.isInteger(endLine) || line === null || endLine < line)) {
-        return { value: null, error: 'endLine должен быть не меньше line' };
+        return { value: null, error: tr('endLine должен быть не меньше line', 'endLine must be greater than or equal to line') };
     }
     const level = normalizeLevel(item.level);
     if (item.level !== undefined && !(LEVELS as readonly string[]).includes(String(item.level))) {
-        return { value: null, error: `неизвестный level: ${String(item.level)} (ожидается ${LEVELS.join(', ')})` };
+        return { value: null, error: tr(`неизвестный level: ${String(item.level)} (ожидается ${LEVELS.join(', ')})`, `unknown level: ${String(item.level)} (expected ${LEVELS.join(', ')})`) };
     }
     return {
         value: {

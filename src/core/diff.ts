@@ -29,7 +29,7 @@ function splitGitHeader(line: string): { oldPath: string; newPath: string } {
 
 function parseHunkHeader(line: string): Hunk {
     const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/.exec(line);
-    if (!match) throw new DiffParseError(`некорректный заголовок хунка: ${line.slice(0, 120)}`);
+    if (!match) throw new DiffParseError(`invalid hunk header: ${line.slice(0, 120)}`);
     return {
         header: line,
         oldStart: Number(match[1]),
@@ -49,7 +49,7 @@ function parseHunkHeader(line: string): Hunk {
  */
 export function parseUnifiedDiff(patch: string): DiffFile[] {
     if (patch.length > MAX_DIFF_BYTES) {
-        throw new DiffParseError(`diff больше ${Math.round(MAX_DIFF_BYTES / 1024 / 1024)} МБ: откройте меньший диапазон`);
+        throw new DiffParseError(`diff is larger than ${Math.round(MAX_DIFF_BYTES / 1024 / 1024)} MB: open a smaller range`);
     }
     const lines = patch.replace(/\r\n/g, '\n').split('\n');
     const files: DiffFile[] = [];

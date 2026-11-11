@@ -2,7 +2,7 @@
     import { app, draftFor, errorText, focusLine, notify, relativeTime } from '../lib/state.svelte';
     import { saveDraft } from '../lib/api';
     import type { ReplyDraft } from '../lib/types';
-    import { truncate } from '../lib/format';
+    import { plural, t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
 
     let filter = $state<'open' | 'all'>('open');
@@ -66,7 +66,7 @@
     function publishSelected(): void {
         const ids = selected.length ? selected : changedDrafts.map((draft) => draft.threadId);
         if (!ids.length) {
-            notify('Нет черновиков для публикации', 'info');
+            notify(t('Нет черновиков для публикации', 'No drafts to publish'), 'info');
             return;
         }
         app.publishing = { kind: 'reply', ids };
@@ -78,13 +78,13 @@
 </script>
 
 <div class="row" style="margin-bottom: 12px">
-    <button class="btn" class:primary={filter === 'open'} onclick={() => (filter = 'open')}>Открытые</button>
-    <button class="btn" class:primary={filter === 'all'} onclick={() => (filter = 'all')}>Все</button>
-    <span class="muted small">{threads.length} из {app.review?.threads.length ?? 0}</span>
+    <button class="btn" class:primary={filter === 'open'} onclick={() => (filter = 'open')}>{t('Открытые', 'Open')}</button>
+    <button class="btn" class:primary={filter === 'all'} onclick={() => (filter = 'all')}>{t('Все', 'All')}</button>
+    <span class="muted small">{threads.length} {t('из', 'of')} {app.review?.threads.length ?? 0}</span>
     <div style="flex: 1"></div>
-    <button class="btn" onclick={selectAllChanged} disabled={!changedDrafts.length}>Выбрать изменённые</button>
+    <button class="btn" onclick={selectAllChanged} disabled={!changedDrafts.length}>{t('Выбрать изменённые', 'Select changed')}</button>
     <button class="btn primary" onclick={publishSelected} disabled={!changedDrafts.length && !selected.length}>
-        Опубликовать {selected.length ? `(${selected.length})` : ''}
+        {t('Опубликовать', 'Publish')} {selected.length ? `(${selected.length})` : ''}
     </button>
 </div>
 
@@ -97,21 +97,25 @@
                 type="checkbox"
                 checked={selected.includes(thread.id)}
                 onchange={() => toggleSelected(thread.id)}
-                aria-label="Выбрать тред"
+                aria-label={t('Выбрать тред', 'Select thread')}
                 style="width: auto"
             />
             <div class="grow">
                 <div class="card-title">
-                    {thread.resolved ? 'Закрыт' : 'Открыт'}
+                    {thread.resolved ? t('Закрыт', 'Resolved') : t('Открыт', 'Open')}
                     {#if thread.path}
                         · <button class="path-link" onclick={() => focusLine(thread.path!, thread.line)}>{thread.path}:{thread.line ?? '?'}</button>
                     {/if}
                 </div>
-                <div class="muted small">{thread.notes.length} комментариев · обновлён {relativeTime(thread.updatedAt)}</div>
+                <div class="muted small">
+                    {thread.notes.length}
+                    {plural(thread.notes.length, ['комментарий', 'комментария', 'комментариев'], ['comment', 'comments'])} ·
+                    {t('обновлён', 'updated')} {relativeTime(thread.updatedAt)}
+                </div>
             </div>
-            {#if draft.replied}<span class="badge ok">ответ опубликован</span>{/if}
-            {#if draft.error}<span class="badge err" title={draft.error}>ошибка</span>{/if}
-            {#if busy}<span class="muted small">сохранение…</span>{/if}
+            {#if draft.replied}<span class="badge ok">{t('ответ опубликован', 'reply published')}</span>{/if}
+            {#if draft.error}<span class="badge err" title={draft.error}>{t('ошибка', 'error')}</span>{/if}
+            {#if busy}<span class="muted small">{t('сохранение…', 'saving…')}</span>{/if}
         </div>
 
         <div class="stack" style="margin-top: 10px">
@@ -125,7 +129,7 @@
 
         {#if thread.snippet}
             <details style="margin-top: 8px">
-                <summary class="muted small" style="cursor: pointer">Фрагмент кода</summary>
+                <summary class="muted small" style="cursor: pointer">{t('Фрагмент кода', 'Code context')}</summary>
                 <div class="snippet">
                     {#each thread.snippet as line}
                         <div class="snippet-line" class:add={line.kind === '+'} class:del={line.kind === '-'} class:target={line.target}>
@@ -145,7 +149,7 @@
                     draft.body = event.currentTarget.value;
                     scheduleSave(thread.id);
                 }}
-                placeholder="Черновик ответа. Публикуется только после подтверждения."
+                placeholder={t('Черновик ответа. Публикуется только после подтверждения.', 'Draft reply. Published only after confirmation.')}
                 rows="3"
             ></textarea>
             <div class="row">
@@ -156,11 +160,11 @@
                         onchange={(event) => toggleResolve(thread.id, event.currentTarget.checked)}
                         style="width: auto"
                     />
-                    Предложить закрыть тред
+                    {t('Предложить закрыть тред', 'Propose resolving the thread')}
                 </label>
                 <div style="flex: 1"></div>
-                {#if busy}<span class="muted small">сохранение…</span>{:else}<span class="muted small">сохранено</span>{/if}
-                <button class="btn" onclick={() => void save(thread.id)}>Сохранить</button>
+                {#if busy}<span class="muted small">{t('сохранение…', 'saving…')}</span>{:else}<span class="muted small">{t('сохранено', 'saved')}</span>{/if}
+                <button class="btn" onclick={() => void save(thread.id)}>{t('Сохранить', 'Save')}</button>
             </div>
             <details
                 open={openAgent.includes(thread.id)}
@@ -169,7 +173,7 @@
                     openAgent = open ? [...new Set([...openAgent, thread.id])] : openAgent.filter((item) => item !== thread.id);
                 }}
             >
-                <summary class="muted small" style="cursor: pointer">Заметка агенту{openAgent.includes(thread.id) ? '' : ''}</summary>
+                <summary class="muted small" style="cursor: pointer">{t('Заметка агенту', 'Note for the agent')}</summary>
                 <div class="stack" style="margin-top: 6px">
                     <textarea
                         class="agent"
@@ -178,7 +182,7 @@
                             draft.noteForAgent = event.currentTarget.value;
                             scheduleSave(thread.id);
                         }}
-                        placeholder="Что сделать: исправить, переписать ответ, пересмотреть правку…"
+                        placeholder={t('Что сделать: исправить, переписать ответ, пересмотреть правку…', 'What to do: fix, rewrite the reply, revise the change…')}
                         rows="2"
                     ></textarea>
                     <select
@@ -188,17 +192,22 @@
                             scheduleSave(thread.id);
                         }}
                     >
-                        <option value="">— действие —</option>
-                        <option value="fix">исправить</option>
-                        <option value="reply">ответить</option>
-                        <option value="revise">пересмотреть</option>
-                        <option value="skip">пропустить</option>
+                        <option value="">{t('— действие —', '— action —')}</option>
+                        <option value="fix">{t('исправить', 'fix')}</option>
+                        <option value="reply">{t('ответить', 'reply')}</option>
+                        <option value="revise">{t('пересмотреть', 'revise')}</option>
+                        <option value="skip">{t('пропустить', 'skip')}</option>
                     </select>
-                    <div class="muted small">Агент прочитает заметку при следующем проходе: <span class="mono">revdeck threads {app.review?.info.ref.number}</span>.</div>
+                    <div class="muted small">
+                        {t('Агент прочитает заметку при следующем проходе:', 'The agent reads this note on the next pass:')}
+                        <span class="mono">revdeck threads {app.review?.info.ref.number}</span>.
+                    </div>
                 </div>
             </details>
         </div>
     </section>
 {:else}
-    <p class="muted">{filter === 'open' ? 'Открытых тредов нет.' : 'Тредов нет.'}</p>
+    <p class="muted">
+        {filter === 'open' ? t('Открытых тредов нет.', 'No open threads.') : t('Тредов нет.', 'No threads.')}
+    </p>
 {/each}

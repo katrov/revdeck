@@ -3,6 +3,7 @@
     import { saveDecisions, saveFindings } from '../lib/api';
     import type { Finding, Level } from '../lib/types';
     import { truncate } from '../lib/format';
+    import { t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
 
     let levelFilter = $state<'all' | Level>('all');
@@ -22,6 +23,23 @@
     const publishable = $derived(
         (app.review?.findings ?? []).filter((finding) => finding.status !== 'published' && finding.status !== 'rejected' && finding.decision !== 'reject'),
     );
+
+    function statusLabel(status: Finding['status']): string {
+        switch (status) {
+            case 'draft':
+                return t('черновик', 'draft');
+            case 'accepted':
+                return t('принято', 'accepted');
+            case 'rejected':
+                return t('отклонено', 'rejected');
+            case 'published':
+                return t('опубликовано', 'published');
+            case 'fixed':
+                return t('исправлено', 'fixed');
+            case 'stale':
+                return t('устарело', 'stale');
+        }
+    }
 
     function scheduleSave(): void {
         if (timer) clearTimeout(timer);
@@ -60,7 +78,10 @@
         try {
             await saveDecisions(review.id, { [finding.id]: { decision, note: finding.note } });
             review.decisions[finding.id] = { decision, note: finding.note };
-            notify(decision === 'accept' ? 'Принято' : decision === 'reject' ? 'Отклонено' : 'На обсуждение', 'ok');
+            notify(
+                decision === 'accept' ? t('Принято', 'Accepted') : decision === 'reject' ? t('Отклонено', 'Rejected') : t('На обсуждение', 'For discussion'),
+                'ok',
+            );
         } catch (error) {
             notify(errorText(error), 'error');
         }
@@ -69,7 +90,7 @@
     function publishSelected(): void {
         const ids = selected.length ? selected : publishable.map((finding) => finding.id);
         if (!ids.length) {
-            notify('Нет замечаний для публикации', 'info');
+            notify(t('Нет замечаний для публикации', 'No findings to publish'), 'info');
             return;
         }
         app.publishing = { kind: 'finding', ids };
@@ -78,22 +99,22 @@
 
 <div class="row" style="margin-bottom: 12px">
     <select style="width: auto" value={levelFilter} onchange={(event) => (levelFilter = event.currentTarget.value as 'all' | Level)}>
-        <option value="all">Все уровни</option>
+        <option value="all">{t('Все уровни', 'All levels')}</option>
         <option value="blocker">blocker</option>
         <option value="major">major</option>
         <option value="minor">minor</option>
         <option value="question">question</option>
     </select>
     <select style="width: auto" value={statusFilter} onchange={(event) => (statusFilter = event.currentTarget.value as 'all' | 'open' | 'published')}>
-        <option value="all">Все статусы</option>
-        <option value="open">Не опубликованные</option>
-        <option value="published">Опубликованные</option>
+        <option value="all">{t('Все статусы', 'All statuses')}</option>
+        <option value="open">{t('Не опубликованные', 'Unpublished')}</option>
+        <option value="published">{t('Опубликованные', 'Published')}</option>
     </select>
-    <span class="muted small">{findings.length} из {app.review?.findings.length ?? 0}</span>
+    <span class="muted small">{findings.length} {t('из', 'of')} {app.review?.findings.length ?? 0}</span>
     <div style="flex: 1"></div>
-    {#if saving}<span class="muted small">сохранение…</span>{/if}
+    {#if saving}<span class="muted small">{t('сохранение…', 'saving…')}</span>{/if}
     <button class="btn" onclick={publishSelected} disabled={!publishable.length}>
-        Опубликовать {selected.length ? `(${selected.length})` : `(${publishable.length})`}
+        {t('Опубликовать', 'Publish')} {selected.length ? `(${selected.length})` : `(${publishable.length})`}
     </button>
 </div>
 
@@ -105,12 +126,12 @@
                 type="checkbox"
                 checked={selected.includes(finding.id)}
                 onchange={() => toggleSelected(finding.id)}
-                aria-label="Выбрать замечание"
+                aria-label={t('Выбрать замечание', 'Select finding')}
                 style="width: auto"
             />
             <span class="badge {finding.level}">{finding.level}</span>
-            <span class="badge">{finding.status}</span>
-            {#if finding.publishedAt}<span class="muted small">опубликовано {relativeTime(finding.publishedAt)}</span>{/if}
+            <span class="badge">{statusLabel(finding.status)}</span>
+            {#if finding.publishedAt}<span class="muted small">{t('опубликовано', 'published')} {relativeTime(finding.publishedAt)}</span>{/if}
             <div class="grow"></div>
             <button class="path-link" onclick={() => focusLine(finding.file, finding.line)}>{finding.file}:{finding.line ?? '—'}</button>
         </div>
@@ -132,7 +153,7 @@
 
         {#if finding.publishError}<div class="alert error" style="margin-top: 8px">{finding.publishError}</div>{/if}
 
-        <label class="muted small" for={`comment-${finding.id}`}>Текст комментария для платформы</label>
+        <label class="muted small" for={`comment-${finding.id}`}>{t('Текст комментария для платформы', 'Comment text for the platform')}</label>
         <textarea
             id={`comment-${finding.id}`}
             value={finding.comment}
@@ -145,13 +166,16 @@
         ></textarea>
 
         <div class="row" style="margin-top: 8px">
-            <button class="btn" class:primary={decision === 'accept'} onclick={() => void decide(finding, 'accept')}>Принять</button>
-            <button class="btn" onclick={() => void decide(finding, 'discuss')}>Обсудить</button>
-            <button class="btn danger" class:primary={decision === 'reject'} onclick={() => void decide(finding, 'reject')}>Отклонить</button>
+            <button class="btn" class:primary={decision === 'accept'} onclick={() => void decide(finding, 'accept')}>{t('Принять', 'Accept')}</button>
+            <button class="btn" onclick={() => void decide(finding, 'discuss')}>{t('Обсудить', 'Discuss')}</button>
+            <button class="btn danger" class:primary={decision === 'reject'} onclick={() => void decide(finding, 'reject')}>{t('Отклонить', 'Reject')}</button>
             <div style="flex: 1"></div>
             <span class="muted small">{truncate(finding.fingerprint, 16)}</span>
         </div>
     </section>
 {:else}
-    <p class="muted">Замечаний нет. Агент запишет их через <span class="mono">revdeck_draft_findings</span>.</p>
+    <p class="muted">
+        {t('Замечаний нет. Агент запишет их через', 'No findings yet. The agent writes them via')}
+        <span class="mono">revdeck_draft_findings</span>.
+    </p>
 {/each}

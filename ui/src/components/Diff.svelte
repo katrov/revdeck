@@ -3,6 +3,7 @@
     import { addNote, getDiff } from '../lib/api';
     import type { DiffPayload } from '../lib/types';
     import { truncate } from '../lib/format';
+    import { t } from '../lib/i18n.svelte';
 
     let diff = $state<DiffPayload | null>(null);
     let loading = $state(false);
@@ -53,17 +54,17 @@
         if (!review || !diff) return map;
         for (const finding of review.findings) {
             if (finding.file === diff.path && finding.line) {
-                map.set(finding.line, [...(map.get(finding.line) ?? []), `замечание ${finding.id}`]);
+                map.set(finding.line, [...(map.get(finding.line) ?? []), `${t('замечание', 'finding')} ${finding.id}`]);
             }
         }
         for (const thread of review.threads) {
             if (thread.path === diff.path && thread.line && !thread.resolved) {
-                map.set(thread.line, [...(map.get(thread.line) ?? []), 'открытый тред']);
+                map.set(thread.line, [...(map.get(thread.line) ?? []), t('открытый тред', 'open thread')]);
             }
         }
         for (const note of review.notes) {
             if (note.file === diff.path && note.line) {
-                map.set(note.line, [...(map.get(note.line) ?? []), 'комментарий к строке']);
+                map.set(note.line, [...(map.get(note.line) ?? []), t('комментарий к строке', 'line comment')]);
             }
         }
         return map;
@@ -85,7 +86,7 @@
         try {
             const result = await addNote(review.id, file, noteTarget.line, noteText.trim());
             review.notes = [...review.notes, result.note];
-            notify('Комментарий сохранён: агент увидит его в контексте', 'ok');
+            notify(t('Комментарий сохранён: агент увидит его в контексте', 'Comment saved: the agent sees it in the review context'), 'ok');
             noteTarget = null;
             noteText = '';
         } catch (cause) {
@@ -117,13 +118,13 @@
 
     <div class="diff-view">
         {#if loading && !diff}
-            <p class="muted" style="padding: 12px">Загрузка diff…</p>
+            <p class="muted" style="padding: 12px">{t('Загрузка diff…', 'Loading diff…')}</p>
         {:else if error}
             <div class="alert error" style="margin: 12px">{error}</div>
         {:else if !diff}
-            <p class="muted" style="padding: 12px">Выберите файл слева.</p>
+            <p class="muted" style="padding: 12px">{t('Выберите файл слева.', 'Pick a file on the left.')}</p>
         {:else if diff.binary}
-            <p class="muted" style="padding: 12px">Бинарный файл: diff не отображается.</p>
+            <p class="muted" style="padding: 12px">{t('Бинарный файл: diff не отображается.', 'Binary file: no diff to display.')}</p>
         {:else}
             {#each rows.slice(0, limit) as row}
                 {#if row.kind === 'hunk'}
@@ -159,33 +160,33 @@
             {/each}
             {#if rows.length > limit}
                 <div style="padding: 12px">
-                    <button class="btn" onclick={() => (limit += 2600)}>Показать ещё ({rows.length - limit} строк)</button>
+                    <button class="btn" onclick={() => (limit += 2600)}>{t('Показать ещё', 'Show more')} ({rows.length - limit} {t('строк', 'lines')})</button>
                 </div>
             {/if}
 
             {#if noteTarget}
                 <div class="note-composer">
                     <div class="spread" style="margin-bottom: 6px">
-                        <strong>Комментарий к строке {noteTarget.line}</strong>
-                        <button class="btn" onclick={() => (noteTarget = null)}>Отмена</button>
+                        <strong>{t('Комментарий к строке', 'Comment on line')} {noteTarget.line}</strong>
+                        <button class="btn" onclick={() => (noteTarget = null)}>{t('Отмена', 'Cancel')}</button>
                     </div>
-                    <textarea value={noteText} oninput={(event) => (noteText = event.currentTarget.value)} rows="2" placeholder="Комментарий уйдёт агенту"></textarea>
+                    <textarea value={noteText} oninput={(event) => (noteText = event.currentTarget.value)} rows="2" placeholder={t('Комментарий уйдёт агенту', 'The comment goes to the agent')}></textarea>
                     <div class="row end" style="margin-top: 6px">
-                        <span class="muted small">Агент увидит комментарий в контексте ревью.</span>
-                        <button class="btn primary" onclick={() => void submitNote()} disabled={savingNote || !noteText.trim()}>Сохранить</button>
+                        <span class="muted small">{t('Агент увидит комментарий в контексте ревью.', 'The agent sees this comment in the review context.')}</span>
+                        <button class="btn primary" onclick={() => void submitNote()} disabled={savingNote || !noteText.trim()}>{t('Сохранить', 'Save')}</button>
                     </div>
                 </div>
             {/if}
 
             {#if fileNotes.length}
                 <div style="padding: 12px">
-                    <div class="section-title">Комментарии к строкам этого файла</div>
+                    <div class="section-title">{t('Комментарии к строкам этого файла', 'Line comments in this file')}</div>
                     {#each fileNotes as note (note.id)}
                         <section class="card flat">
                             <div class="card-head">
                                 <span class="mono small">{note.file}:{note.line}</span>
-                                {#if note.posted}<span class="badge ok">опубликовано</span>{/if}
-                                {#if note.agentReply}<span class="badge">ответ агента</span>{/if}
+                                {#if note.posted}<span class="badge ok">{t('опубликовано', 'published')}</span>{/if}
+                                {#if note.agentReply}<span class="badge">{t('ответ агента', 'agent reply')}</span>{/if}
                             </div>
                             <div class="md"><span>{note.text}</span></div>
                             {#if note.agentReply}<div class="muted small">→ {note.agentReply}</div>{/if}

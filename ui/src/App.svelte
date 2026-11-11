@@ -2,7 +2,7 @@
     import { onMount } from 'svelte';
     import { app, bootstrap, loadReview, loadReviews, notify, setTab, subscribe } from './lib/state.svelte';
     import type { Tab } from './lib/types';
-    import { plural } from './lib/format';
+    import { i18n, plural, setLocale, t } from './lib/i18n.svelte';
     import Overview from './components/Overview.svelte';
     import Threads from './components/Threads.svelte';
     import Findings from './components/Findings.svelte';
@@ -19,11 +19,11 @@
     );
 
     const tabs = $derived<{ id: Tab; label: string; count?: number }[]>([
-        { id: 'overview', label: 'Обзор' },
-        { id: 'threads', label: 'Треды', count: openThreads },
-        { id: 'findings', label: 'Замечания', count: draftFindings },
+        { id: 'overview', label: t('Обзор', 'Overview') },
+        { id: 'threads', label: t('Треды', 'Threads'), count: openThreads },
+        { id: 'findings', label: t('Замечания', 'Findings'), count: draftFindings },
         { id: 'diff', label: 'Diff' },
-        { id: 'rules', label: 'Правила' },
+        { id: 'rules', label: t('Правила', 'Rules') },
     ]);
 
     const publishTarget = $derived.by((): { kind: 'reply' | 'finding' | 'note'; ids: string[] } | null => {
@@ -58,7 +58,7 @@
         const id = app.review?.id;
         if (!id) return;
         void loadReview(id, { refresh: true });
-        notify('Обновлено', 'info');
+        notify(t('Обновлено', 'Updated'), 'info');
     }
 
     function onKeydown(event: KeyboardEvent): void {
@@ -109,15 +109,19 @@
                     <span class="meta">{review.project} · {review.author}</span>
                 </button>
             {:else}
-                <p class="muted small" style="padding: 8px">Ревью ещё не открывались.</p>
+                <p class="muted small" style="padding: 8px">{t('Ревью ещё не открывались.', 'No reviews opened yet.')}</p>
             {/each}
         </div>
         <div class="sidebar-footer">
             {#if app.review}
-                {app.review.files.length} {plural(app.review.files.length, 'файл', 'файла', 'файлов')} · {app.review.threads.length} {plural(app.review.threads.length, 'тред', 'треда', 'тредов')}
+                {app.review.files.length} {plural(app.review.files.length, ['файл', 'файла', 'файлов'], ['file', 'files'])} · {app.review.threads.length} {plural(app.review.threads.length, ['тред', 'треда', 'тредов'], ['thread', 'threads'])}
             {:else}
                 <span class="mono">revdeck open &lt;N&gt;</span>
             {/if}
+            <div class="lang-switch" aria-label={t('Язык интерфейса', 'Interface language')}>
+                <button class:on={i18n.locale === 'ru'} onclick={() => setLocale('ru')}>RU</button>
+                <button class:on={i18n.locale === 'en'} onclick={() => setLocale('en')}>EN</button>
+            </div>
         </div>
     </aside>
 
@@ -134,25 +138,25 @@
                             <span>{review.info.author}</span>
                             <span>{review.info.state}{review.info.draft ? ' · draft' : ''}</span>
                             <span>+{review.stats.additions} −{review.stats.deletions}</span>
-                            {#if review.stale}<span class="badge">устарело</span>{/if}
+                            {#if review.stale}<span class="badge">{t('устарело', 'stale')}</span>{/if}
                         </div>
                     </div>
                     <div class="header-actions">
-                        <button class="btn" onclick={refresh} title="Обновить (r)">Обновить</button>
-                        <a class="btn" href={review.info.webUrl} target="_blank" rel="noreferrer noopener">Открыть в платформе</a>
+                        <button class="btn" onclick={refresh} title={t('Обновить (r)', 'Refresh (r)')}>{t('Обновить', 'Refresh')}</button>
+                        <a class="btn" href={review.info.webUrl} target="_blank" rel="noreferrer noopener">{t('Открыть в платформе', 'Open in platform')}</a>
                         <button
                             class="btn primary"
                             disabled={!publishTarget}
                             onclick={() => publishTarget && (app.publishing = publishTarget)}
-                            title="Опубликовать (p)"
+                            title={t('Опубликовать (p)', 'Publish (p)')}
                         >
-                            Опубликовать{publishTarget ? ` · ${publishTarget.ids.length}` : ''}
+                            {t('Опубликовать', 'Publish')}{publishTarget ? ` · ${publishTarget.ids.length}` : ''}
                         </button>
                     </div>
                 </div>
             </header>
 
-            <nav class="tabs" aria-label="Разделы ревью">
+            <nav class="tabs" aria-label={t('Разделы ревью', 'Review sections')}>
                 {#each tabs as tab (tab.id)}
                     <button class="tab" class:active={app.tab === tab.id} onclick={() => setTab(tab.id)}>
                         {tab.label}{#if tab.count}<span class="count">{tab.count}</span>{/if}
@@ -162,7 +166,7 @@
 
             <section class="content">
                 {#if app.loading && !review}
-                    <p class="muted">Загрузка…</p>
+                    <p class="muted">{t('Загрузка…', 'Loading…')}</p>
                 {:else if app.tab === 'overview'}
                     <Overview />
                 {:else if app.tab === 'threads'}
@@ -178,7 +182,7 @@
         {:else}
             <div class="empty">
                 <h2>revdeck</h2>
-                <p>Откройте ревью из терминала — оно появится здесь и останется в списке.</p>
+                <p>{t('Откройте ревью из терминала — оно появится здесь и останется в списке.', 'Open a review from the terminal; it will appear here and stay in the list.')}</p>
                 <pre>revdeck open 42
 revdeck open https://gitlab.com/group/project/-/merge_requests/42</pre>
                 {#if app.error}<div class="alert error">{app.error}</div>{/if}

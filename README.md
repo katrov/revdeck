@@ -65,6 +65,27 @@ revdeck ui            # open the local UI
 replacing it. Auto-start on login: `revdeck daemon install` (systemd user unit on Linux, launchd plist
 on macOS). Use a global install for this — an `npx` cache path can be evicted.
 
+## Languages
+
+The product is bilingual (Russian and English), and the two languages are independent:
+
+- **Interface and CLI**: follow `--lang ru|en`, then `REVDECK_LANG`, then the system locale. The UI has
+  a RU/EN switch in the sidebar and remembers your choice.
+- **Review output** (findings, replies, summary): `output.language: auto | ru | en` in `.revdeck.yml`.
+  `auto` follows the language of the MR description and threads, so a Russian team can review an
+  English repo and still get Russian comments (or the other way round).
+- **Skill**: `revdeck init --lang en` installs the English procedure; without the flag init follows
+  `REVDECK_LANG`/the system locale and defaults to English.
+- **Project rules** can be written in any language: revdeck reads UTF-8 documents and matches headings
+  (including Cyrillic) without translation. Rules are quoted as-is.
+
+MCP tool descriptions are English — that is the model-facing layer; prompt text follows
+`REVDECK_LANG`. The daemon reads the language at startup, so restart it after changing the language
+(`revdeck daemon restart`).
+
+Detailed documentation is currently in Russian ([README.ru.md](README.ru.md)); English docs are
+welcome as contributions.
+
 ## Commands
 
 | Command | What it does |
@@ -87,14 +108,18 @@ on macOS). Use a global install for this — an `npx` cache path can be evicted.
 | `revdeck daemon <start\|stop\|status\|logs\|install>` | daemon lifecycle |
 | `revdeck mcp` | MCP server over stdio |
 
-Common flags: `--json`, `--root`, `--review`, `--platform`, `--project`, `--host`.
+Common flags: `--json`, `--root`, `--review`, `--platform`, `--project`, `--host`, `--lang ru|en`.
 
 ## MCP
 
 ```json
 {
   "mcpServers": {
-    "revdeck": { "command": "npx", "args": ["-y", "revdeck", "mcp"] }
+    "revdeck": {
+      "command": "npx",
+      "args": ["-y", "revdeck", "mcp"],
+      "env": { "REVDECK_LANG": "en" }
+    }
   }
 }
 ```

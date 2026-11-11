@@ -5,6 +5,7 @@ import { parse as parseYaml } from 'yaml';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { globToRegExp } from './glob.js';
+import { tr } from './locale.js';
 
 const matchSchema = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]);
 
@@ -91,7 +92,7 @@ export function parseConfig(text: string, source = '.revdeck.yml'): ReviewConfig
     try {
         data = parseYaml(text);
     } catch (error) {
-        throw new ConfigError(`${source}: некорректный YAML: ${(error as Error).message}`);
+        throw new ConfigError(tr(`${source}: некорректный YAML: ${(error as Error).message}`, `${source}: invalid YAML: ${(error as Error).message}`));
     }
     if (data === null || data === undefined) data = {};
     const result = reviewConfigSchema.safeParse(data);
@@ -100,7 +101,7 @@ export function parseConfig(text: string, source = '.revdeck.yml'): ReviewConfig
             .slice(0, 10)
             .map((issue) => `${issue.path.join('.') || '<корень>'}: ${issue.message}`)
             .join('; ');
-        throw new ConfigError(`${source}: ${issues}`, 'проверьте схему в docs/configuration.md');
+        throw new ConfigError(`${source}: ${issues}`, tr('проверьте схему в docs/configuration.md', 'check the schema in docs/configuration.md'));
     }
     return result.data;
 }
@@ -113,13 +114,13 @@ export async function loadConfig(root = findRepoRoot()): Promise<LoadedConfig> {
         config = parseConfig(await readTextNoFollow(file), path.relative(root, file) || file);
     } else {
         config = reviewConfigSchema.parse({});
-        warnings.push('файл .revdeck.yml не найден: правила взяты из автообнаруженных документов');
+        warnings.push(tr('файл .revdeck.yml не найден: правила взяты из автообнаруженных документов', '.revdeck.yml not found: rules come from auto-discovered documents'));
     }
     if (!config.rules.sources.length && !config.rules.map.length) {
         const found = DISCOVERED_SOURCES.filter((item) => existsSync(path.join(root, item)));
         config.rules.sources = found;
         if (!found.length) {
-            warnings.push('документы с правилами не найдены: ревью будет опираться только на код и здравый смысл');
+            warnings.push(tr('документы с правилами не найдены: ревью будет опираться только на код и здравый смысл', 'no rule documents found: the review will rely on the code only'));
         }
     }
     return { config, path: file, warnings };
@@ -131,7 +132,7 @@ export function assertConfigPath(root: string, relative: string): string {
     const resolved = path.resolve(root, cleaned);
     const rel = path.relative(root, resolved);
     if (rel.startsWith('..') || path.isAbsolute(rel)) {
-        throw new ConfigError(`путь ${relative} выходит за пределы репозитория`);
+        throw new ConfigError(tr(`путь ${relative} выходит за пределы репозитория`, `path ${relative} escapes the repository`));
     }
     return resolved;
 }

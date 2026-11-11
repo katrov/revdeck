@@ -1,5 +1,6 @@
 import { getReviews, getState, refreshReview } from './api';
 import type { ReviewListItem, ReviewView, Tab } from './types';
+import { i18n, localeTag, t } from './i18n.svelte';
 
 export interface Toast {
     text: string;
@@ -123,9 +124,9 @@ export function relativeTime(iso: string): string {
     const value = new Date(iso).getTime();
     if (Number.isNaN(value)) return iso;
     const minutes = Math.round((Date.now() - value) / 60000);
-    if (minutes < 1) return 'только что';
-    if (minutes < 60) return `${minutes} мин назад`;
+    if (minutes < 1) return t('только что', 'just now');
+    if (minutes < 60) return i18n.locale === 'ru' ? `${minutes} мин назад` : `${minutes} min ago`;
     const hours = Math.round(minutes / 60);
-    if (hours < 24) return `${hours} ч назад`;
-    return new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+    if (hours < 24) return i18n.locale === 'ru' ? `${hours} ч назад` : `${hours} h ago`;
+    return new Date(iso).toLocaleString(localeTag(), { dateStyle: 'short', timeStyle: 'short' });
 }

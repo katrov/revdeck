@@ -12,3 +12,4 @@ export * from './config.js';
 export * from './git.js';
 export * from './rules.js';
 export * from './findings.js';
+export * from './locale.js';

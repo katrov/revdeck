@@ -6,6 +6,7 @@ import { assertConfigPath, checksForPaths } from './config.js';
 import { classifyFile, globToRegExp } from './glob.js';
 import { readTextNoFollow } from './paths.js';
 import { redactLine } from './redact.js';
+import type { Locale } from './locale.js';
 
 const MAX_DOC_BYTES = 96 * 1024;
 const MAX_TOTAL_BYTES = 320 * 1024;
@@ -21,6 +22,8 @@ export interface BuildRulesOptions {
     config: ReviewConfig;
     configPath: string | null;
     files: string[];
+    /** Язык предупреждений и контекста правил. */
+    language?: Locale;
 }
 
 /**
@@ -32,10 +35,12 @@ export interface BuildRulesOptions {
  */
 export async function buildEffectiveRules(options: BuildRulesOptions): Promise<EffectiveRules> {
     const { root, config, configPath } = options;
+    const language = options.language ?? 'ru';
+    const t = (ru: string, en: string): string => (language === 'ru' ? ru : en);
     const warnings: string[] = [];
     const files = options.files.filter((file) => !config.rules.ignore.some((pattern) => globToRegExp(pattern).test(file)));
     const ignored = options.files.length - files.length;
-    if (ignored > 0) warnings.push(`${ignored} файл(ов) исключены настройкой rules.ignore`);
+    if (ignored > 0) warnings.push(`${ignored} ${t('файл(ов) исключены настройкой rules.ignore', 'file(s) excluded by rules.ignore')}`);
 
     const cache = new Map<string, CachedDoc>();
     let totalBytes = 0;
@@ -54,7 +59,7 @@ export async function buildEffectiveRules(options: BuildRulesOptions): Promise<E
         if (!cached) {
             if (!existsSync(resolved)) {
                 cached = { exists: false, text: '', truncated: false };
-                warnings.push(`документ ${relative} не найден`);
+                warnings.push(`${t('документ', 'document')} ${relative} ${t('не найден', 'not found')}`);
             } else {
                 try {
                     const raw = await readTextNoFollow(resolved, MAX_DOC_BYTES * 2);
@@ -68,7 +73,7 @@ export async function buildEffectiveRules(options: BuildRulesOptions): Promise<E
             cache.set(resolved, cached);
         }
         const selectors = selector.includes('#') ? [selector.slice(selector.indexOf('#') + 1)] : [];
-        const excerpt = extractExcerpt(cached.text, selectors, relative, warnings);
+        const excerpt = extractExcerpt(cached.text, selectors, relative, warnings, language);
         totalBytes += excerpt.length;
         return { path: relative, exists: cached.exists, sections: selectors, excerpt, truncated: cached.truncated };
     };
@@ -85,13 +90,13 @@ export async function buildEffectiveRules(options: BuildRulesOptions): Promise<E
         if (!docs.size) {
             for (const doc of config.rules.sources) docs.add(doc);
             if (!docs.size) {
-                warnings.push(`${file}: нет правил — путь не сопоставлен в rules.map, а rules.sources пуст`);
+                warnings.push(`${file}: ${t('нет правил — путь не сопоставлен в rules.map, а rules.sources пуст', 'no rules — the path is not mapped in rules.map and rules.sources is empty')}`);
             }
         }
         const documents: RuleDocument[] = [];
         for (const doc of docs) {
             if (totalBytes > MAX_TOTAL_BYTES) {
-                warnings.push('контекст правил обрезан: превышен лимит размера');
+                warnings.push(t('контекст правил обрезан: превышен лимит размера', 'rules context truncated: size limit exceeded'));
                 break;
             }
             documents.push(await readDoc(doc));
@@ -103,7 +108,7 @@ export async function buildEffectiveRules(options: BuildRulesOptions): Promise<E
     if (!files.length) {
         const documents: RuleDocument[] = [];
         for (const doc of config.rules.sources) documents.push(await readDoc(doc));
-        if (!documents.length) warnings.push('общие правила: rules.sources пуст, документы не выбраны');
+        if (!documents.length) warnings.push(t('общие правила: rules.sources пуст, документы не выбраны', 'general rules: rules.sources is empty, no documents selected'));
         scopes.push({ file: '', kind: 'other', documents });
     }
 
@@ -119,7 +124,8 @@ export async function buildEffectiveRules(options: BuildRulesOptions): Promise<E
  * Вырезает запрошенные секции документа.
  * Поддерживает `#Заголовок`, `#anchor`, `#L10-L20`, `#10-20`.
  */
-export function extractExcerpt(text: string, selectors: string[], label: string, warnings: string[]): string {
+export function extractExcerpt(text: string, selectors: string[], label: string, warnings: string[], language: Locale = 'ru'): string {
+    const t = (ru: string, en: string): string => (language === 'ru' ? ru : en);
     if (!text) return '';
     if (!selectors.length) return text;
     const parts: string[] = [];
@@ -130,7 +136,7 @@ export function extractExcerpt(text: string, selectors: string[], label: string,
             const end = range[2] ? Number(range[2]) : start;
             const lines = text.split('\n');
             if (start < 1 || end < start || start > lines.length) {
-                warnings.push(`${label}#${selector}: диапазон строк вне документа`);
+                warnings.push(`${label}#${selector}: ${t('диапазон строк вне документа', 'line range is outside the document')}`);
                 continue;
             }
             parts.push(lines.slice(start - 1, Math.min(end, lines.length)).join('\n'));
@@ -138,7 +144,7 @@ export function extractExcerpt(text: string, selectors: string[], label: string,
         }
         const section = headingSection(text, selector);
         if (section === null) {
-            warnings.push(`${label}#${selector}: секция не найдена`);
+            warnings.push(`${label}#${selector}: ${t('секция не найдена', 'section not found')}`);
             continue;
         }
         parts.push(section);
@@ -185,33 +191,35 @@ export function normalizeHeading(value: string): string {
 }
 
 /** Компактный markdown-контекст правил для агента (MCP/CLI). */
-export function renderRules(rules: EffectiveRules, options: { withExcerpts?: boolean; maxBytes?: number } = {}): string {
+export function renderRules(rules: EffectiveRules, options: { withExcerpts?: boolean; maxBytes?: number; language?: Locale } = {}): string {
     const maxBytes = options.maxBytes ?? 200_000;
     const withExcerpts = options.withExcerpts ?? true;
+    const language = options.language ?? 'ru';
+    const t = (ru: string, en: string): string => (language === 'ru' ? ru : en);
     const out: string[] = [];
-    out.push(`# Правила ревью${rules.configPath ? ` (${rules.configPath})` : ' (автообнаружение)'}`);
-    if (rules.warnings.length) out.push(`Предупреждения:\n${rules.warnings.map((item) => `- ${item}`).join('\n')}`);
+    out.push(`# ${t('Правила ревью', 'Review rules')}${rules.configPath ? ` (${rules.configPath})` : ` (${t('автообнаружение', 'auto-discovery')})`}`);
+    if (rules.warnings.length) out.push(`${t('Предупреждения', 'Warnings')}:\n${rules.warnings.map((item) => `- ${item}`).join('\n')}`);
     const seen = new Set<string>();
     for (const scope of rules.scopes) {
-        out.push(`\n## ${scope.file || '(общие правила)'} — ${scope.kind}`);
+        out.push(`\n## ${scope.file || `(${t('общие правила', 'general rules')})`} — ${scope.kind}`);
         for (const doc of scope.documents) {
             const key = `${doc.path}#${doc.sections.join(',')}`;
             const label = `${doc.path}${doc.sections.length ? `#${doc.sections.join(', ')}` : ''}`;
-            out.push(`- ${label}${doc.exists ? '' : ' (не найден)'}`);
+            out.push(`- ${label}${doc.exists ? '' : ` (${t('не найден', 'not found')})`}`);
             if (!withExcerpts || !doc.exists) continue;
             if (seen.has(key)) continue;
             seen.add(key);
-            out.push(`\n> ${label}\n\n${doc.excerpt}${doc.truncated ? '\n\n[документ обрезан]' : ''}`);
+            out.push(`\n> ${label}\n\n${doc.excerpt}${doc.truncated ? `\n\n[${t('документ обрезан', 'document truncated')}]` : ''}`);
             if (out.join('\n').length > maxBytes) {
-                out.push('\n[контекст правил обрезан по размеру]');
+                out.push(`\n[${t('контекст правил обрезан по размеру', 'rules context truncated by size')}]`);
                 return out.join('\n');
             }
         }
     }
     if (rules.checks.length) {
-        out.push('\n## Проверки проекта');
+        out.push(`\n## ${t('Проверки проекта', 'Project checks')}`);
         for (const check of rules.checks) {
-            out.push(`- ${check.id}${check.matched ? '' : ' (не относится к diff)'}: \`${check.argv.join(' ')}\`${check.consent ? ' — требует согласия пользователя' : ''}`);
+            out.push(`- ${check.id}${check.matched ? '' : ` (${t('не относится к diff', 'does not match the diff')})`}: \`${check.argv.join(' ')}\`${check.consent ? ` — ${t('требует согласия пользователя', 'requires user consent')}` : ''}`);
         }
     }
     return out.join('\n');
