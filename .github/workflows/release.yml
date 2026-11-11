@@ -21,6 +21,15 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      - name: Verify npm token
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error title=NPM_TOKEN is not set::Add an npm granular access token with 'Bypass 2FA' and read/write access to revdeck under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          npm whoami
       - name: Publish to npm
         run: npm publish --provenance --access public
         env:

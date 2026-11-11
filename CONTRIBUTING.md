@@ -87,7 +87,10 @@ npm version minor
 git push --follow-tags
 ```
 
-The `release` workflow publishes to npm with provenance and creates a GitHub release. The version in
+The `release` workflow publishes to npm with provenance and creates a GitHub release. It needs an
+`NPM_TOKEN` repository secret: a granular npm token with read/write access to `revdeck` and
+**Bypass 2FA** enabled (or a classic Automation token). Without it the publish step fails with
+`ENEEDAUTH`; the workflow now reports that explicitly before publishing. The version in
 `src/version.ts` must match `package.json`. `prepublishOnly` re-runs build, typecheck and tests.
 
 ## Security
