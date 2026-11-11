@@ -368,11 +368,11 @@ async function status(): Promise<void> {
 async function context(root: string, arg: string | undefined, values: Values): Promise<void> {
     await withClient(async ({ client }) => {
         const { review } = await resolveReview(client, root, reviewArg(values, arg), values);
-        const { rules } = await client.request<{ rules: { markdown: string; configPath: string | null; warnings: string[]; checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[] } }>('rules.get', {
+        const { rules } = await client.request<{ rules: { markdown: string; configPath: string | null; warnings: string[]; checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[]; language: 'auto' | 'ru' | 'en' } }>('rules.get', {
             review: review.id,
         });
         if (values.json) return printJson(contextPayload(review, rules));
-        writers.out(renderContext(review, rules));
+        writers.out(renderContext(review, rules, { language: rules.language }));
     });
 }
 

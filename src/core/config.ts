@@ -23,7 +23,7 @@ export const reviewConfigSchema = z.object({
         .default({}),
     output: z
         .object({
-            language: z.enum(['ru', 'en']).default('ru'),
+            language: z.enum(['auto', 'ru', 'en']).default('auto'),
         })
         .default({}),
     rules: z

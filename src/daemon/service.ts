@@ -735,7 +735,7 @@ export class ReviewService {
 
     // ---------------------------------------------------------------- rules & checks
 
-    async rules(id: string): Promise<{ markdown: string; configPath: string | null; warnings: string[]; checks: CommandCheck[] }> {
+    async rules(id: string): Promise<{ markdown: string; configPath: string | null; warnings: string[]; checks: CommandCheck[]; language: 'auto' | 'ru' | 'en' }> {
         const stored = this.store.getReview(id);
         if (!stored) throw new Error(`ревью ${id} не найдено`);
         const effective = await buildEffectiveRules({
@@ -749,6 +749,7 @@ export class ReviewService {
             configPath: effective.configPath,
             warnings: effective.warnings,
             checks: effective.checks,
+            language: stored.snapshot.config.output.language,
         };
     }
 

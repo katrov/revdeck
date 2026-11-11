@@ -13,6 +13,7 @@ describe('config', () => {
     it('applies defaults', () => {
         const config = parseConfig('version: 1\n');
         expect(config.provider.type).toBe('auto');
+        expect(config.output.language).toBe('auto');
         expect(config.publish.requireApproval).toBe(true);
         expect(config.publish.maxComments).toBe(50);
         expect(config.rules.map).toEqual([]);

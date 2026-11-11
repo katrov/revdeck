@@ -249,6 +249,7 @@ describe('ReviewService', () => {
         expect(rules.markdown).toContain('Правило нейминга');
         expect(rules.markdown).not.toContain('Нет.');
         expect(rules.checks).toEqual([]);
+        expect(rules.language).toBe('auto');
     });
 
     it('reports multiple reviews', async () => {

@@ -104,6 +104,8 @@ revdeck ui            # ссылка на локальный интерфейс
 
 ```yaml
 version: 1
+output:
+  language: auto        # auto | ru | en — язык замечаний и ответов
 provider:
   type: gitlab          # auto | gitlab | github
   host: gitlab.example.com
