@@ -1,0 +1,900 @@
+import { EventEmitter } from 'node:events';
+import { createHash, randomBytes } from 'node:crypto';
+import { redact } from '../core/redact.js';
+import { messageOf } from '../core/errors.js';
+import { findRepoRoot, findConfigFile } from '../core/paths.js';
+import { loadConfig } from '../core/config.js';
+import { buildEffectiveRules, renderRules } from '../core/rules.js';
+import { diffStats, changedPaths, findNewLine, linePosition, snippetAround } from '../core/diff.js';
+import { sanitizeBody } from '../core/sanitize.js';
+import { mergeFindings, validateFinding, applyDecisions, fingerprintOf, levelOrder } from '../core/findings.js';
+import { canonicalJson } from '../core/canonical.js';
+import { reviewId as makeReviewId } from '../core/refs.js';
+import type { ReviewConfig } from '../core/config.js';
+import type {
+    Approval,
+    Decision,
+    DiffFile,
+    Finding,
+    Level,
+    LineNote,
+    Platform,
+    PublishItem,
+    PublishKind,
+    PublishPlan,
+    PublishResult,
+    PublishResultItem,
+    CheckResult,
+    ReplyDraft,
+    Review,
+    ReviewInfo,
+    ReviewRef,
+    ReviewSummary,
+    Side,
+    Thread,
+} from '../core/types.js';
+import type { Provider } from '../providers/provider.js';
+import { createProvider, projectContext, resolveReviewRef } from '../providers/provider.js';
+import { run as realRun, type Runner } from '../core/exec.js';
+import type { ReviewSnapshot, Store } from './store.js';
+import { toReviewView, type ReviewView } from './view.js';
+
+export interface ServiceOptions {
+    store: Store;
+    /** Для тестов: подмена провайдера и запуска команд. */
+    providerFactory?: (ref: ReviewRef, root: string) => Promise<Provider>;
+    runImpl?: Runner;
+    now?: () => Date;
+    syncIntervalMs?: number;
+    refreshTtlMs?: number;
+}
+
+export interface OpenOptions {
+    input?: string;
+    platform?: Platform;
+    project?: string;
+    host?: string;
+    branch?: string;
+}
+
+export interface PublishPreview {
+    plan: PublishPlan;
+    warnings: string[];
+}
+
+export interface CommandCheck {
+    id: string;
+    name: string;
+    argv: string[];
+    consent: boolean;
+    matched: boolean;
+}
+
+const EMPTY_DRAFT = (threadId: string): ReplyDraft => ({
+    threadId,
+    body: '',
+    resolve: false,
+    noteForAgent: '',
+    agentAction: '',
+    posted: '',
+    replied: false,
+    resolved: false,
+    error: '',
+    updatedAt: new Date(0).toISOString(),
+});
+
+const APPROVAL_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * Оркестратор: единая точка между провайдерами, хранилищем и интерфейсами.
+ *
+ * Инварианты:
+ * - ничего не публикуется без approval, привязанного к хешу точного набора
+ *   изменений, который видел человек;
+ * - повторная публикация идемпотентна: уже отправленный текст/замечание
+ *   пропускаются;
+ * - ошибка одной единицы публикации не отменяет остальные.
+ */
+export class ReviewService {
+    readonly events = new EventEmitter();
+    private readonly store: Store;
+    private readonly providerFactory: (ref: ReviewRef, root: string) => Promise<Provider>;
+    private readonly runImpl: Runner;
+    private readonly now: () => Date;
+    private readonly refreshTtlMs: number;
+    private readonly syncIntervalMs: number;
+    private timer: NodeJS.Timeout | null = null;
+    private syncing = false;
+
+    constructor(options: ServiceOptions) {
+        this.store = options.store;
+        this.runImpl = options.runImpl ?? realRun;
+        this.now = options.now ?? (() => new Date());
+        this.refreshTtlMs = options.refreshTtlMs ?? 60_000;
+        this.syncIntervalMs = options.syncIntervalMs ?? 120_000;
+        this.providerFactory = options.providerFactory ?? (async (ref: ReviewRef, root: string) => createProvider(ref, { root }));
+        this.events.setMaxListeners(50);
+    }
+
+    close(): void {
+        if (this.timer) clearInterval(this.timer);
+        this.timer = null;
+        this.store.close();
+    }
+
+    // ---------------------------------------------------------------- reviews
+
+    async openReview(rootInput: string, options: OpenOptions = {}): Promise<Review> {
+        const root = findRepoRoot(rootInput);
+        const loaded = await loadConfig(root);
+        const ref = await resolveReviewRef({
+            root,
+            config: loaded.config,
+            ...(options.input ? { input: options.input } : {}),
+            ...(options.platform ? { platform: options.platform } : {}),
+            ...(options.project ? { project: options.project } : {}),
+            ...(options.host ? { host: options.host } : {}),
+            ...(options.branch ? { branch: options.branch } : {}),
+        });
+        const id = makeReviewId(ref);
+        const provider = await this.providerFactory(ref, root);
+        await this.refresh(id, root, provider, loaded);
+        this.store.audit(id, 'review.open', { ref, root });
+        return this.getReview(id);
+    }
+
+    async refreshReview(id: string): Promise<Review> {
+        const meta = this.store.getReview(id);
+        if (!meta) throw new Error(`ревью ${id} не найдено: сначала откройте его`);
+        const loaded = await loadConfig(meta.row.root).catch((error) => ({
+            config: meta.snapshot.config,
+            path: meta.snapshot.configPath,
+            warnings: [`конфиг недоступен: ${redact(messageOf(error))}`],
+        }));
+        const provider = await this.providerFactory(
+            { platform: meta.row.platform as Platform, host: meta.row.host, project: meta.row.project, number: meta.row.number },
+            meta.row.root,
+        );
+        await this.refresh(id, meta.row.root, provider, loaded);
+        return this.getReview(id);
+    }
+
+    private async refresh(
+        id: string,
+        root: string,
+        provider: Provider,
+        loaded: { config: ReviewConfig; path: string | null; warnings: string[] },
+    ): Promise<void> {
+        const errors: string[] = [...loaded.warnings];
+        const previous = this.store.getReview(id)?.snapshot;
+        let info: ReviewInfo;
+        try {
+            info = await provider.info();
+        } catch (error) {
+            throw new Error(`не удалось прочитать ревью: ${redact(messageOf(error))}`);
+        }
+        const syncedAt = this.now().toISOString();
+        // Частичная деградация: если не удалось получить diff или треды, показываем кеш и причину.
+        let diff: DiffFile[] = previous?.diff ?? [];
+        try {
+            diff = await provider.diff();
+        } catch (error) {
+            errors.push(`diff: ${redact(messageOf(error))}`);
+        }
+        let threads: Thread[] = previous?.threads ?? [];
+        try {
+            threads = await provider.threads();
+        } catch (error) {
+            errors.push(`треды: ${redact(messageOf(error))}`);
+        }
+        info.stats = diffStats(diff);
+        this.store.saveReview(info, root, syncedAt);
+        this.store.saveSnapshot(id, {
+            diff,
+            threads,
+            config: loaded.config,
+            configPath: loaded.path,
+            errors,
+            syncedAt,
+        });
+        if (diff.length) this.markStaleFindings(id, diff);
+        this.emit(id);
+    }
+
+    private markStaleFindings(id: string, diff: DiffFile[]): void {
+        const findings = this.store.listFindings(id);
+        if (!findings.length) return;
+        let changed = false;
+        for (const finding of findings) {
+            if (finding.status === 'published' || finding.status === 'stale') continue;
+            if (finding.line === null) continue;
+            if (!findNewLine(diff, finding.file, finding.line)) {
+                this.store.updateFinding(id, { ...finding, status: 'stale' });
+                changed = true;
+            }
+        }
+        if (changed) this.emit(id);
+    }
+
+    getReview(id: string): Review {
+        const stored = this.store.getReview(id);
+        if (!stored) throw new Error(`ревью ${id} не найдено`);
+        const { row, snapshot } = stored;
+        const info = this.store.info(id) ?? fallbackInfo(row);
+        const draftMap = new Map(this.store.listDrafts(id).map((draft) => [draft.threadId, draft]));
+        const threads = snapshot.threads;
+        const drafts: ReplyDraft[] = threads.map((thread) => {
+            const saved = draftMap.get(thread.id) ?? EMPTY_DRAFT(thread.id);
+            // desired != last known state — пользователь переключил «закрыть» и это ещё не опубликовано.
+            const desired = saved.resolve !== saved.resolved ? saved.resolve : thread.resolved;
+            return {
+                ...saved,
+                resolved: thread.resolved,
+                resolve: desired,
+                replied: saved.posted.trim() !== '' && saved.body.trim() === saved.posted.trim(),
+            };
+        });
+        // Черновики для тредов, которых уже нет, сохраняем: они видны как устаревшие.
+        for (const [threadId, draft] of draftMap) {
+            if (!threads.some((thread) => thread.id === threadId)) drafts.push(draft);
+        }
+        const findings = applyDecisions(this.store.listFindings(id), this.store.listDecisions(id)).sort(
+            (a, b) => levelOrder(a.level) - levelOrder(b.level) || a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0),
+        );
+        return {
+            id,
+            info,
+            diff: snapshot.diff,
+            threads,
+            summary: this.store.getSummary(id),
+            findings,
+            drafts,
+            notes: this.store.listNotes(id),
+            decisions: this.store.listDecisions(id),
+            user: null,
+            syncedAt: snapshot.syncedAt,
+            errors: snapshot.errors,
+        };
+    }
+
+    getView(id: string): ReviewView {
+        return toReviewView(this.getReview(id), this.now().getTime());
+    }
+
+    listReviews(): ReturnType<Store['listReviews']> {
+        return this.store.listReviews();
+    }
+
+    async listRemote(
+        rootInput: string,
+        scope: 'open' | 'mine' | 'reviewing',
+        limit = 50,
+    ): Promise<{ items: Awaited<ReturnType<Provider['list']>>; platform: Platform; project: string }> {
+        const root = findRepoRoot(rootInput);
+        const loaded = await loadConfig(root);
+        const context = await projectContext(root, loaded.config);
+        const provider = await this.providerFactory({ ...context, number: 0 }, root);
+        return { items: await provider.list({ scope, limit }), platform: context.platform, project: context.project };
+    }
+
+    isStale(id: string): boolean {
+        const stored = this.store.getReview(id);
+        if (!stored) return true;
+        return this.now().getTime() - new Date(stored.snapshot.syncedAt).getTime() > this.refreshTtlMs;
+    }
+
+    async refreshIfStale(id: string): Promise<ReviewView> {
+        if (this.isStale(id)) {
+            try {
+                await this.refreshReview(id);
+            } catch {
+                // Ошибка фонового обновления не должна ломать чтение кеша.
+            }
+        }
+        return this.getView(id);
+    }
+
+    diffFile(id: string, file: string): { path: string; status: string; binary: boolean; hunks: unknown[] } | null {
+        const stored = this.store.getReview(id);
+        if (!stored) return null;
+        const found = stored.snapshot.diff.find((item) => item.path === file);
+        if (!found) return null;
+        return { path: found.path, status: found.status, binary: found.binary, hunks: found.hunks };
+    }
+
+    // ---------------------------------------------------------------- summary
+
+    setSummary(id: string, input: unknown): ReviewSummary {
+        this.requireReview(id);
+        const value = (input ?? {}) as Record<string, unknown>;
+        const list = (item: unknown, limit: number): string[] =>
+            (Array.isArray(item) ? item : [])
+                .map((entry) => String(entry ?? '').trim())
+                .filter(Boolean)
+                .slice(0, limit)
+                .map((entry) => entry.slice(0, 2000));
+        const summary: ReviewSummary = {
+            title: String(value.title ?? '').slice(0, 500),
+            scope: String(value.scope ?? '').slice(0, 1000),
+            summary: String(value.summary ?? '').slice(0, 5000),
+            changes: list(value.changes, 50),
+            focus: list(value.focus, 50),
+        };
+        this.store.setSummary(id, summary);
+        this.emit(id);
+        return summary;
+    }
+
+    // ---------------------------------------------------------------- findings
+
+    setFindings(id: string, raw: unknown): Finding[] {
+        const review = this.getReview(id);
+        if (!Array.isArray(raw)) throw new Error('findings: ожидался массив');
+        const existing = this.store.listFindings(id);
+        const knownIds = new Set(existing.map((finding) => finding.id));
+        const knownPrints = new Set(existing.map((finding) => finding.fingerprint));
+        const drafts: Parameters<typeof mergeFindings>[1] = [];
+        const errors: string[] = [];
+        for (const [index, item] of raw.entries()) {
+            const { value, error } = validateFinding(item);
+            if (!value) {
+                errors.push(`#${index + 1}: ${error}`);
+                continue;
+            }
+            const known = (value.id ? knownIds.has(value.id) : false) || knownPrints.has(fingerprintOf(value));
+            // Новое замечание обязано ссылаться на строку diff. Известное (например, стало stale
+            // после новых коммитов) сохраняем, иначе UI не смог бы пересохранить свой же набор.
+            if (!known) {
+                const file = review.diff.find((entry) => entry.path === value.file);
+                if (!file) {
+                    errors.push(`#${index + 1}: файла ${value.file} нет в diff`);
+                    continue;
+                }
+                if (value.line !== null && !findNewLine(review.diff, value.file, value.line)) {
+                    errors.push(`#${index + 1}: строка ${value.file}:${value.line} не входит в diff`);
+                    continue;
+                }
+            }
+            drafts.push(value);
+        }
+        if (errors.length) throw new Error(`замечания отклонены:\n${errors.join('\n')}`);
+        const merged = mergeFindings(this.store.listFindings(id), drafts, { now: this.now().toISOString() });
+        this.store.replaceFindings(id, merged);
+        this.emit(id);
+        return merged;
+    }
+
+    setDecisions(id: string, raw: unknown): Record<string, { decision: Decision | null; note: string }> {
+        this.requireReview(id);
+        const patch: Record<string, { decision: Decision | null; note: string }> = {};
+        const input = (raw ?? {}) as Record<string, unknown>;
+        for (const [findingId, value] of Object.entries(input)) {
+            const item = (value ?? {}) as Record<string, unknown>;
+            const decision = item.decision;
+            patch[findingId] = {
+                decision: decision === 'accept' || decision === 'reject' || decision === 'discuss' ? decision : null,
+                note: String(item.note ?? '').slice(0, 4000),
+            };
+        }
+        this.store.setDecisions(id, patch);
+        this.emit(id);
+        return this.store.listDecisions(id);
+    }
+
+    // ---------------------------------------------------------------- drafts
+
+    setDraft(
+        id: string,
+        threadId: string,
+        patch: { body?: string; resolve?: boolean; noteForAgent?: string; agentAction?: string },
+    ): ReplyDraft {
+        const review = this.getReview(id);
+        const thread = review.threads.find((item) => item.id === threadId);
+        if (!thread) throw new Error(`треда ${threadId} нет в этом ревью`);
+        const previous = this.store.getDraft(id, threadId) ?? EMPTY_DRAFT(threadId);
+        const body = patch.body !== undefined ? String(patch.body).slice(0, 64 * 1024) : previous.body;
+        const resolve = patch.resolve !== undefined ? Boolean(patch.resolve) : previous.resolve;
+        const next: ReplyDraft = {
+            ...previous,
+            body,
+            resolve,
+            noteForAgent: patch.noteForAgent !== undefined ? String(patch.noteForAgent).slice(0, 8000) : previous.noteForAgent,
+            agentAction: ['fix', 'reply', 'revise', 'skip'].includes(String(patch.agentAction))
+                ? (patch.agentAction as ReplyDraft['agentAction'])
+                : previous.agentAction,
+            resolved: thread.resolved,
+            updatedAt: this.now().toISOString(),
+        };
+        next.replied = next.posted.trim() !== '' && next.body.trim() === next.posted.trim();
+        if (body !== previous.body || resolve !== previous.resolve) next.error = '';
+        this.store.upsertDraft(id, next);
+        this.emit(id);
+        return next;
+    }
+
+    // ---------------------------------------------------------------- notes
+
+    addNote(id: string, input: { file: string; line: number; side?: Side; text: string; toAgent?: boolean }): LineNote {
+        const review = this.getReview(id);
+        if (!findNewLine(review.diff, input.file, input.line)) {
+            throw new Error(`строка ${input.file}:${input.line} не входит в diff`);
+        }
+        const timestamp = this.now().toISOString();
+        const note: LineNote = {
+            id: `u-${Date.now().toString(36)}-${randomBytes(3).toString('hex')}`,
+            file: input.file,
+            line: input.line,
+            side: input.side ?? 'new',
+            text: String(input.text ?? '').slice(0, 16_000),
+            toAgent: input.toAgent ?? true,
+            agentAction: '',
+            agentReply: '',
+            posted: '',
+            discussionId: '',
+            noteId: '',
+            error: '',
+            createdAt: timestamp,
+            updatedAt: timestamp,
+        };
+        this.store.upsertNote(id, note);
+        this.emit(id);
+        return note;
+    }
+
+    updateNote(
+        id: string,
+        noteId: string,
+        patch: { text?: string; toAgent?: boolean; agentAction?: string; agentReply?: string; posted?: string; discussionId?: string; noteId?: string; error?: string },
+    ): LineNote {
+        const existing = this.store.listNotes(id).find((note) => note.id === noteId);
+        if (!existing) throw new Error(`комментария ${noteId} нет`);
+        const next: LineNote = {
+            ...existing,
+            text: patch.text !== undefined ? String(patch.text).slice(0, 16_000) : existing.text,
+            toAgent: patch.toAgent !== undefined ? Boolean(patch.toAgent) : existing.toAgent,
+            agentAction: ['fix', 'reply', ''].includes(String(patch.agentAction)) ? (patch.agentAction as LineNote['agentAction']) : existing.agentAction,
+            agentReply: patch.agentReply !== undefined ? String(patch.agentReply).slice(0, 8000) : existing.agentReply,
+            posted: patch.posted !== undefined ? String(patch.posted) : existing.posted,
+            discussionId: patch.discussionId ?? existing.discussionId,
+            noteId: patch.noteId ?? existing.noteId,
+            error: patch.error ?? existing.error,
+            updatedAt: this.now().toISOString(),
+        };
+        // Новый текст сбрасывает ответ агента: комментарий должен быть обработан заново.
+        if (patch.text !== undefined && patch.text !== existing.text) next.agentReply = patch.agentReply ?? '';
+        this.store.upsertNote(id, next);
+        this.emit(id);
+        return next;
+    }
+
+    deleteNote(id: string, noteId: string): void {
+        const existing = this.store.listNotes(id).find((note) => note.id === noteId);
+        if (!existing) return;
+        if (existing.posted) throw new Error('комментарий уже опубликован: удалять его нужно в платформе');
+        this.store.deleteNote(id, noteId);
+        this.emit(id);
+    }
+
+    // ---------------------------------------------------------------- publish
+
+    previewPublish(id: string, kind: PublishKind, ids: string[]): PublishPreview {
+        const review = this.getReview(id);
+        const items: PublishItem[] = [];
+        const warnings: string[] = [];
+        const max = this.configOf(id)?.publish.maxComments ?? 50;
+        for (const itemId of ids) {
+            if (items.length >= max) {
+                warnings.push(`достигнут лимит ${max} комментариев за раз`);
+                break;
+            }
+            if (kind === 'reply') {
+                const thread = review.threads.find((item) => item.id === itemId);
+                const draft = review.drafts.find((item) => item.threadId === itemId);
+                if (!thread || !draft) {
+                    warnings.push(`тред ${itemId} не найден`);
+                    continue;
+                }
+                const body = draft.body.trim();
+                const alreadyPosted = body !== '' && draft.posted.trim() === body;
+                const resolveChanged = draft.resolve !== thread.resolved;
+                if (!body && !resolveChanged) {
+                    warnings.push(`тред ${thread.id.substring(0, 8)}: нечего публиковать`);
+                    continue;
+                }
+                if (body && alreadyPosted && !resolveChanged) {
+                    warnings.push(`тред ${thread.id.substring(0, 8)}: ответ уже опубликован`);
+                    continue;
+                }
+                if (body) {
+                    const check = sanitizeBody(body, review.info.ref.platform);
+                    if (!check.ok) {
+                        warnings.push(`тред ${thread.id.substring(0, 8)}: ${check.reason}`);
+                        continue;
+                    }
+                }
+                items.push({ kind, id: thread.id, body, resolve: draft.resolve });
+                continue;
+            }
+            if (kind === 'finding') {
+                const finding = review.findings.find((item) => item.id === itemId);
+                if (!finding) {
+                    warnings.push(`замечание ${itemId} не найдено`);
+                    continue;
+                }
+                if (finding.status === 'published') {
+                    warnings.push(`замечание ${finding.id} уже опубликовано`);
+                    continue;
+                }
+                const body = finding.comment.trim();
+                const check = sanitizeBody(body, review.info.ref.platform);
+                if (!check.ok) {
+                    warnings.push(`замечание ${finding.id}: ${check.reason}`);
+                    continue;
+                }
+                const finalBody = finding.file && finding.line === null ? `\`${finding.file}\`: ${body}` : body;
+                items.push({
+                    kind,
+                    id: finding.id,
+                    body: finalBody,
+                    file: finding.file,
+                    line: finding.line,
+                    ...(finding.line === null ? {} : { side: 'new' as const }),
+                });
+                continue;
+            }
+            const note = review.notes.find((item) => item.id === itemId);
+            if (!note) {
+                warnings.push(`комментарий ${itemId} не найден`);
+                continue;
+            }
+            if (note.posted) {
+                warnings.push(`комментарий ${note.id} уже опубликован`);
+                continue;
+            }
+            const check = sanitizeBody(note.text, review.info.ref.platform);
+            if (!check.ok) {
+                warnings.push(`комментарий ${note.id}: ${check.reason}`);
+                continue;
+            }
+            items.push({ kind, id: note.id, body: note.text, file: note.file, line: note.line, side: note.side });
+        }
+        return { plan: this.makePlan(id, kind, items), warnings };
+    }
+
+    private makePlan(id: string, kind: PublishKind, items: PublishItem[]): PublishPlan {
+        const hash = canonicalHash(id, kind, items);
+        return { reviewId: id, kind, items, hash, createdAt: this.now().toISOString() };
+    }
+
+    approve(id: string, kind: PublishKind, ids: string[], expectedHash: string): Approval {
+        const preview = this.previewPublish(id, kind, ids);
+        if (preview.plan.hash !== expectedHash) {
+            throw new Error('набор изменений изменился после подтверждения: обновите страницу и подтвердите заново');
+        }
+        if (!preview.plan.items.length) throw new Error('нечего публиковать: в выбранных элементах нет изменений');
+        const approval: Approval = {
+            id: randomBytes(16).toString('hex'),
+            reviewId: id,
+            hash: preview.plan.hash,
+            kind,
+            expiresAt: new Date(this.now().getTime() + APPROVAL_TTL_MS).toISOString(),
+            usedAt: null,
+            createdAt: this.now().toISOString(),
+        };
+        this.store.createApproval({
+            id: approval.id,
+            reviewId: id,
+            kind,
+            hash: approval.hash,
+            items: preview.plan.items,
+            expiresAt: approval.expiresAt,
+            usedAt: null,
+            createdAt: approval.createdAt,
+        });
+        this.store.audit(id, 'publish.approve', { approvalId: approval.id, kind, count: preview.plan.items.length });
+        return approval;
+    }
+
+    async publish(id: string, approvalId: string): Promise<PublishResult> {
+        const approval = this.store.getApproval(approvalId);
+        if (!approval) throw new Error('подтверждение не найдено');
+        if (approval.reviewId !== id) throw new Error('подтверждение выдано для другого ревью');
+        if (approval.usedAt) throw new Error('подтверждение уже использовано');
+        if (new Date(approval.expiresAt).getTime() < this.now().getTime()) throw new Error('подтверждение истекло');
+        this.store.markApprovalUsed(approvalId);
+
+        const stored = this.store.getReview(id);
+        if (!stored) throw new Error(`ревью ${id} не найдено`);
+        const provider = await this.providerFactory(
+            { platform: stored.row.platform as Platform, host: stored.row.host, project: stored.row.project, number: stored.row.number },
+            stored.row.root,
+        );
+        const review = this.getReview(id);
+        const platform = review.info.ref.platform;
+        const results: PublishResultItem[] = [];
+        const startedAt = this.now().toISOString();
+
+        for (const item of approval.items as PublishItem[]) {
+            const result: PublishResultItem = { kind: item.kind, id: item.id, ok: false };
+            results.push(result);
+            try {
+                if (item.kind === 'reply') {
+                    const thread = review.threads.find((entry) => entry.id === item.id);
+                    const draft = this.store.getDraft(id, item.id) ?? EMPTY_DRAFT(item.id);
+                    if (!thread) throw new Error('тред больше не существует');
+                    const body = String(item.body ?? '').trim();
+                    if (body && draft.posted.trim() !== body) {
+                        const check = sanitizeBody(body, platform);
+                        if (!check.ok) throw new Error(check.reason);
+                        await provider.reply(thread, body);
+                        draft.posted = body;
+                        draft.replied = true;
+                        result.ok = true;
+                    }
+                    if (typeof item.resolve === 'boolean' && item.resolve !== thread.resolved) {
+                        await provider.resolve(thread.id, item.resolve);
+                        draft.resolved = item.resolve;
+                        thread.resolved = item.resolve;
+                        result.ok = true;
+                    }
+                    draft.error = '';
+                    draft.updatedAt = this.now().toISOString();
+                    this.store.upsertDraft(id, draft);
+                    this.saveThreads(id, review.threads);
+                    result.discussionId = thread.id;
+                    continue;
+                }
+                if (item.kind === 'finding') {
+                    const finding = review.findings.find((entry) => entry.id === item.id);
+                    if (!finding) throw new Error('замечание не найдено');
+                    if (finding.status === 'published') {
+                        result.ok = true;
+                        result.skipped = true;
+                        result.discussionId = finding.discussionId ?? undefined;
+                        continue;
+                    }
+                    const body = String(item.body ?? '').trim();
+                    const position = finding.line !== null ? linePosition(review.diff, finding.file, finding.line) : null;
+                    if (finding.line !== null && !position) throw new Error(`строка ${finding.file}:${finding.line} не входит в diff`);
+                    const created = await provider.createThread({
+                        file: finding.file,
+                        line: finding.line,
+                        oldLine: position?.oldLine ?? null,
+                        body,
+                    });
+                    finding.status = 'published';
+                    finding.discussionId = created.discussionId;
+                    finding.publishedAt = this.now().toISOString();
+                    this.store.updateFinding(id, finding);
+                    result.ok = true;
+                    result.discussionId = created.discussionId;
+                    result.noteId = created.noteId;
+                    continue;
+                }
+                const note = review.notes.find((entry) => entry.id === item.id);
+                if (!note) throw new Error('комментарий не найден');
+                if (note.posted) {
+                    result.ok = true;
+                    result.skipped = true;
+                    continue;
+                }
+                const position = linePosition(review.diff, note.file, note.line);
+                if (!position) throw new Error(`строка ${note.file}:${note.line} не входит в diff`);
+                const created = await provider.createThread({
+                    file: note.file,
+                    line: note.line,
+                    oldLine: position.oldLine,
+                    body: String(item.body ?? '').trim(),
+                });
+                note.posted = String(item.body ?? '').trim();
+                note.discussionId = created.discussionId;
+                note.noteId = created.noteId;
+                note.updatedAt = this.now().toISOString();
+                this.store.upsertNote(id, note);
+                result.ok = true;
+                result.discussionId = created.discussionId;
+                result.noteId = created.noteId;
+            } catch (error) {
+                result.error = redact(messageOf(error));
+                this.recordPublishError(id, item, result.error);
+            }
+        }
+
+        const finishedAt = this.now().toISOString();
+        this.store.audit(id, 'publish.commit', {
+            approvalId,
+            kind: approval.kind,
+            ok: results.filter((item) => item.ok).length,
+            failed: results.filter((item) => !item.ok).length,
+        });
+        this.emit(id);
+        // Свежие треды и статусы подтянутся следующим обновлением; UI уже видит posted.
+        return { reviewId: id, results, startedAt, finishedAt };
+    }
+
+    private recordPublishError(id: string, item: PublishItem, error: string): void {
+        if (item.kind === 'reply') {
+            const draft = this.store.getDraft(id, item.id);
+            if (draft) this.store.upsertDraft(id, { ...draft, error, updatedAt: this.now().toISOString() });
+            return;
+        }
+        if (item.kind === 'finding') {
+            const finding = this.store.listFindings(id).find((entry) => entry.id === item.id);
+            if (finding) this.store.updateFinding(id, { ...finding, publishError: error });
+            return;
+        }
+        const note = this.store.listNotes(id).find((entry) => entry.id === item.id);
+        if (note) this.store.upsertNote(id, { ...note, error, updatedAt: this.now().toISOString() });
+    }
+
+    private saveThreads(id: string, threads: Thread[]): void {
+        const stored = this.store.getReview(id);
+        if (!stored) return;
+        this.store.saveSnapshot(id, { ...stored.snapshot, threads });
+    }
+
+    // ---------------------------------------------------------------- rules & checks
+
+    async rules(id: string): Promise<{ markdown: string; configPath: string | null; warnings: string[]; checks: CommandCheck[] }> {
+        const stored = this.store.getReview(id);
+        if (!stored) throw new Error(`ревью ${id} не найдено`);
+        const effective = await buildEffectiveRules({
+            root: stored.row.root,
+            config: stored.snapshot.config,
+            configPath: stored.snapshot.configPath,
+            files: changedPaths(stored.snapshot.diff),
+        });
+        return {
+            markdown: renderRules(effective),
+            configPath: effective.configPath,
+            warnings: effective.warnings,
+            checks: effective.checks,
+        };
+    }
+
+    async runChecks(id: string, options: { allowRun: boolean; ids?: string[] }): Promise<CheckResult[]> {
+        const stored = this.store.getReview(id);
+        if (!stored) throw new Error(`ревью ${id} не найдено`);
+        const { checks } = await this.rules(id);
+        const matched = checks.filter((check) => check.matched && (!options.ids?.length || options.ids.includes(check.id)));
+        const results: CheckResult[] = [];
+        for (const check of matched) {
+            if (!options.allowRun) {
+                results.push({
+                    id: check.id,
+                    name: check.name,
+                    argv: check.argv,
+                    status: 'skipped',
+                    output: 'запуск не подтверждён: используйте revdeck checks --run --yes',
+                    durationMs: 0,
+                });
+                continue;
+            }
+            const started = Date.now();
+            try {
+                const { stdout, stderr, code } = await this.runImpl(check.argv[0]!, check.argv.slice(1), {
+                    cwd: stored.row.root,
+                    timeoutMs: stored.snapshot.config.checks.find((item) => item.id === check.id)?.timeoutMs ?? 300_000,
+                    maxBuffer: 16 * 1024 * 1024,
+                });
+                results.push({
+                    id: check.id,
+                    name: check.name,
+                    argv: check.argv,
+                    status: code === 0 ? 'passed' : 'failed',
+                    output: redact(`${stdout}\n${stderr}`.trim()).slice(0, 20_000),
+                    durationMs: Date.now() - started,
+                });
+            } catch (error) {
+                results.push({
+                    id: check.id,
+                    name: check.name,
+                    argv: check.argv,
+                    status: 'error',
+                    output: redact(messageOf(error)).slice(0, 20_000),
+                    durationMs: Date.now() - started,
+                });
+            }
+        }
+        this.store.audit(id, 'checks.run', { count: results.length });
+        return results;
+    }
+
+    // ---------------------------------------------------------------- sync
+
+    startSync(): void {
+        if (this.timer || this.syncIntervalMs <= 0) return;
+        this.timer = setInterval(() => {
+            void this.syncAll();
+        }, this.syncIntervalMs);
+        this.timer.unref?.();
+    }
+
+    async syncAll(): Promise<void> {
+        if (this.syncing) return;
+        this.syncing = true;
+        try {
+            const reviews = this.store.listReviews();
+            for (let index = 0; index < reviews.length; index += 2) {
+                const chunk = reviews.slice(index, index + 2);
+                await Promise.allSettled(
+                    chunk.map(async (item) => {
+                        const age = this.now().getTime() - new Date(item.syncedAt).getTime();
+                        if (age < this.syncIntervalMs / 2) return;
+                        try {
+                            await this.refreshReview(item.id);
+                        } catch {
+                            // Фоновое обновление не должно останавливать остальные ревью.
+                        }
+                    }),
+                );
+            }
+        } finally {
+            this.syncing = false;
+        }
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private emit(id: string): void {
+        this.events.emit('review', { reviewId: id, at: this.now().toISOString() });
+    }
+
+    private requireReview(id: string): void {
+        if (!this.store.getReview(id)) throw new Error(`ревью ${id} не найдено`);
+    }
+
+    changedFiles(id: string): string[] {
+        const stored = this.store.getReview(id);
+        return stored ? changedPaths(stored.snapshot.diff) : [];
+    }
+
+    diffFor(id: string): DiffFile[] {
+        return this.store.getReview(id)?.snapshot.diff ?? [];
+    }
+
+    threadSnippet(id: string, file: string, line: number | null): ReturnType<typeof snippetAround> {
+        if (line === null) return null;
+        return snippetAround(this.diffFor(id), file, line, 4);
+    }
+
+    configOf(id: string): ReviewConfig | null {
+        return this.store.getReview(id)?.snapshot.config ?? null;
+    }
+
+    rootOf(id: string): string | null {
+        return this.store.getReview(id)?.row.root ?? null;
+    }
+}
+
+export function canonicalHash(reviewId: string, kind: PublishKind, items: PublishItem[]): string {
+    return createHash('sha256').update(canonicalJson({ reviewId, kind, items })).digest('hex');
+}
+
+function fallbackInfo(row: {
+    platform: string;
+    host: string;
+    project: string;
+    number: number;
+    title: string;
+    author: string;
+    state: string;
+    web_url: string;
+    updated_at: string;
+}): ReviewInfo {
+    return {
+        ref: { platform: row.platform as Platform, host: row.host, project: row.project, number: row.number },
+        title: row.title,
+        description: '',
+        author: row.author,
+        authorName: '',
+        state: row.state,
+        draft: false,
+        sourceBranch: '',
+        targetBranch: '',
+        webUrl: row.web_url,
+        commit: { base: '', start: '', head: '' },
+        updatedAt: row.updated_at,
+        stats: { files: 0, additions: 0, deletions: 0 },
+    };
+}

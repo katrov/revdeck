@@ -1,0 +1,15 @@
+node_modules/
+dist/
+ui/dist/
+.npm-cache/
+.npm-logs/
+*.log
+.DS_Store
+# Локальный каталог обмена старых версий и кеш текущего демона.
+.revdeck/
+.tmp/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example

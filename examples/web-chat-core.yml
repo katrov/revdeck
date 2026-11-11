@@ -1,0 +1,45 @@
+# Пример переноса старой таблицы Criteria.md для монорепозитория web-chat-core.
+# Правила по путям вынесены из промпта в конфиг: агент получает только нужные секции.
+version: 1
+provider:
+  type: gitlab
+  base: develop
+rules:
+  sources:
+    - AGENTS.md
+  map:
+    - match: "**/package.json"
+      docs: [AGENTS.md, "docs/guides/Styleguide.md#Базовый стиль"]
+    - match: "messenger/src/**"
+      docs: [messenger/AGENTS.md, messenger/docs/Architecture.md, docs/guides/Styleguide.md]
+    - match: "messenger/src/version2/ui/**"
+      docs: [messenger/docs/Architecture.md, messenger/src/version2/ui/README.md]
+    - match: "messenger/src/version2/api/**"
+      docs: [messenger/docs/Architecture.md, messenger/src/version2/api/rest/README.md]
+    - match: ["docs/guides/StateManagement.md", "**/store/**", "**/useCase/**", "**/selectors/**"]
+      docs: [docs/guides/StateManagement.md]
+    - match: "meet/src/**"
+      docs: [meet/AGENTS.md, meet/docs/Architecture.md, docs/guides/Styleguide.md, docs/guides/StateManagement.md]
+    - match: "tube/src/**"
+      docs: [tube/AGENTS.md, tube/docs/Architecture.md, tube/docs/guides/Styleguide.md, tube/docs/guides/StateManagement.md]
+    - match: ["ui-kit/**", "toolkit/**", "messenger-kit/**"]
+      docs: [AGENTS.md, docs/guides/Styleguide.md]
+    - match: ["**/generated/**", "**/openapi-generator/**", "**/apigen.config.ts"]
+      docs: [docs/API-codegen.md]
+    - match: ["docs/**", "*.md"]
+      docs: [AGENTS.md, "AGENTS.md#Размещение технических знаний"]
+    - match: [".claude/**", ".codex/**", ".cursor/**", ".agents/**", ".devcontainer/**", "devtools/**"]
+      docs: [AGENTS.md, .devcontainer/README.md]
+  ignore:
+    - "**/node_modules/**"
+    - "**/dist/**"
+    - "**/coverage/**"
+checks:
+  - id: lint
+    argv: [npm, run, lint]
+    when: ["**/src/**", "package-lock.json", "**/.eslintrc*"]
+  - id: types
+    argv: [npm, run, typecheck]
+    when: ["**/*.ts", "**/*.tsx"]
+publish:
+  maxComments: 40

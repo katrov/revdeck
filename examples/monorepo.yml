@@ -1,0 +1,38 @@
+# Монорепозиторий: разные документы для разных пакетов.
+version: 1
+provider:
+  type: gitlab
+  host: gitlab.example.com
+  project: group/web-chat-core
+  base: develop
+rules:
+  sources:
+    - AGENTS.md
+  map:
+    - match: "**/package.json"
+      docs: [AGENTS.md, "docs/guides/Styleguide.md#Зависимости"]
+    - match: ["apps/*/src/**", "packages/*/src/**"]
+      docs:
+        - AGENTS.md
+        - docs/guides/Styleguide.md
+    - match: "apps/*/src/state/**"
+      docs: [docs/guides/StateManagement.md]
+    - match: "apps/*/docs/**"
+      docs:
+        - apps/*/docs/Architecture.md
+        - docs/guides/Styleguide.md#Документация
+    - match: ["packages/ui-kit/**", "packages/toolkit/**"]
+      docs: [packages/ui-kit/README.md, docs/guides/Styleguide.md]
+    - match: "docs/adr/**"
+      docs: [AGENTS.md#Размещение-технических-знаний, docs/adr/README.md]
+    - match: [".claude/**", ".codex/**", ".cursor/**", ".agents/**"]
+      docs: [AGENTS.md#Источники-и-приоритет-инструкций]
+checks:
+  - id: lint
+    argv: [npm, run, lint]
+    when: ["**/src/**"]
+  - id: types
+    argv: [npm, run, typecheck]
+    when: ["**/*.ts", "**/*.tsx"]
+publish:
+  maxComments: 40

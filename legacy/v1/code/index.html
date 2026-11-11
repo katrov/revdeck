@@ -1,0 +1,1663 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ответы на замечания MR</title>
+<style>
+    /* Оформление в стиле GitLab (Pajamas): светлая и тёмная темы, системный шрифт, синяя основная кнопка. */
+    :root {
+        --page:#fbfafd; --surface:#fff; --strip:#fbfafd; --border:#dcdcde; --border-strong:#bfbfc3; --fg:#333238; --muted:#626168; --placeholder:#89888d;
+        --blue:#1f75cb; --blue-hover:#1068bf; --blue-pressed:#0b5cad; --link:#1f75cb; --focus:#428fdc;
+        --green:#108548; --green-bg:#ecf4ee; --red:#dd2b0e; --red-bg:#fdf1ef; --orange:#ab6100; --orange-bg:#fdf1dd; --gray-bg:#ececef; --info-bg:#e9f3fc;
+        --add:#ecfdf0; --add-num:#c1e9cc; --del:#fdf1ef; --del-num:#f6c3bb; --hover:#ececef; --shadow:0 4px 12px rgba(0,0,0,.2);
+    }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --page:#1f1e24; --surface:#28272d; --strip:#232227; --border:#404040; --border-strong:#5e5e63; --fg:#ececef; --muted:#bfbfc3; --placeholder:#999;
+            --blue:#428fdc; --blue-hover:#63a6e9; --blue-pressed:#a6d0f6; --link:#63a6e9; --focus:#63a6e9;
+            --green:#2da160; --green-bg:#1b3a26; --red:#ec5941; --red-bg:#3d1f1b; --orange:#d99530; --orange-bg:#3d2c10; --gray-bg:#3a393f; --info-bg:#1b3047;
+            --add:#16301f; --add-num:#1e4a2d; --del:#3a1f1b; --del-num:#5c2b25; --hover:#3a393f; --shadow:0 4px 12px rgba(0,0,0,.6);
+        }
+    }
+    * { outline:none; font-family:inherit; box-sizing:border-box; }
+    html, body { height:100%; }
+    body { margin:0; display:flex; flex-direction:column; background:var(--page); color:var(--fg);
+           font:400 14px/20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', Ubuntu, Cantarell, 'Helvetica Neue', sans-serif; -webkit-font-smoothing:antialiased; }
+    header { flex:none; display:flex; align-items:center; gap:12px; padding:8px 16px; min-height:48px; background:var(--surface); border-bottom:1px solid var(--border); z-index:1; }
+    h1 { font-size:16px; line-height:24px; font-weight:600; margin:0; }
+    .sub { font-size:12px; line-height:16px; color:var(--muted); }
+    #hint { margin-left:auto; font-size:12px; color:var(--red); text-align:right; }
+    footer { flex:none; display:flex; justify-content:flex-end; padding:8px 16px; background:var(--surface); border-top:1px solid var(--border); z-index:1; }
+    footer .actions { margin-left:auto; }
+    .actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+    main { flex:1; overflow:auto; padding:16px; }
+    #list { max-width:880px; margin:0 auto; display:grid; gap:16px; align-content:start; grid-auto-rows:max-content; }
+    .card { display:grid; gap:0; border:1px solid var(--border); border-radius:4px; background:var(--surface); overflow:hidden; }
+    .card.done { opacity:.7; }
+    .card.done:hover, .card.done:focus-within { opacity:1; }
+    /* Заголовок карточки как у файла в diff GitLab */
+    .where { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 16px; background:var(--strip); border-bottom:1px solid var(--border);
+             font:400 12px/16px 'GitLab Mono', Menlo, Consolas, 'Liberation Mono', monospace; color:var(--fg); word-break:break-all; }
+    .loc { display:inline-flex; flex-wrap:wrap; align-items:center; gap:8px; }
+    button.mini { padding:0 8px; font-size:12px; line-height:20px; }
+    .notes { display:grid; }
+    .msg { display:flex; gap:12px; padding:12px 16px; }
+    .msg + .msg, .notes + .posted { border-top:1px solid var(--border); }
+    .avatar { flex:none; width:32px; height:32px; border-radius:50%; display:grid; place-items:center; font-weight:600; font-size:14px;
+              background:hsl(var(--h) 55% 86%); color:hsl(var(--h) 55% 24%); user-select:none; }
+    @media (prefers-color-scheme: dark) { .avatar { background:hsl(var(--h) 30% 30%); color:hsl(var(--h) 60% 88%); } }
+    .msg-body { min-width:0; flex:1; display:grid; gap:2px; }
+    .msg-head { display:flex; flex-wrap:wrap; gap:4px 8px; align-items:baseline; }
+    .msg-head b { font-weight:600; }
+    .msg-head span { font-size:12px; color:var(--muted); }
+    .note { display:grid; gap:2px; padding:12px 16px; border-top:1px solid var(--border); }
+    .where + .note { border-top:0; }
+    .name { font-weight:600; }
+    .text { white-space:pre-wrap; word-break:break-word; }
+    .posted { display:grid; gap:2px; padding:12px 16px; background:var(--green-bg); border-top:1px solid var(--border); }
+    .posted[hidden] { display:none; }
+    .posted .where { padding:0; background:none; border:0; color:var(--green); font-family:inherit; font-weight:600; }
+    #mention { position:fixed; z-index:10; min-width:240px; max-width:360px; max-height:min(320px, 50vh); overflow-y:auto; padding:4px 0; border:1px solid var(--border); border-radius:4px; background:var(--surface); box-shadow:var(--shadow); }
+    #mention[hidden] { display:none; }
+    #mention .item { display:flex; gap:8px; align-items:baseline; padding:6px 12px; cursor:pointer; }
+    #mention .item.on { background:var(--hover); }
+    #mention .item b { font-weight:600; }
+    #mention .item span { color:var(--muted); font-size:12px; }
+    .summary { padding:16px; }
+    .summary > .where { margin:-16px -16px 12px; }
+    .summary summary { cursor:pointer; font-weight:600; font-size:16px; line-height:24px; }
+    .summary .body { display:grid; gap:8px; margin-top:12px; }
+    .summary h2 { margin:4px 0 0; font-size:12px; line-height:16px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.02em; }
+    .summary ul { margin:0; padding-left:20px; display:grid; gap:4px; }
+    code { padding:1px 4px; border-radius:4px; background:var(--gray-bg); font:400 12px/16px 'GitLab Mono', Menlo, Consolas, monospace; }
+    textarea, select { font:inherit; color:var(--fg); }
+    textarea { width:calc(100% - 32px); margin:12px 16px 0; min-height:72px; resize:vertical; padding:8px 12px; border:1px solid var(--border-strong); border-radius:4px; background:var(--surface); }
+    textarea.agent { min-height:48px; background:var(--strip); }
+    textarea:focus { border-color:var(--focus); box-shadow:0 0 0 1px var(--surface), 0 0 0 3px var(--focus); }
+    textarea::placeholder { color:var(--placeholder); }
+    .code { margin:0; overflow:auto; border-bottom:1px solid var(--border); font:12px/20px 'GitLab Mono', Menlo, Consolas, 'Liberation Mono', monospace; }
+    .code .lines { min-width:max-content; }
+    .code .row { padding:0 12px 0 0; white-space:pre; }
+    .code .add { background:var(--add); }
+    .code .del { background:var(--del); }
+    .code .on { outline:2px solid var(--blue); outline-offset:-2px; }
+    .code b { display:inline-block; min-width:48px; margin-right:12px; padding:0 8px; color:var(--muted); font-weight:400; text-align:right; user-select:none; background:var(--strip); border-right:1px solid var(--border); }
+    .code .add b { background:var(--add-num); }
+    .code .del b { background:var(--del-num); }
+    .controls { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; padding:12px 16px; }
+    label { display:inline-flex; gap:6px; align-items:center; cursor:pointer; }
+    input[type=checkbox] { width:16px; height:16px; margin:0; accent-color:var(--blue); }
+    select { padding:5px 12px; border:1px solid var(--border-strong); border-radius:4px; background:var(--surface); font-size:14px; line-height:20px; cursor:pointer; }
+    select:hover { background:var(--hover); }
+    .badge { margin-left:auto; padding:0 8px; border-radius:100px; font-size:12px; line-height:20px; font-weight:400; }
+    .badge:empty { display:none; }
+    .badge.ok { background:var(--green-bg); color:var(--green); }
+    .badge.err { background:var(--red-bg); color:var(--red); }
+    .lvl { padding:0 8px; border-radius:100px; font:600 12px/20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .lvl-блокер { background:var(--red-bg); color:var(--red); }
+    .lvl-важно { background:var(--orange-bg); color:var(--orange); }
+    .lvl-придирка { background:var(--gray-bg); color:var(--muted); }
+    .lvl-вопрос { background:var(--info-bg); color:var(--blue); }
+    button { padding:6px 12px; border:1px solid var(--blue); border-radius:4px; background:var(--blue); color:#fff; font-size:14px; line-height:20px; font-family:inherit; cursor:pointer; transition:background .1s; }
+    button:hover:not(:disabled) { background:var(--blue-hover); border-color:var(--blue-hover); }
+    button:active:not(:disabled) { background:var(--blue-pressed); border-color:var(--blue-pressed); }
+    button:focus-visible, select:focus-visible { box-shadow:0 0 0 1px var(--surface), 0 0 0 3px var(--focus); }
+    input[type=checkbox]:focus-visible, summary:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+    button:disabled { opacity:.5; cursor:default; }
+    button.secondary { background:var(--surface); border-color:var(--border-strong); color:var(--fg); }
+    button.secondary:hover:not(:disabled) { background:var(--hover); border-color:var(--border-strong); }
+    /* Реакции */
+    .reactions { display:flex; flex-wrap:wrap; gap:4px; align-items:center; margin-top:4px; }
+    .reactions button { padding:0 8px; min-height:24px; border:1px solid var(--border-strong); border-radius:100px; background:var(--surface); color:var(--fg); font-size:12px; line-height:22px; }
+    .reactions button:hover:not(:disabled) { background:var(--hover); border-color:var(--border-strong); }
+    .reactions button.mine { background:var(--info-bg); border-color:var(--blue); color:var(--blue); }
+    .reactions button.add { color:var(--muted); }
+    .reactions .picker { display:flex; gap:2px; padding:2px; border:1px solid var(--border); border-radius:100px; background:var(--surface); }
+    .reactions .picker button { border:0; padding:0 6px; font-size:14px; }
+    /* Редактор комментария, как в GitLab: вкладки, панель форматирования, поле */
+    .editor { margin:12px 16px 0; border:1px solid var(--border-strong); border-radius:4px; background:var(--surface); overflow:hidden; }
+    .editor:focus-within { border-color:var(--focus); box-shadow:0 0 0 1px var(--surface), 0 0 0 3px var(--focus); }
+    .editor-bar { display:flex; flex-wrap:wrap; align-items:center; gap:2px 4px; padding:4px 8px; background:var(--strip); border-bottom:1px solid var(--border); }
+    .editor-bar .tab { padding:4px 10px; border:0; border-radius:4px; background:none; color:var(--muted); font-weight:600; }
+    .editor-bar .tab[aria-selected=true] { color:var(--fg); background:var(--gray-bg); }
+    .editor-bar .tab:hover:not(:disabled) { background:var(--hover); }
+    .editor-bar .tools[hidden] { display:none; }
+    .editor-bar .tools { display:flex; flex-wrap:wrap; gap:2px; margin-left:auto; }
+    .editor-bar .tool { min-width:28px; padding:3px 6px; border:0; border-radius:4px; background:none; color:var(--fg); font:600 13px/20px inherit; font-family:inherit; }
+    .editor-bar .tool:hover:not(:disabled) { background:var(--hover); }
+    .editor-bar .sep { width:1px; height:16px; background:var(--border); margin:0 2px; }
+    .editor textarea { display:block; width:100%; margin:0; border:0; border-radius:0; box-shadow:none; background:var(--surface); }
+    .editor textarea:focus { box-shadow:none; }
+    .editor .preview { min-height:72px; padding:8px 12px; }
+    .editor .preview[hidden], .editor textarea[hidden] { display:none; }
+    .editor .preview p { margin:0 0 8px; } .editor .preview > :last-child { margin-bottom:0; }
+    .editor .preview blockquote { margin:0 0 8px; padding-left:12px; border-left:3px solid var(--border-strong); color:var(--muted); }
+    .editor .preview pre { margin:0 0 8px; padding:8px 12px; overflow:auto; border-radius:4px; background:var(--gray-bg); font:12px/18px 'GitLab Mono', Menlo, Consolas, monospace; }
+    .editor .preview pre code { padding:0; background:none; }
+    .editor .preview ul, .editor .preview ol { margin:0 0 8px; padding-left:24px; }
+    .editor .preview .muted { color:var(--muted); }
+    .editor .preview a { color:var(--link); }
+    /* Дерево файлов и уведомления */
+    .body { position:relative; flex:1; min-height:0; display:flex; }
+    main { min-width:0; }
+    #tree { flex:none; width:300px; overflow:auto; padding:8px 0; background:var(--surface); border-right:1px solid var(--border); }
+    #tree[hidden] { display:none; }
+    .card[hidden] { display:none; }
+    .empty { padding:16px; color:var(--muted); }
+    .tree-row { display:flex; align-items:center; gap:4px; padding:3px 8px 3px calc(8px + var(--d, 0) * 14px); font-size:13px; line-height:20px; cursor:pointer; user-select:none; }
+    .tree-row:hover { background:var(--hover); }
+    .tree-row:focus-visible { box-shadow:inset 0 0 0 2px var(--focus); }
+    .tree-row[aria-current=true] { background:var(--info-bg); box-shadow:inset 3px 0 0 var(--blue); }
+    .tree-row .chev { flex:none; width:14px; color:var(--muted); text-align:center; }
+    .tree-row .tname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .tree-row.dim .tname { color:var(--muted); }
+    .tree-row.top { font-weight:600; }
+    .chip { flex:none; padding:0 6px; border-radius:100px; background:var(--gray-bg); color:var(--muted); font-size:11px; line-height:16px; }
+    .chip.ok { background:var(--green-bg); color:var(--green); }
+    .chip.lvl-3 { background:var(--red-bg); color:var(--red); }
+    .chip.lvl-2 { background:var(--orange-bg); color:var(--orange); }
+    .chip.lvl-1, .chip.lvl-0, .chip.todo { background:var(--info-bg); color:var(--blue); }
+    #toast { position:fixed; left:16px; bottom:64px; z-index:20; max-width:420px; padding:8px 16px; border-radius:4px; background:var(--fg); color:var(--surface); box-shadow:var(--shadow); font-size:13px; }
+    #toast[hidden] { display:none; }
+    #toast.err { background:var(--red); color:#fff; }
+    .reactions button.pending { opacity:.6; cursor:progress; }
+    @media (max-width:900px) { #tree { position:absolute; z-index:5; top:57px; bottom:49px; box-shadow:var(--shadow); } }
+    #summary { font-size:12px; color:var(--muted); }
+    /* Просмотр diff изменённых файлов: карточка на файл, содержимое грузится при раскрытии */
+    #diffs { display:grid; gap:16px; }
+    #diffs:empty { display:none; }
+    .diff > summary { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 16px; background:var(--strip); cursor:pointer; list-style:none;
+                      font:400 12px/16px 'GitLab Mono', Menlo, Consolas, 'Liberation Mono', monospace; word-break:break-all; }
+    .diff > summary::-webkit-details-marker { display:none; }
+    .diff > summary::before { content:'▸'; flex:none; width:14px; color:var(--muted); text-align:center; font-family:inherit; }
+    .diff[open] > summary { border-bottom:1px solid var(--border); }
+    .diff[open] > summary::before { content:'▾'; }
+    .diff .stat-add { color:var(--green); }
+    .diff .stat-del { color:var(--red); }
+    .diff .code { border-bottom:0; max-height:70vh; }
+    .code .hunk { color:var(--muted); background:var(--strip); }
+    .code .mark { display:inline-block; margin-left:12px; padding:0 6px; border:0; border-radius:100px; font:600 11px/16px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; vertical-align:1px; cursor:pointer; }
+    .code .mark.thread { background:var(--info-bg); color:var(--blue); }
+    #diff-toggle { margin-left:8px; }
+    #diff-toggle[aria-pressed=true] { background:var(--info-bg); border-color:var(--blue); color:var(--blue); }
+    /* Комментарий пользователя к строке diff: кнопка «+» в поле номера строки, форма под строкой */
+    .code .row { position:relative; }
+    .code .addnote { position:absolute; left:2px; top:2px; width:16px; height:16px; padding:0; border:0; border-radius:3px; background:var(--blue); color:#fff; font:600 12px/16px inherit; opacity:0; cursor:pointer; }
+    .code .row:hover .addnote, .code .addnote:focus-visible { opacity:1; }
+    .code .linenote { display:grid; gap:8px; width:min(640px, 80vw); margin:4px 0 4px 60px; padding:8px 12px; white-space:normal; border:1px solid var(--border-strong); border-radius:4px; background:var(--surface);
+                      font:400 14px/20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', Ubuntu, Cantarell, 'Helvetica Neue', sans-serif; }
+    .linenote textarea { width:100%; margin:0; min-height:56px; }
+    .linenote .controls { padding:0; }
+    .linenote .agent-reply { padding:8px 12px; border-left:3px solid var(--blue); background:var(--info-bg); white-space:pre-wrap; word-break:break-word; }
+    .linenote .agent-reply b { display:block; font-size:12px; color:var(--muted); margin-bottom:2px; }
+    .linenote .posted-text { color:var(--muted); font-size:12px; }
+    /* Правка своей заметки в треде прямо в сообщении */
+    .msg-head .mini { margin-left:4px; }
+    .note-edit { display:grid; gap:8px; }
+    .note-edit textarea { width:100%; margin:0; min-height:72px; }
+    /* Модальное подтверждение публикации: весь текст виден и прокручивается, вместо системного confirm */
+    #confirm { width:min(760px, calc(100vw - 32px)); max-height:calc(100vh - 64px); padding:0; border:1px solid var(--border); border-radius:4px; background:var(--surface); color:var(--fg); box-shadow:var(--shadow); }
+    #confirm::backdrop { background:rgba(0,0,0,.5); }
+    #confirm form { display:flex; flex-direction:column; max-height:calc(100vh - 66px); }
+    #confirm h2 { margin:0; padding:12px 16px; font-size:16px; line-height:24px; font-weight:600; border-bottom:1px solid var(--border); }
+    #confirm .cbody { flex:1; min-height:0; overflow:auto; padding:12px 16px; display:grid; gap:12px; align-content:start; grid-auto-rows:max-content; }
+    #confirm .citem { border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+    #confirm .citem .chead { display:flex; flex-wrap:wrap; gap:8px; padding:6px 12px; background:var(--strip); border-bottom:1px solid var(--border);
+                             font:400 12px/16px 'GitLab Mono', Menlo, Consolas, 'Liberation Mono', monospace; word-break:break-all; }
+    #confirm .citem .flag { color:var(--orange); font-family:inherit; }
+    #confirm .citem .ctext { padding:8px 12px; white-space:pre-wrap; word-break:break-word; }
+    #confirm .cnote { color:var(--muted); font-size:12px; }
+    #confirm .cfoot { display:flex; justify-content:flex-end; gap:8px; padding:12px 16px; border-top:1px solid var(--border); }
+    @media (max-width:760px) { header { flex-wrap:wrap; padding-left:12px; padding-right:12px; } .actions { margin-left:auto; } }
+</style>
+</head>
+<body>
+<header>
+    <div><h1 id="title">MR</h1><div class="sub" id="count"></div></div>
+    <span id="hint"></span>
+</header>
+<div class="body">
+    <aside id="tree" aria-label="Файлы MR" role="tree" hidden></aside>
+    <main id="list"></main>
+</div>
+<footer>
+    <button id="tree-toggle" class="secondary" type="button" aria-controls="tree" aria-expanded="false">Файлы</button>
+    <button id="diff-toggle" class="secondary" type="button" aria-pressed="false" title="Показать diff изменённых файлов для выбранного в дереве файла или папки">Diff</button>
+    <div class="actions">
+        <span id="summary"></span>
+        <button id="select-all" class="secondary" type="button">Выбрать все</button>
+        <button id="handoff" class="secondary" type="button">Передать агенту</button>
+        <button id="publish-findings" type="button" hidden disabled>Опубликовать замечания</button>
+        <button id="publish" type="button" disabled>Опубликовать выбранные</button>
+    </div>
+</footer>
+<script>
+// Токен запуска берётся из адреса и убирается из него, чтобы не оставаться в истории браузера;
+// при обновлении страницы он читается из sessionStorage вкладки.
+let token = new URLSearchParams(location.search).get('t');
+try {
+    if (token) {
+        sessionStorage.setItem('mr-ui-token', token);
+        history.replaceState(null, '', location.pathname);
+    } else {
+        token = sessionStorage.getItem('mr-ui-token');
+    }
+} catch {}
+const done = new Map();   // id -> { replied, resolved, posted }: что уже ушло в GitLab, posted - текст опубликованного ответа
+const cards = new Map();  // id -> { thread, where, area, note, action, include, resolve, canResolve, keepResolve, status, root }
+const dirty = new Set();  // id карточек, изменённых с последнего сохранения
+let generalArea, generalDirty = false;
+let people = [];          // участники обсуждений для подсказки по @
+let mr = '';
+let project = '';        // проект GitLab, в который уйдут ответы (для сверки)
+let version = null;       // версия replies.json, с которой работает UI (при расхождении сервер отвечает 409)
+let blocked = '';         // причина, по которой запись и публикация отключены
+const hint = document.getElementById('hint');
+
+const ACTIONS = [['', 'Действие для агента: не задано'], ['fix', 'Агент правит код'], ['reply', 'Только ответ'], ['revise', 'Доработать предложенное исправление'], ['skip', 'Пропустить']];
+
+async function api(path, body, options = {}) {
+    const res = await fetch(path, {
+        method: body ? 'POST' : 'GET',
+        headers: { 'x-mr-token': token, 'content-type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+        keepalive: Boolean(options.keepalive),
+    });
+    const data = await res.json();
+    if (!res.ok) throw Object.assign(new Error(data.error || res.status), { status: res.status });
+    return data;
+}
+
+// Все запросы, меняющие replies.json, идут по очереди: каждый следующий использует версию, полученную от предыдущего.
+let queue = Promise.resolve();
+function enqueue(task) {
+    const run = queue.then(task);
+    queue = run.catch(() => {});
+    return run;
+}
+
+function block(reason) {
+    blocked = reason;
+    hint.textContent = reason;
+    refresh();
+}
+
+function onError(e, prefix) {
+    if (e.status === 409) block(e.message);
+    else hint.textContent = `${prefix}: ${e.message}`;
+}
+
+function el(tag, props = {}, ...children) {
+    const node = Object.assign(document.createElement(tag), props);
+    node.append(...children);
+    return node;
+}
+
+// Подсказка по `@` в полях ответа: подставляет @username участника обсуждения (GitLab сам превратит его в упоминание).
+const menu = el('div', { id: 'mention', hidden: true });
+menu.setAttribute('role', 'listbox');
+document.body.append(menu);
+let mention = null;  // { area, start, items, index }
+
+function closeMention() {
+    if (mention) {
+        mention.area.setAttribute('aria-expanded', 'false');
+        mention.area.removeAttribute('aria-activedescendant');
+    }
+    mention = null;
+    menu.hidden = true;
+}
+
+function renderMention() {
+    menu.replaceChildren(...mention.items.map((person, i) => {
+        const item = el('div', { id: `mention-${i}`, className: 'item' + (i === mention.index ? ' on' : '') }, el('b', {}, person.name || person.username), el('span', {}, '@' + person.username));
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', String(i === mention.index));
+        item.addEventListener('mousedown', (e) => { e.preventDefault(); pickMention(i); });
+        return item;
+    }));
+    mention.area.setAttribute('aria-expanded', 'true');
+    mention.area.setAttribute('aria-activedescendant', `mention-${mention.index}`);
+    const rect = mention.area.getBoundingClientRect();
+    menu.hidden = false;
+    menu.children[mention.index]?.scrollIntoView?.({ block: 'nearest' });
+    menu.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - menu.offsetWidth - 8))}px`;
+    const below = rect.bottom + 4;
+    menu.style.top = `${below + menu.offsetHeight > innerHeight ? Math.max(8, rect.top - menu.offsetHeight - 4) : below}px`;
+}
+
+function updateMention(area) {
+    const upto = area.value.slice(0, area.selectionStart);
+    const match = /(^|[\s(])@([\p{L}\p{N}_.-]*)$/u.exec(upto);
+    if (!match) return closeMention();
+    const query = match[2].toLowerCase();
+    const items = people
+        .filter((p) => p.username.toLowerCase().includes(query) || p.name.toLowerCase().includes(query))
+        .sort((x, y) => Number(!x.username.toLowerCase().startsWith(query)) - Number(!y.username.toLowerCase().startsWith(query)));
+    if (!items.length) return closeMention();
+    mention = { area, start: upto.length - match[2].length - 1, items, index: 0 };
+    renderMention();
+}
+
+function pickMention(i) {
+    const { area, start, items } = mention;
+    const insert = `@${items[i].username} `;
+    area.value = area.value.slice(0, start) + insert + area.value.slice(area.selectionStart);
+    area.setSelectionRange(start + insert.length, start + insert.length);
+    closeMention();
+    area.dispatchEvent(new Event('input'));
+    area.focus();
+}
+
+function attachMentions(area) {
+    area.setAttribute('role', 'combobox');
+    area.setAttribute('aria-multiline', 'true');
+    area.setAttribute('aria-haspopup', 'listbox');
+    area.setAttribute('aria-expanded', 'false');
+    area.setAttribute('aria-autocomplete', 'list');
+    area.setAttribute('aria-controls', 'mention');
+    area.addEventListener('input', () => updateMention(area));
+    area.addEventListener('click', () => updateMention(area));
+    area.addEventListener('blur', closeMention);
+    area.addEventListener('keyup', (e) => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) updateMention(area); });
+    area.addEventListener('keydown', (e) => {
+        // Enter при вводе через IME подтверждает набор, а не выбирает участника.
+        if (mention?.area !== area || e.isComposing) return;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            mention.index = (mention.index + (e.key === 'ArrowDown' ? 1 : mention.items.length - 1)) % mention.items.length;
+            renderMention();
+        } else if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault();
+            pickMention(mention.index);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closeMention();
+        }
+    });
+}
+document.querySelector('main').addEventListener('scroll', closeMention);
+addEventListener('resize', closeMention);
+
+// Текст выжимки: только `код` превращается в <code>, остальное остаётся текстом (без innerHTML).
+function inline(text) {
+    return text.split('`').map((part, i) => (i % 2 ? el('code', {}, part) : part));
+}
+
+function renderSummary(summary) {
+    if (!summary) return null;
+    const section = (title, items) => items.length ? [el('h2', {}, title), el('ul', {}, ...items.map((item) => el('li', {}, ...inline(item))))] : [];
+    return el('section', { className: 'card summary' },
+        summary.scope ? el('div', { className: 'where' }, summary.scope) : '',
+        el('details', { open: true },
+            el('summary', {}, summary.title || 'Выжимка MR'),
+            el('div', { className: 'body' },
+                summary.summary ? el('div', { className: 'text' }, ...inline(summary.summary)) : '',
+                ...section('Что сделано', summary.changes),
+                ...section('На что смотреть', summary.focus))));
+}
+
+// Замечания ревьюера: решение и комментарий пользователя пишутся в mr-<N>-decisions.json, в GitLab не уходят.
+// Отдельно замечание можно опубликовать новым тредом: текст готового комментария правится в карточке, статус
+// публикации хранит сервер (mr-<N>-published.json).
+const DECISIONS = [['', 'Решение: не задано'], ['accept', 'Принять: править'], ['reject', 'Отклонить'], ['discuss', 'Обсудить']];
+const findingCards = new Map();  // id -> { select, note, comment, include, status, root, file, level, published }
+const findingDirty = new Set();
+let findingTimer;
+
+function saveFindings() {
+    clearTimeout(findingTimer);
+    const decisions = {};
+    for (const id of findingDirty) {
+        const c = findingCards.get(id);
+        decisions[id] = { decision: c.select.value, note: c.note.value };
+    }
+    findingDirty.clear();
+    if (!Object.keys(decisions).length) return Promise.resolve();
+    return api('/api/decisions', { decisions }).then(() => { hint.textContent = ''; }, (e) => {
+        Object.keys(decisions).forEach((id) => findingDirty.add(id));
+        hint.textContent = `решения не сохранены: ${e.message}`;
+    });
+}
+
+// `путь:строка` с кнопкой копирования.
+function fileLoc(file, line) {
+    const text = `${file}${line ? ':' + line : ''}`;
+    const copy = el('button', { type: 'button', className: 'secondary mini', title: 'Скопировать путь' }, 'Копировать');
+    copy.addEventListener('click', async () => {
+        let result = 'Скопировано';
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch {
+            result = 'Не удалось';
+        }
+        copy.textContent = result;
+        setTimeout(() => { copy.textContent = 'Копировать'; }, 1500);
+    });
+    return el('span', { className: 'loc' }, text, copy);
+}
+
+const LEVEL_EMOJI = { 'блокер': '🛑', 'важно': '⚠️', 'придирка': '💅', 'вопрос': '❓' };
+
+function renderFinding(f, saved, published) {
+    const where = [el('span', { className: `lvl lvl-${f.level}` }, f.level), f.file && fileLoc(f.file, f.line)].filter(Boolean);
+    const select = el('select', {}, ...DECISIONS.map(([value, label]) => el('option', { value, selected: value === (saved?.decision ?? '') }, label)));
+    select.setAttribute('aria-label', `Решение по замечанию ${f.id}`);
+    const note = el('textarea', { className: 'agent', value: saved?.note ?? '', placeholder: 'Ваш комментарий агенту (в GitLab не уходит)' });
+    note.setAttribute('aria-label', `Комментарий к замечанию ${f.id}`);
+    for (const control of [select, note]) {
+        control.addEventListener('input', () => {
+            findingDirty.add(f.id);
+            scheduleTree();
+            clearTimeout(findingTimer);
+            findingTimer = setTimeout(saveFindings, 600);
+        });
+    }
+    // Текст для GitLab: правится прямо в карточке (правки не сохраняются в файлы), после публикации блокируется.
+    // Уровень уходит в GitLab отдельной первой строкой (эмодзи + жирное название), текст замечания - ниже.
+    // Не дублируется, если метка уже есть в тексте.
+    const label = `${LEVEL_EMOJI[f.level] ?? '❓'} **${f.level.toUpperCase()}**`;
+    const draft = f.comment.startsWith(label) ? f.comment : `${label}\n\n${f.comment}`;
+    const comment = el('textarea', { value: published ? published.posted : draft, readOnly: Boolean(published), placeholder: 'Текст комментария для GitLab' });
+    comment.setAttribute('aria-label', `Текст комментария в GitLab по замечанию ${f.id}`);
+    const include = el('input', { type: 'checkbox', checked: !published && saved?.decision === 'accept', disabled: Boolean(published) });
+    const status = el('span', { className: 'badge ok' }, published ? 'опубликовано' : '');
+    // Принятое замечание отмечается для публикации само, отклонённое снимается; отметку можно поправить вручную.
+    select.addEventListener('input', () => {
+        const card = findingCards.get(f.id);
+        if (card.published) return;
+        if (select.value === 'accept') include.checked = true;
+        else if (select.value === 'reject') include.checked = false;
+        refresh();
+    });
+    for (const control of [comment, include]) control.addEventListener('input', refresh);
+    const root = el('section', { className: 'card' },
+        el('div', { className: 'where' }, ...where),
+        f.snippet ? el('div', { className: 'code', role: 'region', ariaLabel: 'Фрагмент diff' }, el('div', { className: 'lines' }, ...f.snippet.map((l) =>
+            el('div', { className: 'row ' + (l.t === '+' ? 'add' : l.t === '-' ? 'del' : '') + (l.on ? ' on' : '') }, el('b', {}, l.n ?? ''), l.text)))) : '',
+        el('div', { className: 'note' }, el('b', { className: 'name' }, f.title || f.id), el('div', { className: 'text' }, ...inline(f.body))),
+        el('div', { className: 'note' }, el('b', { className: 'name' }, 'Комментарий для GitLab'), comment),
+        note,
+        el('div', { className: 'controls' }, select, el('label', {}, include, 'Опубликовать в GitLab'), status));
+    findingCards.set(f.id, { select, note, comment, include, status, root, file: f.file, line: f.line, level: f.level, published: Boolean(published) });
+    return root;
+}
+
+const pendingFindings = () => [...findingCards].filter(([, c]) => c.include.checked && !c.published && c.comment.value.trim());
+
+document.getElementById('publish-findings').addEventListener('click', async () => {
+    const chosen = pendingFindings();
+    if (!chosen.length) return;
+    // Снимок того, что видно в подтверждении: на сервер уходит именно этот текст.
+    const items = chosen.map(([id, c]) => ({ id, comment: c.comment.value.trim(), expected_file: c.file, expected_line: c.line }));
+    const ok = await confirmDialog({
+        title: `${mrLabel()}: новых тредов - ${items.length}`,
+        items: chosen.map(([, c], i) => ({ head: `${c.file ? c.file + (c.line ? ':' + c.line : ' (без строки: общий тред)') : 'общий тред'} · ${items[i].comment.length} симв.`, text: items[i].comment, flags: textFlags(items[i].comment) })),
+        note: 'Отменить из UI нельзя: опубликованный тред удаляется только в GitLab.',
+    });
+    if (!ok) return;
+    const button = document.getElementById('publish-findings');
+    button.disabled = true;
+    try {
+        const res = await api('/api/publish-findings', { items });
+        for (const r of res.results) {
+            const c = findingCards.get(r.id);
+            if (!c) continue;
+            if (r.published) {
+                c.published = true;
+                c.include.checked = false;
+                c.include.disabled = true;
+                c.comment.value = r.posted;
+                c.comment.readOnly = true;
+            }
+            c.status.className = 'badge ' + (r.error && !r.published ? 'err' : 'ok');
+            c.status.textContent = r.published ? 'опубликовано' : r.error ? `ошибка: ${r.error}` : '';
+        }
+        if (res.warning) block(res.warning);
+        else hint.textContent = res.results.some((r) => r.error && !r.published) ? 'часть замечаний не опубликована, см. ошибки в карточках' : '';
+    } catch (e) {
+        onError(e, 'ошибка публикации замечаний');
+    }
+    refresh();
+});
+
+// ---- Дерево файлов: навигация и фильтр карточек по файлу или папке (и для ревью чужого MR, и для своего).
+const cardFiles = [];          // { root, file } - файл карточки, null для общих (выжимка, «весь MR»)
+const collapsedDirs = new Set();
+let selected;                  // undefined - все карточки, null - общие, строка - файл или папка
+let diffFiles = [];
+let treeOpen = (() => { try { const v = localStorage.getItem('mr-ui-tree'); return v === null ? innerWidth >= 900 : v === '1'; } catch { return true; } })();
+const registerCard = (root, file) => { cardFiles.push({ root, file: file || null }); };
+
+const LEVEL_RANK = { 'блокер': 3, 'важно': 2, 'придирка': 1, 'вопрос': 0 };
+const emptyStats = () => ({ fo: 0, ft: 0, worst: -1, to: 0, tt: 0 });
+
+function collectStats() {
+    const stats = new Map();
+    const get = (file) => { if (!stats.has(file)) stats.set(file, emptyStats()); return stats.get(file); };
+    for (const { file, level, select } of findingCards.values()) {
+        const s = get(file || '');
+        s.ft++;
+        if (!select.value) { s.fo++; s.worst = Math.max(s.worst, LEVEL_RANK[level] ?? 0); }
+    }
+    for (const [id, c] of cards) {
+        const s = get(c.thread.path || '');
+        const d = done.get(id) || {};
+        s.tt++;
+        if (!(c.thread.resolved || d.resolved || d.replied)) s.to++;
+    }
+    return stats;
+}
+
+function sumStats(list) {
+    return list.reduce((a, s) => ({ fo: a.fo + s.fo, ft: a.ft + s.ft, worst: Math.max(a.worst, s.worst), to: a.to + s.to, tt: a.tt + s.tt }), emptyStats());
+}
+
+function buildTrie(paths) {
+    const root = { name: '', path: '', dirs: new Map(), files: [] };
+    for (const path of paths) {
+        const parts = path.split('/');
+        let node = root;
+        parts.slice(0, -1).forEach((part, i) => {
+            if (!node.dirs.has(part)) node.dirs.set(part, { name: part, path: parts.slice(0, i + 1).join('/'), dirs: new Map(), files: [] });
+            node = node.dirs.get(part);
+        });
+        node.files.push({ name: parts[parts.length - 1], path });
+    }
+    return root;
+}
+
+function chips(s) {
+    const out = [];
+    if (s.ft) out.push(el('span', { className: 'chip ' + (s.fo ? `lvl-${s.worst}` : 'ok'), title: `Замечаний ревью без решения: ${s.fo} из ${s.ft}` }, `⚑ ${s.fo}/${s.ft}`));
+    if (s.tt) out.push(el('span', { className: 'chip ' + (s.to ? 'todo' : 'ok'), title: `Тредов без ответа и не закрытых: ${s.to} из ${s.tt}` }, `💬 ${s.to}/${s.tt}`));
+    return out;
+}
+
+function treeRow({ label, depth, value, chev, stats, dim, top, onChev }) {
+    const row = el('div', { className: 'tree-row' + (dim ? ' dim' : '') + (top ? ' top' : '') },
+        el('span', { className: 'chev' }, chev ?? ''),
+        el('span', { className: 'tname', title: label }, label),
+        ...(stats ? chips(stats) : []));
+    row.style.setProperty('--d', String(depth));
+    row.setAttribute('role', 'treeitem');
+    row.tabIndex = 0;
+    row.setAttribute('aria-current', String(selected === value));
+    const choose = () => chooseNode(value);
+    row.addEventListener('click', (e) => { if (onChev && e.target.classList.contains('chev')) onChev(); else choose(); });
+    row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); }
+        else if (onChev && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); onChev(); }
+    });
+    return row;
+}
+
+function renderTree() {
+    const tree = document.getElementById('tree');
+    tree.hidden = !treeOpen;
+    document.getElementById('tree-toggle').setAttribute('aria-expanded', String(treeOpen));
+    if (!treeOpen) return;
+    const stats = collectStats();
+    const paths = [...new Set([...diffFiles, ...[...stats.keys()].filter(Boolean)])].sort();
+    const rows = [
+        treeRow({ label: 'Все карточки', depth: 0, value: undefined, stats: sumStats([...stats.values()]), top: true }),
+        treeRow({ label: 'Общее (весь MR)', depth: 0, value: null, stats: stats.get('') , top: true }),
+    ];
+    const walk = (node, depth) => {
+        const dirs = [...node.dirs.values()].sort((x, y) => x.name.localeCompare(y.name));
+        for (let dir of dirs) {
+            // Цепочка папок без файлов и без ветвления сворачивается в одну строку.
+            let label = dir.name;
+            while (dir.files.length === 0 && dir.dirs.size === 1) {
+                dir = [...dir.dirs.values()][0];
+                label += `/${dir.name}`;
+            }
+            const inside = paths.filter((p) => p.startsWith(`${dir.path}/`));
+            const sub = sumStats(inside.map((p) => stats.get(p) || emptyStats()));
+            const closed = collapsedDirs.has(dir.path);
+            const toggle = () => { closed ? collapsedDirs.delete(dir.path) : collapsedDirs.add(dir.path); renderTree(); };
+            rows.push(treeRow({ label, depth, value: dir.path, chev: closed ? '▸' : '▾', stats: sub, dim: !sub.ft && !sub.tt, onChev: toggle }));
+            if (!closed) walk(dir, depth + 1);
+        }
+        for (const file of node.files.sort((x, y) => x.name.localeCompare(y.name))) {
+            const s = stats.get(file.path) || emptyStats();
+            rows.push(treeRow({ label: file.name, depth, value: file.path, stats: s, dim: !s.ft && !s.tt }));
+        }
+    };
+    walk(buildTrie(paths), 0);
+    tree.replaceChildren(...rows);
+}
+
+let treeFrame = 0;
+function scheduleTree() {
+    if (treeFrame) return;
+    treeFrame = requestAnimationFrame(() => { treeFrame = 0; renderTree(); });
+}
+
+const matchesSelection = (file) => selected === undefined || (selected === null ? file === null : file !== null && (file === selected || file.startsWith(`${selected}/`)));
+
+function applyFilter() {
+    let visible = 0;
+    for (const { root, file } of cardFiles) {
+        const show = matchesSelection(file);
+        root.hidden = !show;
+        if (show) visible++;
+    }
+    renderDiffCards();
+    const empty = document.getElementById('empty-files');
+    if (empty) empty.hidden = visible > 0 || document.getElementById('diffs')?.childElementCount > 0;
+}
+
+// ---- Просмотр diff изменённых файлов. Кнопка «Diff» показывает карточки с полным diff файлов из mr-<N>.diff
+// для текущего выбора в дереве (файл, папка или весь MR); содержимое файла запрашивается при раскрытии карточки.
+// Строки, к которым привязаны замечания ревью или треды, подсвечены и ведут к своей карточке.
+let diffOpen = (() => { try { return localStorage.getItem('mr-ui-diff') === '1'; } catch { return false; } })();
+const diffCache = new Map();   // file -> Promise<lines>
+const DIFF_LIMIT = 40;         // карточек diff за раз, чтобы большой MR не рисовался целиком
+
+function lineMarks(file) {
+    const marks = new Map();   // номер строки нового файла -> [{ label, className, root }]
+    const add = (line, mark) => { const n = Number(line); if (!n) return; if (!marks.has(n)) marks.set(n, []); marks.get(n).push(mark); };
+    for (const [id, c] of findingCards) if (c.file === file) add(c.line, { label: `${LEVEL_EMOJI[c.level] ?? '❓'} ${id}`, className: `lvl-${c.level}`, root: c.root });
+    for (const c of cards.values()) if (c.thread.path === file) add(c.thread.line, { label: `💬 ${c.thread.notes[0]?.author || 'тред'}`, className: 'thread', root: c.root });
+    return marks;
+}
+
+function renderDiffLines(box, file, lines) {
+    const marks = lineMarks(file);
+    const out = [];
+    for (const l of lines) {
+        if (l.t === '@') { out.push(el('div', { className: 'row hunk' }, el('b', {}, '…'), l.text)); continue; }
+        const row = el('div', { className: 'row ' + (l.t === '+' ? 'add' : l.t === '-' ? 'del' : '') }, el('b', {}, l.n ?? ''), l.text);
+        for (const m of marks.get(l.n) || []) {
+            row.classList.add('on');
+            const jump = el('button', { type: 'button', className: `mark ${m.className}`, title: 'К карточке' }, m.label);
+            jump.addEventListener('click', () => { m.root.hidden = false; m.root.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+            row.append(jump);
+        }
+        out.push(row);
+        if (!l.n) continue;
+        // Комментарии к строке (свои) и кнопка добавления нового: тред привязывается только к строке нового файла.
+        const existing = userNotes.filter((n) => n.file === file && n.line === l.n);
+        if (existing.length) row.classList.add('on');
+        for (const n of existing) out.push(renderLineNote(n));
+        const add = el('button', { type: 'button', className: 'addnote', title: 'Комментарий к строке' }, '+');
+        add.setAttribute('aria-label', `Комментарий к строке ${l.n}`);
+        add.addEventListener('click', () => {
+            const note = { id: 'u' + Date.now().toString(36), file, line: l.n, text: '', to_agent: true, agent_action: '', agent_reply: '', posted: '', discussion_id: '', error: '' };
+            userNotes.push(note);
+            const form = renderLineNote(note);
+            row.after(form);
+            row.classList.add('on');
+            form.querySelector('textarea').focus();
+        });
+        row.prepend(add);
+    }
+    box.replaceChildren(el('div', { className: 'lines' }, ...out));
+}
+
+// ---- Комментарии пользователя к строкам diff (mr-<N>-notes.json). Адресуются агенту (он прочитает их после
+// «Передать агенту» и ответит в agent_reply) и/или публикуются новым тредом MR. Сохраняются по id с задержкой.
+let userNotes = [];
+const noteDirty = new Set();
+let noteTimer;
+let noteSaving = Promise.resolve();
+const NOTE_ACTIONS = [['', 'Агенту: прочитать и решить'], ['fix', 'Агенту: внести правку'], ['reply', 'Агенту: только ответить']];
+
+function saveNotes() {
+    clearTimeout(noteTimer);
+    const notes = {};
+    for (const id of noteDirty) {
+        const n = userNotes.find((x) => x.id === id);
+        if (n) notes[id] = { file: n.file, line: n.line, text: n.text, to_agent: n.to_agent, agent_action: n.agent_action };
+    }
+    noteDirty.clear();
+    if (!Object.keys(notes).length) return noteSaving;
+    noteSaving = noteSaving.then(() => api('/api/notes', { notes })).then((res) => { applyNotes(res.notes); hint.textContent = ''; }, (e) => {
+        Object.keys(notes).forEach((id) => noteDirty.add(id));
+        hint.textContent = `комментарии к строкам не сохранены: ${e.message}`;
+    });
+    return noteSaving;
+}
+
+// Сервер - источник истины по полям posted/error/agent_reply: после записи они подтягиваются в открытые формы.
+function applyNotes(fresh) {
+    for (const n of fresh) {
+        const local = userNotes.find((x) => x.id === n.id);
+        if (!local) { userNotes.push(n); continue; }
+        Object.assign(local, { posted: n.posted, discussion_id: n.discussion_id, error: n.error, agent_reply: n.agent_reply });
+        if (!noteDirty.has(n.id)) Object.assign(local, { text: n.text, to_agent: n.to_agent, agent_action: n.agent_action });
+        local.form?.sync?.();
+    }
+    refresh();
+}
+
+function renderLineNote(n) {
+    const text = el('textarea', { value: n.text, placeholder: 'Комментарий к строке: агенту, в GitLab или и то и другое' });
+    text.setAttribute('aria-label', `Комментарий к строке ${n.file}:${n.line}`);
+    const toAgent = el('input', { type: 'checkbox', checked: n.to_agent });
+    const action = el('select', {}, ...NOTE_ACTIONS.map(([value, label]) => el('option', { value, selected: value === n.agent_action }, label)));
+    action.setAttribute('aria-label', 'Действие агента по комментарию');
+    const publish = el('button', { type: 'button', className: 'secondary' }, 'Опубликовать в GitLab');
+    const remove = el('button', { type: 'button', className: 'secondary' }, 'Удалить');
+    // Опубликованный комментарий: правка и удаление идут в GitLab (разрешены только автору заметки).
+    const edit = el('button', { type: 'button', className: 'secondary' }, 'Редактировать');
+    const save = el('button', { type: 'button' }, 'Сохранить в GitLab');
+    const cancelEdit = el('button', { type: 'button', className: 'secondary' }, 'Отмена');
+    const removeRemote = el('button', { type: 'button', className: 'secondary' }, 'Удалить из GitLab');
+    const status = el('span', { className: 'badge ok' }, '');
+    const reply = el('div', { className: 'agent-reply', hidden: true });
+    const posted = el('div', { className: 'posted-text', hidden: true });
+    const form = el('div', { className: 'linenote' }, text, reply, posted,
+        el('div', { className: 'controls' }, el('label', {}, toAgent, 'Агенту'), action, publish, remove, edit, save, cancelEdit, removeRemote, status));
+    form.setAttribute('role', 'group');
+    let editing = false;
+    const where = `${n.file}:${n.line}`;
+    const sync = () => {
+        const done = Boolean(n.posted);
+        text.readOnly = done && !editing;
+        if (done && !editing && text.value !== n.posted) text.value = n.posted;
+        publish.hidden = done;
+        publish.disabled = !n.text.trim() || Boolean(blocked);
+        remove.hidden = done;
+        edit.hidden = !done || editing;
+        removeRemote.hidden = !done || editing;
+        save.hidden = cancelEdit.hidden = !editing;
+        save.disabled = !text.value.trim() || text.value.trim() === n.posted;
+        action.hidden = !toAgent.checked;
+        status.className = 'badge ' + (n.error ? 'err' : 'ok');
+        status.textContent = n.error ? `ошибка: ${n.error}` : done ? 'опубликовано' : n.to_agent && n.agent_reply ? 'агент ответил' : n.to_agent ? 'ждёт агента' : '';
+        reply.hidden = !n.agent_reply;
+        if (n.agent_reply) reply.replaceChildren(el('b', {}, 'Агент'), n.agent_reply);
+        posted.hidden = !done;
+        posted.textContent = done ? `опубликовано в GitLab${n.at ? ' ' + new Date(n.at).toLocaleString() : ''}` : '';
+    };
+    const touchNote = () => {
+        if (!n.posted) n.text = text.value;
+        n.to_agent = toAgent.checked;
+        n.agent_action = action.value;
+        noteDirty.add(n.id);
+        sync();
+        clearTimeout(noteTimer);
+        noteTimer = setTimeout(saveNotes, 600);
+    };
+    // Текст опубликованного комментария в файл не пишется (сервер его не примет): до «Сохранить в GitLab» он живёт только в поле.
+    text.addEventListener('input', () => { if (editing) sync(); else touchNote(); });
+    for (const control of [toAgent, action]) control.addEventListener('input', touchNote);
+    remove.addEventListener('click', async () => {
+        userNotes = userNotes.filter((x) => x !== n);
+        noteDirty.delete(n.id);
+        form.remove();
+        try { await api('/api/notes', { delete: [n.id] }); } catch (e) { hint.textContent = `комментарий не удалён: ${e.message}`; }
+        refresh();
+    });
+    publish.addEventListener('click', async () => {
+        await saveNotes();
+        const expected = n.text.trim();
+        const ok = await confirmDialog({ title: `${mrLabel()}: новый тред`, items: [{ head: where, text: expected, flags: textFlags(expected) }], note: 'Опубликованный тред потом можно отредактировать или удалить из этой же карточки.' });
+        if (!ok) return;
+        publish.disabled = true;
+        try {
+            const res = await api('/api/publish-notes', { items: [{ id: n.id, expected_text: expected }] });
+            const r = res.results[0] || {};
+            if (r.published) Object.assign(n, { posted: r.posted, discussion_id: r.discussion_id, error: '' });
+            else n.error = r.error || 'не опубликовано';
+            if (res.warning) block(res.warning);
+        } catch (e) {
+            onError(e, 'ошибка публикации комментария');
+        }
+        sync();
+        refresh();
+    });
+    edit.addEventListener('click', () => { editing = true; sync(); text.focus(); });
+    cancelEdit.addEventListener('click', () => { editing = false; text.value = n.posted; sync(); });
+    save.addEventListener('click', async () => {
+        const next = text.value.trim();
+        const ok = await confirmDialog({
+            title: `${mrLabel()}: изменить опубликованный комментарий`,
+            items: [{ head: `${where} · было`, text: n.posted }, { head: `${where} · станет`, text: next, flags: textFlags(next) }],
+            ok: 'Сохранить в GitLab',
+        });
+        if (!ok) return;
+        save.disabled = true;
+        try {
+            const res = await api('/api/edit-note', { id: n.id, text: next, expected_posted: n.posted });
+            Object.assign(n, { posted: res.note.posted, text: res.note.text, error: res.note.error, at: res.note.at });
+            if (!n.error) editing = false;
+        } catch (e) {
+            onError(e, 'комментарий не изменён');
+        }
+        sync();
+    });
+    removeRemote.addEventListener('click', async () => {
+        const ok = await confirmDialog({ title: `${mrLabel()}: удалить тред из GitLab`, items: [{ head: where, text: n.posted }], note: 'Удаляется ваш комментарий; ответы других участников в треде, если они есть, остаются.', ok: 'Удалить из GitLab' });
+        if (!ok) return;
+        removeRemote.disabled = true;
+        try {
+            const res = await api('/api/delete-note', { id: n.id });
+            if (res.deleted) {
+                userNotes = userNotes.filter((x) => x !== n);
+                form.remove();
+                refresh();
+                return;
+            }
+            n.error = res.note?.error || 'не удалено';
+        } catch (e) {
+            onError(e, 'комментарий не удалён');
+        }
+        removeRemote.disabled = false;
+        sync();
+    });
+    n.form = { sync };
+    sync();
+    return form;
+}
+
+const notesForAgent = () => userNotes.filter((n) => n.to_agent && n.text.trim() && !n.agent_reply).length;
+
+function renderDiffCard(file, open) {
+    const code = el('div', { className: 'code', role: 'region', ariaLabel: `Diff ${file}` });
+    const stat = el('span', {}, '');
+    const loc = fileLoc(file);
+    // Кнопка «Копировать» внутри <summary> не должна сворачивать карточку.
+    loc.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') e.preventDefault(); });
+    const card = el('details', { className: 'card diff', open }, el('summary', {}, loc, stat), code);
+    const load = () => {
+        if (!diffCache.has(file)) diffCache.set(file, api(`/api/diff?file=${encodeURIComponent(file)}`).then((d) => d.lines));
+        code.replaceChildren(el('div', { className: 'empty' }, 'Загрузка…'));
+        diffCache.get(file).then((lines) => {
+            const added = lines.filter((l) => l.t === '+').length;
+            const deleted = lines.filter((l) => l.t === '-').length;
+            stat.replaceChildren(el('span', { className: 'stat-add' }, `+${added}`), ' ', el('span', { className: 'stat-del' }, `−${deleted}`));
+            renderDiffLines(code, file, lines);
+        }, (e) => { diffCache.delete(file); code.replaceChildren(el('div', { className: 'empty' }, `diff не загружен: ${e.message}`)); });
+    };
+    card.addEventListener('toggle', () => { if (card.open) load(); });
+    if (open) load();
+    return card;
+}
+
+function renderDiffCards() {
+    const box = document.getElementById('diffs');
+    if (!box) return;
+    const files = diffOpen ? diffFiles.filter((f) => matchesSelection(f)) : [];
+    const key = files.join('\n');
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
+    const shown = files.slice(0, DIFF_LIMIT);
+    box.replaceChildren(...shown.map((file) => renderDiffCard(file, files.length === 1)));
+    if (files.length > shown.length) box.append(el('div', { className: 'card empty' }, `Показаны первые ${shown.length} из ${files.length} файлов: выберите папку или файл в дереве.`));
+}
+
+document.getElementById('diff-toggle').addEventListener('click', () => {
+    diffOpen = !diffOpen;
+    try { localStorage.setItem('mr-ui-diff', diffOpen ? '1' : '0'); } catch {}
+    document.getElementById('diff-toggle').setAttribute('aria-pressed', String(diffOpen));
+    applyFilter();
+});
+document.getElementById('diff-toggle').setAttribute('aria-pressed', String(diffOpen));
+
+function chooseNode(value) {
+    selected = selected === value ? undefined : value;
+    applyFilter();
+    renderTree();
+    document.getElementById('list').scrollTop = 0;
+}
+
+document.getElementById('tree-toggle').addEventListener('click', () => {
+    treeOpen = !treeOpen;
+    try { localStorage.setItem('mr-ui-tree', treeOpen ? '1' : '0'); } catch {}
+    renderTree();
+});
+
+// ---- Подтверждение действия в GitLab. Показывает каждый текст целиком (прокручивается) и помечает то, что легко
+// спрятать в длинном тексте. items: [{ head, text, flags }]. Разрешается true при нажатии основной кнопки.
+let confirmBox;
+function confirmDialog({ title, items = [], note = '', ok = 'Опубликовать' }) {
+    if (!confirmBox) {
+        confirmBox = el('dialog', { id: 'confirm' });
+        document.body.append(confirmBox);
+    }
+    return new Promise((resolve) => {
+        const okButton = el('button', { type: 'button' }, ok);
+        const cancel = el('button', { type: 'button', className: 'secondary' }, 'Отмена');
+        const form = el('form', { method: 'dialog' },
+            el('h2', {}, title),
+            el('div', { className: 'cbody' },
+                ...items.map((item) => el('div', { className: 'citem' },
+                    el('div', { className: 'chead' }, item.head, ...(item.flags || []).map((f) => el('span', { className: 'flag' }, `⚠ ${f}`))),
+                    el('div', { className: 'ctext' }, item.text))),
+                note ? el('div', { className: 'cnote' }, note) : ''),
+            el('div', { className: 'cfoot' }, cancel, okButton));
+        form.addEventListener('submit', (e) => e.preventDefault());
+        confirmBox.replaceChildren(form);
+        let settled = false;
+        const finish = (value) => { if (settled) return; settled = true; confirmBox.close(); resolve(value); };
+        okButton.addEventListener('click', () => finish(true));
+        cancel.addEventListener('click', () => finish(false));
+        confirmBox.addEventListener('close', () => finish(false), { once: true });
+        confirmBox.showModal();
+        cancel.focus();
+    });
+}
+const textFlags = (text) => [/@(all|here)\b/i.test(text) && '@all/@here', /https?:\/\/|www\.|\]\(/i.test(text) && 'ссылка', /<!--/.test(text) && 'HTML-комментарий'].filter(Boolean);
+const mrLabel = () => `MR !${mr}${project ? ` (${project})` : ''}`;
+
+// ---- Уведомление о результате действия (реакция поставлена или снята, ошибка).
+const toastEl = el('div', { id: 'toast', hidden: true });
+toastEl.setAttribute('role', 'status');
+document.body.append(toastEl);
+let toastTimer;
+function toast(text, isError) {
+    toastEl.textContent = text;
+    toastEl.className = isError ? 'err' : '';
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.hidden = true; }, isError ? 6000 : 2500);
+}
+
+// ---- Редактор комментария (как в GitLab): панель форматирования, горячие клавиши, продолжение списков, предпросмотр.
+function replaceRange(area, from, to, text, selStart, selEnd) {
+    area.focus();
+    area.setSelectionRange(from, to);
+    // execCommand сохраняет историю отмены (Ctrl+Z) и сам вызывает input; без него - запасной путь.
+    if (!document.execCommand('insertText', false, text)) {
+        area.setRangeText(text, from, to, 'end');
+        area.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    area.setSelectionRange(selStart, selEnd);
+}
+
+function wrapSelection(area, before, after, placeholder) {
+    const { selectionStart: s, selectionEnd: e, value } = area;
+    const picked = value.slice(s, e) || placeholder;
+    replaceRange(area, s, e, before + picked + after, s + before.length, s + before.length + picked.length);
+}
+
+// Применяет префикс к каждой строке выделения; повторное применение того же префикса его снимает.
+function prefixLines(area, prefixOf) {
+    const { selectionStart: s, selectionEnd: e, value } = area;
+    const from = value.lastIndexOf('\n', s - 1) + 1;
+    const nl = value.indexOf('\n', e);
+    const to = nl === -1 ? value.length : nl;
+    const lines = value.slice(from, to).split('\n');
+    const prefixes = lines.map((_, i) => prefixOf(i));
+    const all = lines.every((line, i) => line.startsWith(prefixes[i]));
+    const block = lines.map((line, i) => (all ? line.slice(prefixes[i].length) : prefixes[i] + line)).join('\n');
+    replaceRange(area, from, to, block, from, from + block.length);
+}
+
+function insertLink(area) {
+    const { selectionStart: s, selectionEnd: e, value } = area;
+    const label = value.slice(s, e) || 'текст';
+    const text = `[${label}](url)`;
+    const urlStart = s + label.length + 3;
+    replaceRange(area, s, e, text, urlStart, urlStart + 3);
+}
+
+function insertSuggestion(area) {
+    const { selectionStart: s, selectionEnd: e, value } = area;
+    const picked = value.slice(s, e);
+    const head = '```suggestion:-0+0\n';
+    replaceRange(area, s, e, `${head}${picked}\n\`\`\``, s + head.length, s + head.length + picked.length);
+}
+
+const TOOLS = [
+    ['suggest', '±', 'Предложить изменение', (a) => insertSuggestion(a), true],
+    ['bold', 'B', 'Жирный (Ctrl+B)', (a) => wrapSelection(a, '**', '**', 'текст')],
+    ['italic', 'I', 'Курсив (Ctrl+I)', (a) => wrapSelection(a, '_', '_', 'текст')],
+    ['strike', 'S', 'Зачёркнутый', (a) => wrapSelection(a, '~~', '~~', 'текст')],
+    ['|'],
+    ['quote', '❝', 'Цитата', (a) => prefixLines(a, () => '> ')],
+    ['code', '</>', 'Код', (a) => (a.value.slice(a.selectionStart, a.selectionEnd).includes('\n') ? wrapSelection(a, '```\n', '\n```', 'код') : wrapSelection(a, '`', '`', 'код'))],
+    ['link', '🔗', 'Ссылка (Ctrl+K)', (a) => insertLink(a)],
+    ['|'],
+    ['ul', '•', 'Маркированный список', (a) => prefixLines(a, () => '- ')],
+    ['ol', '1.', 'Нумерованный список', (a) => prefixLines(a, (i) => `${i + 1}. `)],
+    ['task', '☑', 'Список задач', (a) => prefixLines(a, () => '- [ ] ')],
+];
+
+// Enter в строке списка продолжает список, Enter в пустом пункте его заканчивает.
+const LIST_ITEM = /^(\s*)(?:(\d+)\.|[-*])(\s+\[[ x]\])?\s+/;
+function continueList(area, e) {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing || area.selectionStart !== area.selectionEnd) return;
+    const { selectionStart: pos, value } = area;
+    const from = value.lastIndexOf('\n', pos - 1) + 1;
+    const line = value.slice(from, pos);
+    const m = LIST_ITEM.exec(line);
+    if (!m) return;
+    e.preventDefault();
+    if (line.length === m[0].length) {
+        replaceRange(area, from, pos, '', from, from);
+        return;
+    }
+    const marker = m[2] ? `${Number(m[2]) + 1}.` : line.trim()[0];
+    const insert = `\n${m[1]}${marker}${m[3] ? ' [ ]' : ''} `;
+    replaceRange(area, pos, pos, insert, pos + insert.length, pos + insert.length);
+}
+
+// Безопасный предпросмотр Markdown: узлы DOM, без innerHTML; ссылки только http(s).
+const INLINE = /`([^`]+)`|\*\*(.+?)\*\*|~~(.+?)~~|(?<![\w])_(.+?)_(?![\w])|\*(.+?)\*|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(@[\w.-]+)/gu;
+function inlineMd(text) {
+    const out = [];
+    let last = 0;
+    for (const m of text.matchAll(INLINE)) {
+        if (m.index > last) out.push(text.slice(last, m.index));
+        if (m[1] !== undefined) out.push(el('code', {}, m[1]));
+        else if (m[2] !== undefined) out.push(el('b', {}, ...inlineMd(m[2])));
+        else if (m[3] !== undefined) out.push(el('s', {}, ...inlineMd(m[3])));
+        else if (m[4] !== undefined || m[5] !== undefined) out.push(el('i', {}, ...inlineMd(m[4] ?? m[5])));
+        else if (m[6] !== undefined) out.push(el('a', { href: m[7], target: '_blank', rel: 'noopener noreferrer' }, ...inlineMd(m[6])));
+        else out.push(el('b', {}, m[8]));
+        last = m.index + m[0].length;
+    }
+    if (last < text.length) out.push(text.slice(last));
+    return out;
+}
+
+function renderMarkdown(source) {
+    const lines = source.replace(/\r\n?/g, '\n').split('\n');
+    const nodes = [];
+    for (let i = 0; i < lines.length;) {
+        const line = lines[i];
+        if (/^```/.test(line)) {
+            const code = [];
+            for (i++; i < lines.length && !/^```/.test(lines[i]); i++) code.push(lines[i]);
+            i++;
+            nodes.push(el('pre', {}, el('code', {}, code.join('\n'))));
+        } else if (/^>\s?/.test(line)) {
+            const quote = [];
+            for (; i < lines.length && /^>\s?/.test(lines[i]); i++) quote.push(lines[i].replace(/^>\s?/, ''));
+            nodes.push(el('blockquote', {}, ...inlineMd(quote.join('\n'))));
+        } else if (/^\s*([-*]|\d+\.)\s+/.test(line)) {
+            const ordered = /^\s*\d+\./.test(line);
+            const items = [];
+            for (; i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i]); i++) {
+                const task = /^\s*(?:[-*]|\d+\.)\s+\[([ x])\]\s+(.*)$/.exec(lines[i]);
+                const text = task ? task[2] : lines[i].replace(/^\s*(?:[-*]|\d+\.)\s+/, '');
+                const li = el('li', {}, ...(task ? [el('input', { type: 'checkbox', disabled: true, checked: task[1] === 'x' }), ' '] : []), ...inlineMd(text));
+                items.push(li);
+            }
+            nodes.push(el(ordered ? 'ol' : 'ul', {}, ...items));
+        } else if (line.trim() === '') {
+            i++;
+        } else {
+            const para = [];
+            for (; i < lines.length && lines[i].trim() !== '' && !/^(```|>|\s*([-*]|\d+\.)\s+)/.test(lines[i]); i++) para.push(lines[i]);
+            nodes.push(el('p', {}, ...inlineMd(para.join('\n'))));
+        }
+    }
+    return nodes;
+}
+
+// Оборачивает поле ответа: вкладки «Написать / Предпросмотр», панель форматирования и горячие клавиши.
+function makeEditor(area, canSuggest) {
+    const preview = el('div', { className: 'preview text', hidden: true });
+    const write = el('button', { type: 'button', className: 'tab' }, 'Написать');
+    const view = el('button', { type: 'button', className: 'tab' }, 'Предпросмотр');
+    for (const tab of [write, view]) tab.setAttribute('role', 'tab');
+    const tools = el('div', { className: 'tools' });
+    const show = (previewMode, focus) => {
+        write.setAttribute('aria-selected', String(!previewMode));
+        view.setAttribute('aria-selected', String(previewMode));
+        area.hidden = previewMode;
+        preview.hidden = !previewMode;
+        tools.hidden = previewMode;
+        if (previewMode) {
+            const nodes = renderMarkdown(area.value);
+            preview.replaceChildren(...(nodes.length ? nodes : [el('span', { className: 'muted' }, 'Нечего показывать')]));
+        } else if (focus) {
+            area.focus();
+        }
+    };
+    write.addEventListener('click', () => show(false, true));
+    view.addEventListener('click', () => show(true, false));
+    const actions = new Map();
+    for (const [id, label, title, run, suggestOnly] of TOOLS) {
+        if (id === '|') { tools.append(el('span', { className: 'sep' })); continue; }
+        if (suggestOnly && !canSuggest) continue;
+        const b = el('button', { type: 'button', className: 'tool', title }, label);
+        b.setAttribute('aria-label', title);
+        b.addEventListener('mousedown', (e) => e.preventDefault());
+        b.addEventListener('click', () => run(area));
+        tools.append(b);
+        actions.set(id, run);
+    }
+    area.addEventListener('keydown', (e) => {
+        if (mention?.area === area) return;
+        const mod = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+        const key = mod ? { b: 'bold', i: 'italic', k: 'link' }[e.key.toLowerCase()] : null;
+        if (key) {
+            e.preventDefault();
+            actions.get(key)(area);
+            return;
+        }
+        continueList(area, e);
+    });
+    show(false);
+    return el('div', { className: 'editor' }, el('div', { className: 'editor-bar', role: 'tablist' }, write, view, tools), area, preview);
+}
+
+// Цвет имени автора, как у аватарок в мессенджере, - из палитры avatarka по имени.
+function colorIndex(name) {
+    let h = 0;
+    for (const ch of name) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+    return h % 11;
+}
+
+const EMOJI = { thumbsup: '👍', thumbsdown: '👎', smile: '😄', tada: '🎉', confused: '😕', heart: '❤️', rocket: '🚀', eyes: '👀' };
+const REACTION_NAMES = { thumbsup: 'Нравится', thumbsdown: 'Не нравится', smile: 'Смех', tada: 'Ура', confused: 'Смущение', heart: 'Сердце', rocket: 'Ракета', eyes: 'Смотрю' };
+let awards = {};            // note_id -> [{ name, users, mine }]
+let meUser = '';            // логин владельца glab (приходит вместе с реакциями)
+const pendingReact = new Set();  // `${note_id}:${emoji}` - запрос ещё идёт
+const bars = new Map();     // note_id -> { bar, open }
+
+function drawBar(id) {
+    const entry = bars.get(id);
+    if (!entry) return;
+    const list = awards[id] || [];
+    const chips = list.map((a) => {
+        const chip = el('button', { type: 'button', className: 'secondary' + (a.mine ? ' mine' : '') + (pendingReact.has(`${id}:${a.name}`) ? ' pending' : ''), title: `${REACTION_NAMES[a.name]}: ${a.users.join(', ')}` }, `${EMOJI[a.name]} ${a.users.length}`);
+        chip.setAttribute('aria-pressed', String(a.mine));
+        chip.addEventListener('click', () => react(id, a.name));
+        return chip;
+    });
+    const add = el('button', { type: 'button', className: 'secondary add', title: 'Добавить реакцию' }, '☺ +');
+    add.setAttribute('aria-expanded', String(entry.open));
+    add.addEventListener('click', () => { entry.open = !entry.open; drawBar(id); });
+    const picker = entry.open ? [el('div', { className: 'picker' }, ...Object.keys(EMOJI).map((name) => {
+        const b = el('button', { type: 'button', className: 'secondary', title: REACTION_NAMES[name] }, EMOJI[name]);
+        b.setAttribute('aria-label', REACTION_NAMES[name]);
+        b.addEventListener('click', () => { entry.open = false; react(id, name); });
+        return b;
+    }))] : [];
+    entry.bar.replaceChildren(...chips, add, ...picker);
+}
+
+// Реакция показывается сразу (чип приглушён, пока идёт запрос), результат сервера её подтверждает или откатывает.
+function withReaction(list, name, add) {
+    const next = list.map((a) => ({ ...a, users: [...a.users] }));
+    const me = meUser || 'вы';
+    const entry = next.find((a) => a.name === name);
+    if (add) {
+        if (entry) { entry.users.push(me); entry.mine = true; } else next.push({ name, users: [me], mine: true });
+    } else if (entry) {
+        entry.users = entry.users.filter((u) => u !== me);
+        entry.mine = false;
+    }
+    const order = Object.keys(EMOJI);
+    return next.filter((a) => a.users.length).sort((x, y) => order.indexOf(x.name) - order.indexOf(y.name));
+}
+
+async function react(id, emoji) {
+    const key = `${id}:${emoji}`;
+    if (pendingReact.has(key)) return;
+    const before = awards[id] || [];
+    const removing = before.some((a) => a.name === emoji && a.mine);
+    awards[id] = withReaction(before, emoji, !removing);
+    pendingReact.add(key);
+    drawBar(id);
+    try {
+        const res = await api('/api/react', { note_id: id, emoji });
+        awards[id] = res.awards;
+        toast(`${EMOJI[emoji]} ${removing ? 'реакция снята' : 'реакция поставлена'}`);
+    } catch (e) {
+        awards[id] = before;
+        toast(`Не удалось ${removing ? 'снять' : 'поставить'} реакцию ${EMOJI[emoji]}: ${e.message}`, true);
+    } finally {
+        pendingReact.delete(key);
+        drawBar(id);
+    }
+}
+
+async function loadAwards() {
+    try {
+        const res = await api('/api/awards');
+        awards = res.awards || {};
+        meUser = res.user || '';
+        if (res.failed) hint.textContent = `реакции загружены не для всех комментариев (${res.failed})`;
+        for (const id of bars.keys()) drawBar(id);
+    } catch (e) {
+        hint.textContent = `реакции не загружены: ${e.message}`;
+    }
+}
+
+function renderNotes(notes, threadId) {
+    return notes.map((n) => {
+        const when = n.at && !Number.isNaN(Date.parse(n.at)) ? new Date(n.at).toLocaleString('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+        const avatar = el('div', { className: 'avatar' }, [...(n.name || n.author)][0]?.toUpperCase() ?? '?');
+        avatar.setAttribute('aria-hidden', 'true');
+        avatar.style.setProperty('--h', String(colorIndex(n.author) * 33));
+        const head = el('div', { className: 'msg-head' }, el('b', {}, n.name || n.author), el('span', {}, `@${n.author}`), when ? el('span', {}, when) : '');
+        const text = el('div', { className: 'text' }, n.body);
+        const body = el('div', { className: 'msg-body' }, head, text, reactionBar(n.id));
+        if (n.id && threadId && meUser && n.author === meUser) head.append(...ownNoteControls(threadId, n, text, body));
+        return el('div', { className: 'msg' }, avatar, body);
+    });
+}
+
+// Своя заметка в треде: правка и удаление уходят в GitLab (разрешены только автору) после подтверждения.
+function ownNoteControls(threadId, n, textEl, bodyEl) {
+    const edit = el('button', { type: 'button', className: 'secondary mini' }, 'Редактировать');
+    const remove = el('button', { type: 'button', className: 'secondary mini' }, 'Удалить');
+    const where = cards.get(threadId)?.thread.path ? `${cards.get(threadId).thread.path}${cards.get(threadId).thread.line ? ':' + cards.get(threadId).thread.line : ''}` : 'общий комментарий';
+    edit.addEventListener('click', () => {
+        const area = el('textarea', { value: n.body });
+        area.setAttribute('aria-label', 'Новый текст заметки');
+        const save = el('button', { type: 'button' }, 'Сохранить в GitLab');
+        const cancel = el('button', { type: 'button', className: 'secondary' }, 'Отмена');
+        const editor = el('div', { className: 'note-edit' }, area, el('div', { className: 'actions' }, save, cancel));
+        textEl.hidden = true;
+        edit.disabled = remove.disabled = true;
+        textEl.after(editor);
+        const close = () => { editor.remove(); textEl.hidden = false; edit.disabled = remove.disabled = false; };
+        cancel.addEventListener('click', close);
+        area.addEventListener('input', () => { save.disabled = !area.value.trim() || area.value.trim() === n.body.trim(); });
+        save.disabled = true;
+        save.addEventListener('click', async () => {
+            const next = area.value.trim();
+            const ok = await confirmDialog({ title: `${mrLabel()}: изменить заметку в треде`, items: [{ head: `${where} · было`, text: n.body }, { head: `${where} · станет`, text: next, flags: textFlags(next) }], ok: 'Сохранить в GitLab' });
+            if (!ok) return;
+            save.disabled = cancel.disabled = true;
+            try {
+                const res = await api('/api/edit-thread-note', { discussion_id: threadId, note_id: n.id, text: next, expected_body: n.body });
+                if (res.version) version = res.version;
+                toast('Заметка изменена в GitLab');
+                await afterNoteChange();
+            } catch (e) {
+                onError(e, 'заметка не изменена');
+                save.disabled = cancel.disabled = false;
+            }
+        });
+        area.focus();
+    });
+    remove.addEventListener('click', async () => {
+        const ok = await confirmDialog({ title: `${mrLabel()}: удалить заметку из GitLab`, items: [{ head: where, text: n.body }], note: 'Если это единственная заметка треда, GitLab удалит весь тред.', ok: 'Удалить из GitLab' });
+        if (!ok) return;
+        edit.disabled = remove.disabled = true;
+        try {
+            const res = await api('/api/delete-thread-note', { discussion_id: threadId, note_id: n.id });
+            if (res.version) version = res.version;
+            toast('Заметка удалена из GitLab');
+            await afterNoteChange();
+        } catch (e) {
+            onError(e, 'заметка не удалена');
+            edit.disabled = remove.disabled = false;
+        }
+    });
+    return [edit, remove];
+}
+
+// После правки или удаления заметки: статус ответа мог измениться на сервере (replies.json), переписка - в GitLab.
+async function afterNoteChange() {
+    try {
+        await resync();
+    } catch {}
+    await refreshThreads();
+    loadAwards();
+}
+
+function reactionBar(id) {
+    if (!id) return '';
+    const bar = el('div', { className: 'reactions' });
+    bars.set(id, { bar, open: false });
+    drawBar(id);
+    return bar;
+}
+
+// Подтягивает переписку из GitLab (ответы из UI и чужие). Поля ввода не трогаются.
+async function refreshThreads() {
+    const { threads, threadsError } = await api('/api/threads');
+    const seen = new Set();
+    for (const t of threads) {
+        seen.add(t.id);
+        const c = cards.get(t.id);
+        if (!c) continue;
+        c.thread = t;
+        c.notesBox.replaceChildren(...renderNotes(t.notes, t.id));
+        showPosted(c, done.get(t.id)?.posted);
+    }
+    // Тред, которого в GitLab больше нет (удалена единственная заметка), убирается со страницы.
+    if (!threadsError) {
+        for (const [id, c] of cards) {
+            if (seen.has(id)) continue;
+            c.root.remove();
+            cards.delete(id);
+            const i = cardFiles.findIndex((f) => f.root === c.root);
+            if (i >= 0) cardFiles.splice(i, 1);
+        }
+    }
+    scheduleTree();
+    refresh();
+    if (threadsError) hint.textContent = `переписка не обновлена из GitLab, показана выгрузка: ${threadsError}`;
+}
+
+// Опубликованный ответ показывается над полем, только если его ещё нет в переписке треда
+// (если GitLab недоступен и переписка взята из выгрузки). Поле свободно для нового ответа.
+function showPosted(c, posted) {
+    const text = String(posted ?? '').trim();
+    c.postedBox.hidden = !text || c.thread.notes.some((n) => n.body.trim() === text);
+    c.postedBox.replaceChildren(...(text ? [el('div', { className: 'where' }, 'Опубликовано в GitLab'), el('div', { className: 'text' }, text)] : []));
+}
+
+function statusText(d) {
+    if (d.error) return `ошибка: ${d.error}`;
+    return [d.replied && 'ответ опубликован', d.resolved && 'тред закрыт'].filter(Boolean).join(', ');
+}
+
+// Что ещё нужно отправить в GitLab: новый текст ответа (правка опубликованного - это новый ответ) и/или закрытие треда.
+const replyNeeded = (id, c) => {
+    const d = done.get(id) || {};
+    return Boolean(c.area.value.trim()) && !(d.replied && c.area.value.trim() === String(d.posted ?? '').trim());
+};
+const resolveNeeded = (id, c) => c.resolve.checked && !done.get(id)?.resolved;
+const actionable = (id, c) => replyNeeded(id, c) || resolveNeeded(id, c);
+
+function render(state) {
+    mr = state.mr;
+    people = state.people || [];
+    meUser = state.user || meUser;
+    version = state.version;
+    blocked = version === null ? `replies.json недоступен, запись отключена: ${state.warning}` : '';
+    hint.textContent = blocked || state.warning || (state.threadsError ? `GitLab недоступен, переписка из выгрузки: ${state.threadsError}` : '');
+    showHandoff(state.handoff);
+    const info = state.info || {};
+    document.getElementById('title').textContent = `MR !${mr}${info.title ? ` · ${info.title}` : ''}`;
+    project = info.project || '';
+    const list = document.getElementById('list');
+    list.replaceChildren();
+    cards.clear();
+    dirty.clear();
+    generalDirty = false;
+    generalArea = el('textarea', { className: 'agent', value: state.general_note || '', placeholder: 'Общий комментарий агенту по всему MR (в GitLab не уходит)' });
+    generalArea.setAttribute('aria-label', 'Общий комментарий агенту по всему MR');
+    generalArea.addEventListener('input', () => { generalDirty = true; touch(); });
+    cardFiles.length = 0;
+    diffFiles = state.diffFiles || [];
+    const summaryCard = renderSummary(state.summary);
+    if (summaryCard) { list.append(summaryCard); registerCard(summaryCard, null); }
+    list.append(el('div', { id: 'diffs' }));
+    diffCache.clear();
+    userNotes = (state.notes || []).map((n) => ({ ...n }));
+    noteDirty.clear();
+    bars.clear();
+    findingCards.clear();
+    findingDirty.clear();
+    for (const f of state.findings || []) {
+        const findingCard = renderFinding(f, (state.decisions || {})[f.id], (state.published || {})[f.id]);
+        list.append(findingCard);
+        registerCard(findingCard, f.file);
+    }
+    const generalCard = el('section', { className: 'card' }, el('div', { className: 'where' }, 'Агенту · весь MR'), generalArea);
+    list.append(generalCard);
+    registerCard(generalCard, null);
+    document.getElementById('count').textContent = `${project ? project + ' · ' : ''}тредов: ${state.threads.length}${(state.findings || []).length ? `, замечаний ревью: ${state.findings.length}` : ''}${userNotes.length ? `, комментариев к строкам: ${userNotes.length} (кнопка «Diff»)` : ''}`;
+    for (const thread of state.threads) {
+        const draft = state.drafts[thread.id] || { reply: '', resolve: false, note_for_agent: '', agent_action: '', posted: '', replied: false, resolved: false, error: '' };
+        if (draft.replied || draft.resolved) done.set(thread.id, { replied: draft.replied, resolved: draft.resolved, posted: draft.posted });
+        const canResolve = thread.resolvable && !thread.resolved;
+        const published = draft.replied;
+        const area = el('textarea', { value: published ? '' : draft.reply, placeholder: published ? 'Ещё один ответ в тред (@ - упомянуть)' : 'Ответ в тред (пусто - без ответа, @ - упомянуть)' });
+        const postedBox = el('div', { className: 'posted' });
+        const notesBox = el('div', { className: 'notes' }, ...renderNotes(thread.notes, thread.id));
+        area.setAttribute('aria-label', `Ответ в тред ${thread.id.slice(0, 8)}`);
+        attachMentions(area);
+        const editor = makeEditor(area, Boolean(thread.path));
+        const note = el('textarea', { className: 'agent', value: draft.note_for_agent, placeholder: 'Заметка агенту (в GitLab не уходит)' });
+        note.setAttribute('aria-label', `Заметка агенту по треду ${thread.id.slice(0, 8)}`);
+        const action = el('select', {}, ...ACTIONS.map(([value, label]) => el('option', { value, selected: value === draft.agent_action }, label)));
+        // Выбор для публикации всегда делает пользователь: черновик агента сам не отмечается.
+        action.setAttribute('aria-label', `Действие для агента по треду ${thread.id.slice(0, 8)}`);
+        const include = el('input', { type: 'checkbox' });
+        const resolve = el('input', { type: 'checkbox', checked: canResolve && draft.resolve, disabled: !canResolve });
+        const status = el('span', { className: 'badge ' + (draft.error ? 'err' : 'ok') }, statusText(draft));
+        const where = [thread.path ? fileLoc(thread.path, thread.line) : null, thread.resolved ? 'закрыт' : null]
+            .filter(Boolean);
+        if (!where.length) where.push('общий комментарий');
+        const root = el('section', { className: 'card' },
+            el('div', { className: 'where' }, ...where),
+            notesBox,
+            postedBox,
+            editor,
+            note,
+            el('div', { className: 'controls' },
+                action,
+                el('label', {}, include, 'Публиковать'),
+                el('label', {}, resolve, 'Закрыть тред'),
+                status));
+        for (const control of [area, note, action, include, resolve]) {
+            control.addEventListener('input', () => { if (control !== include) dirty.add(thread.id); touch(); });
+        }
+        const card = { thread, where, area, note, action, include, resolve, canResolve, keepResolve: draft.resolve, status, root, postedBox, notesBox };
+        showPosted(card, draft.posted);
+        cards.set(thread.id, card);
+        root.classList.toggle('done', (draft.replied || draft.resolved) && !actionable(thread.id, card));
+        list.append(root);
+        registerCard(root, thread.path);
+    }
+    list.append(el('div', { className: 'card empty', id: 'empty-files', hidden: true }, 'В выбранном файле или папке нет карточек. Нажмите на него ещё раз или выберите «Все карточки».'));
+    applyFilter();
+    refresh();
+}
+
+// Подтягивает состояние файла после конфликта версий (агент записал replies.json): карточки, которые
+// пользователь не трогал, обновляются, а его несохранённые правки остаются и уйдут поверх.
+function applyServerState(state) {
+    version = state.version;
+    people = state.people || people;
+    meUser = state.user || meUser;
+    showHandoff(state.handoff);
+    if (Array.isArray(state.notes)) applyNotes(state.notes);
+    if (!generalDirty) generalArea.value = state.general_note || '';
+    for (const [id, c] of cards) {
+        const draft = state.drafts[id];
+        if (!draft) {
+            done.delete(id);
+            continue;
+        }
+        if (draft.replied || draft.resolved) done.set(id, { replied: draft.replied, resolved: draft.resolved, posted: draft.posted });
+        else done.delete(id);
+        showPosted(c, draft.posted);
+        if (dirty.has(id)) continue;
+        c.area.value = draft.replied ? '' : draft.reply;
+        c.note.value = draft.note_for_agent;
+        c.action.value = draft.agent_action;
+        c.resolve.checked = c.canResolve && draft.resolve;
+        c.keepResolve = draft.resolve;
+        c.status.className = 'badge ' + (draft.error ? 'err' : 'ok');
+        c.status.textContent = statusText(draft);
+        c.root.classList.toggle('done', (draft.replied || draft.resolved) && !actionable(id, c));
+    }
+    refresh();
+}
+
+async function resync() {
+    const state = await api('/api/state');
+    if (state.version === null) {
+        block(`replies.json недоступен, запись отключена: ${state.warning}`);
+        throw new Error(blocked);
+    }
+    applyServerState(state);
+}
+
+const pending = () => [...cards].filter(([id, c]) => c.include.checked && actionable(id, c));
+
+let saveTimer;
+function refresh() {
+    scheduleTree();
+    const n = pending().length;
+    document.getElementById('publish').disabled = n === 0 || Boolean(blocked);
+    document.getElementById('handoff').disabled = Boolean(blocked);
+    const findingsButton = document.getElementById('publish-findings');
+    const findingsCount = pendingFindings().length;
+    findingsButton.hidden = findingCards.size === 0;
+    findingsButton.disabled = findingsCount === 0;
+    findingsButton.textContent = findingsCount ? `Опубликовать замечания (${findingsCount})` : 'Опубликовать замечания';
+    document.getElementById('summary').textContent = n ? `выбрано тредов: ${n}` : 'ничего не выбрано';
+}
+
+function touch() {
+    refresh();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => saveDrafts().catch((e) => onError(e, 'черновики не сохранены')), 600);
+}
+
+// Отправляются только изменённые карточки: нетронутые черновики агента не перезаписываются.
+// Ошибка пробрасывается: вызывающий (handoff, публикация) не должен идти дальше с несохранёнными правками.
+function saveDrafts(options) {
+    clearTimeout(saveTimer);
+    return enqueue(async () => {
+        let resynced = false;
+        for (let attempt = 0; ; attempt++) {
+            if (blocked) throw new Error(blocked);
+            const ids = [...dirty];
+            const general = generalDirty;
+            if (!ids.length && !general) return { resynced };
+            const drafts = {};
+            for (const id of ids) {
+                const c = cards.get(id);
+                drafts[id] = {
+                    reply: c.area.value,
+                    resolve: c.canResolve ? c.resolve.checked : c.keepResolve,
+                    note_for_agent: c.note.value,
+                    agent_action: c.action.value,
+                };
+            }
+            dirty.clear();
+            generalDirty = false;
+            try {
+                const res = await api('/api/drafts', { version, drafts, ...(general ? { general_note: generalArea.value } : {}) }, options);
+                version = res.version;
+                hint.textContent = resynced ? 'файл изменён агентом: его правки подтянуты, ваши сохранены поверх' : '';
+                return { resynced };
+            } catch (e) {
+                ids.forEach((id) => dirty.add(id));
+                generalDirty = generalDirty || general;
+                if (e.status !== 409 || attempt > 0 || options?.keepalive) throw e;
+                // Агент изменил файл: подтягиваем его правки к карточкам, которые вы не трогали, и сохраняем свои поверх.
+                await resync();
+                resynced = true;
+            }
+        }
+    });
+}
+
+function showHandoff(handoff) {
+    document.getElementById('handoff').title = handoff ? `передано ${new Date(handoff.at).toLocaleTimeString()}, агент ещё не сбросил метку` : '';
+}
+
+document.getElementById('select-all').addEventListener('click', () => {
+    for (const [id, c] of cards) c.include.checked = actionable(id, c);
+    refresh();
+});
+
+// Метка handoff будит агента, который ждёт её в фоне; фраза в буфере - запасной путь для чата.
+document.getElementById('handoff').addEventListener('click', async () => {
+    try {
+        await saveNotes();
+        await saveDrafts();
+        await enqueue(async () => {
+            try {
+                version = (await api('/api/drafts', { version, handoff: true })).version;
+            } catch (e) {
+                if (e.status !== 409) throw e;
+                await resync();
+                version = (await api('/api/drafts', { version, handoff: true })).version;
+            }
+        });
+    } catch (e) {
+        onError(e, 'не удалось передать');
+        return;
+    }
+    const all = [...cards.values()];
+    const notes = all.filter((c) => c.note.value.trim()).length + (generalArea.value.trim() ? 1 : 0);
+    const fixes = all.filter((c) => c.action.value === 'fix').length;
+    const lineNotes = notesForAgent();
+    const phrase = `MR ${mr}: правки из UI, перечитай .mr-review/mr-${mr}-replies.json (заметок: ${notes}, к правке: ${fixes})${lineNotes ? ` и mr-${mr}-notes.json (комментариев к строкам: ${lineNotes})` : ''}`;
+    showHandoff({ at: new Date().toISOString() });
+    try {
+        await navigator.clipboard.writeText(phrase);
+        hint.textContent = 'передано; фраза для чата скопирована';
+    } catch {
+        hint.textContent = 'передано. Фраза для чата: ' + phrase;
+    }
+});
+
+// Подтверждение показывает ответы целиком и помечает то, что легко спрятать в длинном тексте.
+function replyPreview(c) {
+    const text = c.area.value.trim();
+    const where = c.where.map((w) => (typeof w === 'string' ? w : w.textContent.replace(/Копировать$/, ''))).join(' · ');
+    return { head: `${where} · ${text.split('\n').length} стр., ${text.length} симв.`, text, flags: textFlags(text) };
+}
+
+document.getElementById('publish').addEventListener('click', async () => {
+    const chosen = pending();
+    // Снимок того, что видно в подтверждении: сервер опубликует только совпадающий с ним текст.
+    const snapshot = new Map(chosen.map(([id, c]) => [id, { reply: c.area.value, resolve: c.canResolve ? c.resolve.checked : c.keepResolve }]));
+    const previews = chosen.filter(([id, c]) => replyNeeded(id, c)).map(([, c]) => replyPreview(c));
+    const resolves = chosen.filter(([id, c]) => resolveNeeded(id, c)).length;
+    const ok = await confirmDialog({
+        title: `${mrLabel()}: ответов - ${previews.length}, закрыть тредов - ${resolves}`,
+        items: previews,
+        note: 'Отменить из UI нельзя: опубликованный ответ удаляется только в GitLab.',
+    });
+    if (!ok) return;
+    const button = document.getElementById('publish');
+    button.disabled = true;
+    try {
+        const saved = await saveDrafts();
+        if (saved.resynced) {
+            // Файл изменил агент, пока открыто подтверждение: карточки уже обновлены, а подтверждали вы прежний текст.
+            hint.textContent = 'файл изменён агентом: карточки обновлены. Проверьте их и повторите публикацию';
+            refresh();
+            return;
+        }
+        const items = chosen.map(([id]) => ({ discussion_id: id, expected_reply: snapshot.get(id).reply, expected_resolve: snapshot.get(id).resolve }));
+        const res = await enqueue(async () => {
+            const result = await api('/api/publish', { version, items });
+            if (result.version) version = result.version;
+            return result;
+        });
+        for (const r of res.results) {
+            const c = cards.get(r.discussion_id);
+            if (!c || !r.current) continue;
+            // Состояние приходит с сервера: именно этот текст ушёл в GitLab, а не то, что набрано в поле сейчас.
+            done.set(r.discussion_id, { replied: r.current.replied, resolved: r.current.resolved, posted: r.current.posted });
+            showPosted(c, r.current.posted);
+            if (r.current.replied && c.area.value.trim() === String(r.current.posted ?? '').trim()) c.area.value = '';
+            c.status.className = 'badge ' + (r.error ? 'err' : 'ok');
+            c.status.textContent = r.error ? `ошибка: ${r.error}` : statusText(done.get(r.discussion_id));
+            c.root.classList.toggle('done', !r.error && !actionable(r.discussion_id, c));
+        }
+        await refreshThreads().catch(() => {});
+        if (res.warning) block(res.warning);
+        else if (res.results.some((r) => r.stale)) {
+            await resync();
+            hint.textContent = 'часть тредов не опубликована: текст изменился после подтверждения. Карточки обновлены, проверьте их';
+        } else hint.textContent = res.results.some((r) => r.error) ? 'часть тредов не опубликована, см. ошибки в карточках' : '';
+    } catch (e) {
+        if (e.status === 409) {
+            try {
+                await resync();
+                hint.textContent = 'файл изменён агентом: карточки обновлены. Проверьте их и повторите публикацию';
+            } catch (inner) {
+                onError(inner, 'ошибка публикации');
+            }
+        } else {
+            onError(e, 'ошибка публикации');
+        }
+    }
+    refresh();
+});
+
+// Правки за последние 600 мс до закрытия вкладки не должны пропасть.
+addEventListener('pagehide', () => {
+    if (findingDirty.size) saveFindings();
+    if (!blocked && (dirty.size || generalDirty)) saveDrafts({ keepalive: true }).catch(() => {});
+});
+
+api('/api/state').then((state) => { render(state); loadAwards(); }).catch((e) => { hint.textContent = e.message; });
+</script>
+</body>
+</html>

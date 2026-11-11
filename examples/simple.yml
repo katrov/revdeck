@@ -1,0 +1,36 @@
+# Простой проект: правила лежат рядом с кодом.
+# Скопируйте в корень репозитория как .revdeck.yml.
+version: 1
+provider:
+  type: auto
+  # Явно закрепите проект, если remote может быть подменён:
+  # host: gitlab.example.com
+  # project: group/project
+  base: main
+rules:
+  sources:
+    - AGENTS.md
+    - CONTRIBUTING.md
+  map:
+    - match: "src/**"
+      docs:
+        - AGENTS.md
+        - docs/Architecture.md
+    - match: "docs/**"
+      docs:
+        - AGENTS.md
+  ignore:
+    - "**/node_modules/**"
+    - "**/dist/**"
+checks:
+  - id: lint
+    name: lint
+    argv: [npm, run, lint]
+    when: ["src/**", "*.json", "*.ts"]
+  - id: test
+    name: tests
+    argv: [npm, test]
+    when: ["src/**"]
+publish:
+  requireApproval: true
+  maxComments: 50

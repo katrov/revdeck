@@ -1,0 +1,4 @@
+interface:
+  display_name: "Код-ревью MR"
+  short_description: "Разбор замечаний к своему MR или ревью чужого"
+  default_prompt: "Используй $mr-review, чтобы разобрать замечания к моему MR или провести ревью."
