@@ -84,6 +84,9 @@ export async function buildEffectiveRules(options: BuildRulesOptions): Promise<E
         }
         if (!docs.size) {
             for (const doc of config.rules.sources) docs.add(doc);
+            if (!docs.size) {
+                warnings.push(`${file}: нет правил — путь не сопоставлен в rules.map, а rules.sources пуст`);
+            }
         }
         const documents: RuleDocument[] = [];
         for (const doc of docs) {
@@ -100,6 +103,7 @@ export async function buildEffectiveRules(options: BuildRulesOptions): Promise<E
     if (!files.length) {
         const documents: RuleDocument[] = [];
         for (const doc of config.rules.sources) documents.push(await readDoc(doc));
+        if (!documents.length) warnings.push('общие правила: rules.sources пуст, документы не выбраны');
         scopes.push({ file: '', kind: 'other', documents });
     }
 
