@@ -63,7 +63,7 @@ revdeck ui            # open the local UI
 
 `init` never overwrites an existing config without `--force`, and it merges `.mcp.json` instead of
 replacing it. Auto-start on login: `revdeck daemon install` (systemd user unit on Linux, launchd plist
-on macOS).
+on macOS). Use a global install for this — an `npx` cache path can be evicted.
 
 ## Commands
 

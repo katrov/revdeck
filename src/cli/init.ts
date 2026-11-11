@@ -205,6 +205,10 @@ export async function installService(): Promise<string> {
     const root = packageRoot();
     const daemon = path.join(root, 'dist', 'daemon.js');
     if (!existsSync(daemon)) throw new Error('нет dist/daemon.js: сначала выполните npm run build');
+    if (daemon.includes(`${path.sep}_npx${path.sep}`)) {
+        writers.err('! пакет запущен через npx: путь к демону может исчезнуть при очистке кеша.');
+        writers.err('  для автозапуска установите глобально: npm install -g revdeck');
+    }
     if (process.platform === 'linux') {
         const dir = path.join(process.env.XDG_CONFIG_HOME || path.join(process.env.HOME || '', '.config'), 'systemd', 'user');
         await mkdir(dir, { recursive: true });
