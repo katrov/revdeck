@@ -17,7 +17,9 @@
     "examples",
     "README.md",
     "README.ru.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md"
   ],
   "scripts": {
     "build": "npm run build:server && npm run build:ui",

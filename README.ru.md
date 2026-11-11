@@ -37,7 +37,7 @@ npm install -g revdeck
 npx revdeck@latest init
 ```
 
-Требования: Node.js ≥ 22.13, `git`, для GitLab — `glab` с выполненным `glab auth login`, для
+Требования: Node.js ≥ 22.13 (рекомендуется Node 24 LTS: в 22.x `node:sqlite` экспериментален), `git`, для GitLab — `glab` с выполненным `glab auth login`, для
 GitHub — `gh` с `gh auth login`. Токены revdeck не читает и не хранит.
 
 В проекте:

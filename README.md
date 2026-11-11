@@ -39,7 +39,7 @@ agent (MCP/CLI) ──unix socket──▶ revdeck daemon ──glab/gh──▶
 
 ## Install
 
-Requirements: Node.js ≥ 22.13, `git`, and an authenticated platform CLI
+Requirements: Node.js ≥ 22.13 (Node 24 LTS recommended — `node:sqlite` is experimental in 22.x), `git`, and an authenticated platform CLI
 (`glab auth login` or `gh auth login`). revdeck never reads or stores their tokens.
 
 ```bash
