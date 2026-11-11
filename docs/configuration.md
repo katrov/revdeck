@@ -1,7 +1,9 @@
-# Конфигурация
+# Configuration
 
-Файл `.revdeck.yml` (или `.revdeck.yaml`) в корне репозитория. Схема проверяется через zod;
-неизвестное поле — ошибка с путём.
+[English](configuration.md) | [Русский](ru/configuration.md)
+
+Configuration lives in the `.revdeck.yml` (or `.revdeck.yaml`) file at the repository root. The schema
+is validated with zod; an unknown field produces an error with the field path.
 
 ```yaml
 version: 1
@@ -11,13 +13,13 @@ provider:
   project: group/project
   base: develop
 output:
-  language: auto        # auto | ru | en — язык замечаний и ответов
+  language: auto        # auto | ru | en — language of findings and replies
 rules:
   sources: [AGENTS.md]
   map:
     - match: ["src/**", "lib/**"]
       docs: ["docs/Architecture.md", "docs/Styleguide.md#Базовый стиль"]
-      note: "прикладной код"
+      note: "application code"
   ignore: ["**/generated/**"]
 checks:
   - id: lint
@@ -33,85 +35,87 @@ publish:
 
 ## provider
 
-| Поле | По умолчанию | Смысл |
+| Field | Default | Meaning |
 |---|---|---|
-| `type` | `auto` | `auto` — по git remote; иначе явная платформа |
-| `host` | из remote | хост без схемы |
-| `project` | из remote | GitLab `group/project`, GitHub `owner/repo` |
-| `base` | `develop`/`main` | база для локального diff |
+| `type` | `auto` | `auto` — inferred from the git remote; otherwise an explicit platform |
+| `host` | from the remote | host without a scheme |
+| `project` | from the remote | GitLab `group/project`, GitHub `owner/repo` |
+| `base` | `develop`/`main` | base for the local diff |
 
-Явные аргументы CLI (`--platform`, `--project`, `--host`) важнее конфига, конфиг важнее git remote.
-Так подмена `.git/config` не перенаправит ревью на чужой проект.
+Explicit CLI arguments (`--platform`, `--project`, `--host`) take precedence over the config, and the
+config takes precedence over the git remote. This way, tampering with `.git/config` cannot redirect the
+review to a different project.
 
 ## output
 
-- `language: auto` — замечания и ответы пишутся на языке описания MR и обсуждений; если текста нет,
-  используется английский. `ru`/`en` фиксируют язык явно.
-- Язык правил и документов от этого не зависит: агент читает их как есть и цитирует в оригинале.
-- Это язык **результата ревью**, а не интерфейса CLI/UI. Интерфейс переключается `--lang ru|en`,
-  `REVDECK_LANG` или переключателем в UI.
-- `revdeck init --lang en` выбирает английский skill и пишет `REVDECK_LANG` в MCP-конфиг.
+- `language: auto` — findings and replies are written in the language of the MR description and
+  discussions; if there is no text, English is used. `ru`/`en` pin the language explicitly.
+- The language of the rules and documents does not depend on this: the agent reads them as they are and
+  quotes them verbatim.
+- This is the language of the **review output**, not of the CLI/UI interface. The interface is switched
+  via `--lang ru|en`, `REVDECK_LANG`, or the toggle in the UI.
+- `revdeck init --lang en` selects the English skill and writes `REVDECK_LANG` to the MCP config.
 
 ## rules
 
-- `sources` — документы по умолчанию, если ни одна строка `map` не подошла. Пусто — автообнаружение
+- `sources` — the default documents when none of the `map` rows match. Empty — auto-discovery
   (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/Architecture.md`,
   `docs/STYLEGUIDE.md`, `docs/Styleguide.md`, `docs/CONTRIBUTING.md`).
-- `map` — список правил: `match` (glob или массив glob) и `docs` (массив селекторов). Несколько
-  совпавших строк объединяются.
-- `ignore` — glob-исключения: файл не попадает в анализ правил.
+- `map` — a list of rules: `match` (a glob or an array of globs) and `docs` (an array of selectors).
+  Multiple matching rows are merged.
+- `ignore` — glob exclusions: a matching file is left out of rule analysis.
 
-### Селекторы документов
+### Document selectors
 
-| Селектор | Что берётся |
+| Selector | What is included |
 |---|---|
-| `docs/Architecture.md` | весь документ |
-| `docs/Styleguide.md#Базовый стиль` | секция заголовка (уровень и ниже, до заголовка того же уровня) |
-| `docs/File.md#L10-L25` | диапазон строк |
-| `docs/File.md#10-25` | то же |
+| `docs/Architecture.md` | the entire document |
+| `docs/Styleguide.md#Базовый стиль` | the section for the heading (that level and below, up to the next heading of the same level) |
+| `docs/File.md#L10-L25` | a line range |
+| `docs/File.md#10-25` | the same range |
 
-Заголовок нормализуется: регистр, пробелы и пунктуация не важны, `#Слои и зависимости` и
-`#layers` — разные секции, а `#Слои-и-зависимости` и `#Слои и зависимости` — одна. Если секция не
-найдена, revdeck пишет предупреждение и не подставляет весь документ.
+A heading is normalized: case, whitespace, and punctuation do not matter. `#Слои и зависимости` and
+`#layers` are different sections, while `#Слои-и-зависимости` and `#Слои и зависимости` are the same
+section. If a section is not found, revdeck emits a warning and does not fall back to the whole document.
 
 ### Glob
 
-`*` — в пределах одного сегмента, `**` — любая глубина, `?` — один символ, `{a,b}` — альтернатива.
-Примеры: `src/**/*.ts`, `docs/{guides,adr}/**`, `**/*.test.ts`.
+`*` matches within one segment, `**` matches any depth, `?` matches one character, `{a,b}` is an
+alternative. Examples: `src/**/*.ts`, `docs/{guides,adr}/**`, `**/*.test.ts`.
 
 ## checks
 
-Проверки — argv-массивы, без shell-строк. Это важно: конфиг лежит в репозитории, и строка shell
-позволила бы исполнить произвольный код при ревью.
+Checks are argv arrays, not shell strings. This matters: the config lives in the repository, and a shell
+string would allow arbitrary code to be executed during a review.
 
-| Поле | Смысл |
+| Field | Meaning |
 |---|---|
-| `id` | стабильный идентификатор |
-| `name` | отображаемое имя |
-| `argv` | команда и аргументы; первым идёт исполняемый файл |
-| `when` | glob-пути: запускать, только если diff их затронул; пусто — всегда |
-| `consent` | требует явного подтверждения (по умолчанию `true`) |
-| `timeoutMs` | таймаут (по умолчанию 300 000) |
+| `id` | stable identifier |
+| `name` | display name |
+| `argv` | command and arguments; the executable comes first |
+| `when` | glob paths: run only if the diff touched them; empty — always |
+| `consent` | requires explicit confirmation (default `true`) |
+| `timeoutMs` | timeout (default 300,000) |
 
-Запуск: `revdeck checks <N> --run --yes`. MCP-инструмент только показывает план.
+Running: `revdeck checks <N> --run --yes`. The MCP tool only shows the plan.
 
 ## publish
 
-- `requireApproval` — оставлен для совместимости; approval требуется всегда, когда публикует не
-  интерактивный процесс.
-- `maxComments` — максимум комментариев за один план (1–200).
+- `requireApproval` — kept for backward compatibility; approval is always required when publishing is
+  done by a non-interactive process.
+- `maxComments` — maximum number of comments per plan (1–200).
 
-## Переменные окружения
+## Environment variables
 
-| Переменная | Смысл |
+| Variable | Meaning |
 |---|---|
-| `REVDECK_STATE_DIR` | каталог состояния (по умолчанию `~/.local/state/revdeck`) |
-| `REVDECK_RUNTIME_DIR` | каталог сокета (по умолчанию `$XDG_RUNTIME_DIR/revdeck`) |
-| `REVDECK_URL` + `REVDECK_TOKEN` | подключение к демону по HTTP (контейнер/проброс порта) |
-| `REVDECK_ROOT` | корень проекта для MCP-сервера |
-| `REVDECK_LANG` | язык CLI/MCP/демона: `ru` или `en` (по умолчанию системная локаль) |
+| `REVDECK_STATE_DIR` | state directory (default `~/.local/state/revdeck`) |
+| `REVDECK_RUNTIME_DIR` | socket directory (default `$XDG_RUNTIME_DIR/revdeck`) |
+| `REVDECK_URL` + `REVDECK_TOKEN` | connect to the daemon over HTTP (container/port forwarding) |
+| `REVDECK_ROOT` | project root for the MCP server |
+| `REVDECK_LANG` | CLI/MCP/daemon language: `ru` or `en` (default: system locale) |
 
-## Валидация
+## Validation
 
-`revdeck config --json` показывает эффективный конфиг, найденный путь и предупреждения.
-`revdeck rules --explain src/app.ts` показывает, какие документы и секции выбраны для файла.
+`revdeck config --json` shows the effective config, the path where it was found, and warnings.
+`revdeck rules --explain src/app.ts` shows which documents and sections were selected for the file.

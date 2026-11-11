@@ -26,6 +26,7 @@ First public release.
 - Bilingual product: Russian and English UI with a switch, localized CLI/MCP/context, and separate
   Russian/English skill packs selected by `revdeck init --lang`.
 - `output.language: auto | ru | en` for review output, independent of the interface language.
+- English documentation as the canonical set under `docs/`, with Russian translations under `docs/ru/`.
 - Security: token scrubbing, redaction, publish sanitizer, loopback-only UI, one-time launch token,
   cookie/Origin/Host checks, CSP.
 - Docs: architecture, configuration, protocol, threat model, integrations, ADR.

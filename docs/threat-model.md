@@ -1,48 +1,51 @@
-# Модель угроз
+# Threat model
 
-## Активы
+[English](threat-model.md) | [Русский](ru/threat-model.md)
 
-1. Токены GitLab/GitHub (в конфигурации `glab`/`gh` на хосте).
-2. Код и diff ревьюируемого репозитория, включая приватный.
-3. Треды и комментарии, включая персональные данные.
-4. Право публикации от имени пользователя.
-5. Токен запуска UI и токен сессии браузера.
-6. Локальная база SQLite с текстами комментариев и черновиков.
+## Assets
 
-## Доверенные границы
+1. GitLab/GitHub tokens (in the `glab`/`gh` configuration on the host).
+2. The code and diff of the repository under review, including private repositories.
+3. Threads and comments, including personal data.
+4. The right to publish on the user's behalf.
+5. The UI launch token and the browser session token.
+6. The local SQLite database with the text of comments and drafts.
 
-1. **Агент (песочница/контейнер) ↔ демон на хосте.** Агент недоверенный: его вывод может быть
-   подменён содержимым MR.
-2. **Браузер ↔ демон.** Браузер доверенный, но на loopback может прийти чужая страница.
-3. **Репозиторий ↔ демон.** Конфиг и документы репозитория контролирует автор MR; они не должны
-   исполняться.
-4. **Демон ↔ `glab`/`gh`.** CLI — доверенный, но его окружение и рабочая копия могут быть подменены.
+## Trust boundaries
 
-## Угрозы и меры
+1. **Agent (sandbox/container) ↔ daemon on the host.** The agent is untrusted: its output can be
+   subverted by MR content.
+2. **Browser ↔ daemon.** The browser is trusted, but a foreign page can reach loopback.
+3. **Repository ↔ daemon.** The MR author controls the repository's config and documents; they must
+   not be executed.
+4. **Daemon ↔ `glab`/`gh`.** The CLI is trusted, but its environment and working copy can be tampered
+   with.
 
-| Угроза | Мера | Остаточный риск |
+## Threats and mitigations
+
+| Threat | Mitigation | Residual risk |
 |---|---|---|
-| Агент вытягивает токен платформы | Токен не читается: `glab`/`gh` берут его из своей конфигурации. Агенту доступен только RPC; токены вычищаются из env дочерних процессов, редактируются в логах/ошибках | Процесс с чтением `$HOME` пользователя может прочитать конфиг CLI. Поэтому нужна изоляция агента |
-| Подмена проекта/хоста через `.git/config` | Явные `host`/`project` в конфиге и аргументах важнее remote; `glab`/`gh` вызываются с `cwd` вне рабочей копии | Если проект не закреплён, remote используется — UI показывает проект для сверки |
-| Prompt injection из комментариев/diff | Инструкции в тексте помечены как данные; агент не публикует сам; публикация требует approval человека; санитайзер блокирует скрытые символы и быстрые команды | Модель всё равно может предложить вредный текст — его увидит человек в плане |
-| Случайная публикация не того текста | План с точными телами и хешем; `approve` сверяет хеш; `commit` выполняет только пункты плана; повторная отправка пропускается | Человек может подтвердить не глядя — UI показывает полный текст |
-| Межсайтовые запросы к loopback (DNS rebinding, CSRF) | Только `127.0.0.1`/`localhost` в `Host`; проверка `Origin` для POST; cookie `HttpOnly`, `SameSite=Strict`; одноразовый токен в ссылке запуска; CSP | Локальный процесс другого пользователя с доступом к сокету — вне модели (права 0600/0700) |
-| Символическая ссылка/TOCTOU в рабочем каталоге | Состояние хранится в приватном каталоге, запись атомарная; чтение файлов репозитория только внутри корня, без следования ссылкам в служебных путях | Гонка на файлах репозитория возможна, но не даёт прав публикации |
-| Вредоносный `.revdeck.yml` исполняет код | `checks.argv` — массив без shell; запуск только по `--run --yes`; MCP не умеет запускать | Пользователь может подтвердить запуск вредоносной команды из чужого MR — читайте план |
-| Утечка через логи/ошибки | Редакция токенов, ANSI, управляющих символов; ограничение длины; логи в приватном каталоге | Текст комментариев может содержать секреты — не публикуйте их |
-| Supply chain | Минимум зависимостей, lock-файл, сборка esbuild/Vite, provenance при публикации npm | Как у любого npm-пакета |
-| Кража approval | Approval — случайные 16 байт, TTL 10 минут, одноразовый, привязан к review+hash, хранится только в SQLite на хосте | Доступ к сокету = доступ к RPC; защищён правами файла |
+| The agent extracts a platform token | The token is never read: `glab`/`gh` take it from their own configuration. The agent gets only RPC; tokens are scrubbed from child process env and redacted in logs/errors | A process that can read the user's `$HOME` can read the CLI config. That is why agent isolation is required |
+| Spoofing the project/host via `.git/config` | Explicit `host`/`project` in the config and arguments take precedence over the remote; `glab`/`gh` are invoked with a `cwd` outside the working copy | If the project is not pinned, the remote is used — the UI shows the project for verification |
+| Prompt injection from comments/diff | Instructions in the text are marked as data; the agent does not publish on its own; publishing requires human approval; the sanitizer blocks hidden characters and quick actions | The model can still propose harmful text — a human sees it in the plan |
+| Accidental publication of the wrong text | A plan with the exact bodies and a hash; `approve` verifies the hash; `commit` executes only the plan items; a repeat send is skipped | A human may approve without looking — the UI shows the full text |
+| Cross-site requests to loopback (DNS rebinding, CSRF) | Only `127.0.0.1`/`localhost` in `Host`; an `Origin` check for POST; `HttpOnly`, `SameSite=Strict` cookies; a one-time token in the launch link; CSP | A local process of another user with access to the socket is out of scope (permissions 0600/0700) |
+| Symlink/TOCTOU in the working directory | State is stored in a private directory, writes are atomic; repository files are read only inside the root, without following symlinks in its own paths | A race on repository files is possible but does not grant publish rights |
+| A malicious `.revdeck.yml` executes code | `checks.argv` is an array without a shell; execution only with `--run --yes`; MCP cannot run checks | A user may approve running a malicious command from someone else's MR — read the plan |
+| Leakage through logs/errors | Redaction of tokens, ANSI and control characters; length limits; logs in a private directory | Comment text may contain secrets — do not publish it |
+| Supply chain | Minimal dependencies, lockfile, esbuild/Vite build, provenance on npm publish | The same as for any npm package |
+| Approval theft | An approval is 16 random bytes, TTL 10 minutes, single-use, bound to review+hash, stored only in SQLite on the host | Socket access = RPC access; protected by file permissions |
 
-## Что не является целью
+## Out of scope
 
-- Защита от администратора/пользователя, который уже имеет доступ к процессам хоста.
-- Скрытие кода ревью от платформы: он и так там.
-- Многопользовательская авторизация и роли.
-- Защита от вредоносного `glab`/`gh`: CLI считается доверенным, как и npm-пакет.
+- Protection from an administrator/user who already has access to host processes.
+- Hiding the code under review from the platform: it is already there.
+- Multi-user authorization and roles.
+- Protection from a malicious `glab`/`gh`: the CLI is trusted, just like the npm package.
 
-## Проверки модели
+## Model checks
 
-- Комментарии проходят `sanitizeBody`: управляющие и bidi-символы, HTML, быстрые команды GitLab,
-  `@all`/`@here`/`@everyone`, внешние картинки.
-- Публикация невозможна без `approval_id`; MCP-инструмент публикации его не создаёт.
-- `revdeck doctor` показывает, какие права и адаптеры активны.
+- Comments go through `sanitizeBody`: control and bidi characters, HTML, GitLab quick actions,
+  `@all`/`@here`/`@everyone`, external images.
+- Publishing is impossible without an `approval_id`; the MCP publish tool does not create one.
+- `revdeck doctor` shows which permissions and adapters are active.

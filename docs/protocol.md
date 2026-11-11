@@ -1,94 +1,96 @@
-# Протокол
+# Protocol
 
-## Транспорты
+[English](protocol.md) | [Русский](ru/protocol.md)
 
-1. **Unix-сокет** (основной): `$XDG_RUNTIME_DIR/revdeck/daemon.sock`, каталог 0700, сокет 0600.
-   Строки JSON, по одному запросу/ответу на строку.
-2. **HTTP**: `POST /api/rpc` на loopback с cookie-сессией. Нужен для контейнеров, куда сокет не
-   проброшен (`REVDECK_URL` + `REVDECK_TOKEN`).
-3. **UI HTTP**: `/api/*` и SSE `/api/events` для браузера.
+## Transports
 
-## Сообщения
+1. **Unix socket** (primary): `$XDG_RUNTIME_DIR/revdeck/daemon.sock`, directory 0700, socket 0600.
+   JSON lines, one request/response per line.
+2. **HTTP**: `POST /api/rpc` on loopback with a cookie session. Needed for containers where the socket
+   is not forwarded (`REVDECK_URL` + `REVDECK_TOKEN`).
+3. **UI HTTP**: `/api/*` and SSE `/api/events` for the browser.
 
-Запрос:
+## Messages
+
+Request:
 
 ```json
 {"id": 1, "method": "reviews.get", "params": {"review": "gitlab:gitlab.com/group/project!42"}}
 ```
 
-Ответ:
+Response:
 
 ```json
 {"id": 1, "result": {"review": {"id": "...", "info": {}, "threads": []}}}
 ```
 
-Ошибка:
+Error:
 
 ```json
 {"id": 1, "error": {"message": "...", "code": "APPROVAL", "hint": "..."}}
 ```
 
-`id` — число. Соединение считается недоверенным до первого успешного запроса: авторизация — права
-файла сокета.
+`id` is a number. A connection is considered untrusted until the first successful request:
+authorization is enforced by the socket file's permissions.
 
-## Методы
+## Methods
 
-| Метод | Параметры | Результат |
+| Method | Parameters | Result |
 |---|---|---|
-| `ping` | — | версия, протокол, pid |
-| `reviews.list` | — | сохранённые ревью |
-| `reviews.remoteList` | `root`, `scope`, `limit` | открытые ревью с платформы |
-| `reviews.open` | `root`, `input`/`platform`/`project`/`host`/`branch` | снимок ревью |
-| `reviews.refresh` | `review` | обновлённый снимок |
-| `reviews.get` | `review`, `refresh?` | снимок (без полного diff) |
-| `diff.get` | `review`, `file` | hunks файла |
-| `drafts.put` | `review`, `threadId`, `patch` | черновик |
-| `findings.put` | `review`, `findings[]` | замечания после merge |
-| `findings.list` | `review` | замечания |
-| `summary.put` | `review`, `summary` | выжимка |
-| `decisions.put` | `review`, `decisions` | решения человека |
-| `notes.add` | `review`, `file`, `line`, `text`, `toAgent` | комментарий к строке |
-| `notes.update` | `review`, `noteId`, `patch` | обновлённый комментарий |
+| `ping` | — | version, protocol, pid |
+| `reviews.list` | — | saved reviews |
+| `reviews.remoteList` | `root`, `scope`, `limit` | open reviews from the platform |
+| `reviews.open` | `root`, `input`/`platform`/`project`/`host`/`branch` | review snapshot |
+| `reviews.refresh` | `review` | refreshed snapshot |
+| `reviews.get` | `review`, `refresh?` | snapshot (without the full diff) |
+| `diff.get` | `review`, `file` | file hunks |
+| `drafts.put` | `review`, `threadId`, `patch` | draft |
+| `findings.put` | `review`, `findings[]` | findings after merge |
+| `findings.list` | `review` | findings |
+| `summary.put` | `review`, `summary` | summary |
+| `decisions.put` | `review`, `decisions` | human decisions |
+| `notes.add` | `review`, `file`, `line`, `text`, `toAgent` | line comment |
+| `notes.update` | `review`, `noteId`, `patch` | updated comment |
 | `notes.delete` | `review`, `noteId` | `{ok}` |
-| `publish.preview` | `review`, `kind`, `ids[]` | план + предупреждения |
+| `publish.preview` | `review`, `kind`, `ids[]` | plan + warnings |
 | `publish.approve` | `review`, `kind`, `ids[]`, `hash` | `approvalId`, `expiresAt` |
-| `publish.commit` | `review`, `approvalId` | результаты по пунктам |
-| `rules.get` | `review` | markdown правил, проверки, предупреждения |
-| `checks.run` | `review`, `allowRun`, `ids[]` | результаты проверок |
-| `audit.tail` | `limit` | последние действия |
+| `publish.commit` | `review`, `approvalId` | per-item results |
+| `rules.get` | `review` | rules markdown, checks, warnings |
+| `checks.run` | `review`, `allowRun`, `ids[]` | check results |
+| `audit.tail` | `limit` | latest actions |
 
 ## Approval
 
-1. `publish.preview` строит `items` — точные тела, пути, строки, флаги резолва — и
+1. `publish.preview` builds `items` — the exact bodies, paths, lines, and resolve flags — and
    `hash = sha256(canonicalJson({reviewId, kind, items}))`.
-2. Человек видит план. `publish.approve` пересчитывает план по тем же `ids`; если хеш не совпал,
-   возвращает ошибку. Иначе создаёт одноразовый `approval_id` с TTL 10 минут.
-3. `publish.commit` проверяет, что approval не использован и не истёк, помечает его использованным и
-   выполняет только `items`. Уже отправленные пункты пропускаются.
+2. The human sees the plan. `publish.approve` recomputes the plan from the same `ids`; if the hash does
+   not match, it returns an error. Otherwise it creates a one-time `approval_id` with a 10-minute TTL.
+3. `publish.commit` verifies that the approval has not been used and has not expired, marks it as used,
+   and executes only `items`. Items that have already been posted are skipped.
 
-Агент не может вызвать `publish.approve`: MCP-инструмент его не предоставляет. Человек подтверждает
-в UI или CLI с `--yes`.
+The agent cannot call `publish.approve`: the MCP tool does not expose it. A human confirms in the UI or
+in the CLI with `--yes`.
 
 ## HTTP API (UI)
 
-| Метод | Путь | Назначение |
+| Method | Path | Purpose |
 |---|---|---|
-| GET | `/` | SPA; `?t=<token>` ставит cookie и редиректит |
-| GET | `/assets/*` | статика сборки |
-| GET | `/api/health` | живость |
-| GET | `/api/reviews` | список ревью |
-| GET | `/api/state?review=` | снимок для UI |
-| GET | `/api/diff?review=&file=` | hunks файла |
-| GET | `/api/rules?review=` | правила |
+| GET | `/` | SPA; `?t=<token>` sets the cookie and redirects |
+| GET | `/assets/*` | static build assets |
+| GET | `/api/health` | liveness |
+| GET | `/api/reviews` | review list |
+| GET | `/api/state?review=` | snapshot for the UI |
+| GET | `/api/diff?review=&file=` | file hunks |
+| GET | `/api/rules?review=` | rules |
 | GET | `/api/events` | SSE: `review` |
-| POST | `/api/reviews/open`, `/api/reviews/refresh` | открыть/обновить |
-| POST | `/api/drafts`, `/api/findings`, `/api/summary`, `/api/decisions` | черновики |
+| POST | `/api/reviews/open`, `/api/reviews/refresh` | open/refresh |
+| POST | `/api/drafts`, `/api/findings`, `/api/summary`, `/api/decisions` | drafts |
 | POST | `/api/notes` | `action: add/update/delete` |
-| POST | `/api/publish/preview`, `/approve`, `/commit` | публикация |
-| POST | `/api/checks` | проверки |
-| POST | `/api/rpc` | RPC-прокси для HTTP-транспорта |
+| POST | `/api/publish/preview`, `/approve`, `/commit` | publishing |
+| POST | `/api/checks` | checks |
+| POST | `/api/rpc` | RPC proxy for the HTTP transport |
 
-## Версионирование
+## Versioning
 
-`PROTOCOL_VERSION` в `src/version.ts` сверяется при рукопожатии; клиент и демон одной версии пакета.
-Несовпадение методов возвращает `METHOD` с подсказкой обновить revdeck.
+`PROTOCOL_VERSION` in `src/version.ts` is checked during the handshake; the client and daemon must be
+the same package version. A method mismatch returns `METHOD` with a hint to update revdeck.

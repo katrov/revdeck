@@ -1,59 +1,63 @@
-# ADR-0001: Демон-first архитектура
+# ADR-0001: Daemon-first architecture
 
-- **Статус:** Accepted
-- **Дата:** 2026-11-11
+[English](0001-daemon-first.md) | [Русский](../ru/adr/0001-daemon-first.md)
 
-## Контекст
+- **Status:** Accepted
+- **Date:** 2026-11-11
 
-Первая версия revdeck работала как процесс, который человек запускал вручную на хосте
-(`node devtools/mr-ui/server.mjs <N>`), а агент общался с ним через файлы `.revdeck/*.json`.
-Это давало правильную границу безопасности (агент не публикует, токен остаётся на хосте), но:
+## Context
 
-- сервер умирал вместе с терминалом, ссылку нужно было копировать вручную;
-- файловый обмен давал гонки (версия файла, 409) и требовал синхронизации полей между агентом и UI;
-- нельзя было держать несколько ревью одновременно;
-- каждый проект требовал своей копии скрипта и шёл в одном процессе.
+The first version of revdeck ran as a process that a human started manually on the host
+(`node devtools/mr-ui/server.mjs <N>`), and the agent communicated with it through `.revdeck/*.json`
+files. This gave the right security boundary (the agent does not publish, and the token stays on the
+host), but:
 
-Нужны: запуск по `/`-команде в любом харнессе, полноценный интерфейс, несколько ревью, GitLab и
-GitHub, конфигурируемые правила проекта и установка в любой агентский проект.
+- the server died with the terminal, and the link had to be copied manually;
+- file exchange caused races (file version, 409) and required syncing fields between the agent and
+  the UI;
+- it was impossible to have several reviews at once;
+- each project required its own copy of the script and ran in one process.
 
-## Решение
+What was needed: launch from a `/` command in any harness, a full-featured interface, several reviews,
+GitLab and GitHub, configurable project rules, and installation into any agent project.
 
-Строим продукт вокруг локального демона:
+## Decision
 
-- демон `revdeck daemon` — долгоживущий процесс пользователя, держит креды, SQLite, провайдеры, RPC,
-  HTTP/SSE и UI;
-- CLI и MCP — тонкие клиенты к RPC; MCP-сервер не содержит логики ревью;
-- агент пишет только черновики; публикация требует approval, привязанного к хешу плана;
-- UI — Svelte SPA, отдаётся демоном, живёт дольше сессии агента;
-- состояние — SQLite в `~/.local/state/revdeck`, а не JSON в репозитории;
-- файловый формат остаётся как `export`/`import` для совместимости и песочниц без сокета.
+We build the product around a [local daemon](../architecture.md):
 
-## Рассмотренные альтернативы
+- the `revdeck daemon` — a long-lived process owned by the user that holds credentials, SQLite,
+  providers, RPC, HTTP/SSE, and the UI;
+- the CLI and MCP are thin clients over RPC; the MCP server contains no review logic;
+- the agent writes only drafts; publication requires an approval tied to the plan hash;
+- the UI is a Svelte SPA served by the daemon and outlives the agent session;
+- state lives in SQLite under `~/.local/state/revdeck`, not in JSON in the repository;
+- the file format remains as `export`/`import` for compatibility and for sandboxes without a socket.
 
-1. **MCP-процесс на сессию, без демона.** Проще установка, но UI не переживает сессию, несколько
-   агентов конкурируют за состояние, токен оказывается в процессе, который запускает агент, и
-   контейнерный сценарий всё равно требует отдельного процесса на хосте. Отклонено.
-2. **Только файловый обмен.** Максимальная совместимость, но гонки и ручной запуск остаются.
-   Оставлено как `export/import`, не как основной путь.
-3. **Облачный сервис.** Снимает установку, но требует передавать код и токены наружу. Противоречит
-   требованию «локально, один человек».
+## Alternatives considered
 
-## Последствия
+1. **An MCP process per session, without a daemon.** Simpler installation, but the UI does not survive
+   the session, several agents compete for state, the token ends up in the process that the agent
+   launches, and the container scenario still requires a separate process on the host. Rejected.
+2. **File exchange only.** Maximum compatibility, but races and manual startup remain. Kept as
+   `export/import`, not as the primary path.
+3. **A cloud service.** Removes installation, but requires sending code and tokens outside. Contradicts
+   the "local, one person" requirement.
 
-- Появляется жизненный цикл демона: сокет, pid, логи, автозапуск (`daemon install`), обработка
-  зависшего сокета. Клиент умеет поднять демон сам.
-- Права на сокет — часть модели безопасности: каталог 0700, сокет 0600.
-- В контейнере нужен либо смонтированный сокет, либо `REVDECK_URL`/`REVDECK_TOKEN`; иначе —
-  `export`/`import` и запуск на хосте.
-- Один демон обслуживает несколько репозиториев: `root` передаётся при `open`, конфиг читается из
-  этого корня.
-- Версии клиента и демона должны совпадать; добавлен `PROTOCOL_VERSION`.
-- Появляется место для фонового sync и SSE, что улучшает UX по сравнению с ручным обновлением
-  страницы.
+## Consequences
 
-## Последующие решения
+- A daemon lifecycle appears: socket, pid, logs, autostart (`daemon install`), handling of a stale
+  socket. The client can start the daemon itself.
+- Socket permissions are part of the security model: directory 0700, socket 0600.
+- In a container, either a mounted socket or `REVDECK_URL`/`REVDECK_TOKEN` is needed; otherwise, use
+  `export`/`import` and run on the host.
+- One daemon serves several repositories: `root` is passed on `open`, and the config is read from that
+  root.
+- Client and daemon versions must match; [`PROTOCOL_VERSION`](../protocol.md) was added.
+- This creates room for background sync and SSE, which improves UX compared to manually refreshing
+  the page.
 
-- Native drafts (GitLab draft notes, GitHub pending review) — следующий шаг; интерфейс провайдера
-  уже содержит `capabilities.nativeDrafts`.
-- Многопользовательский режим не планируется; при необходимости — отдельный ADR.
+## Follow-up decisions
+
+- Native drafts (GitLab draft notes, GitHub pending review) are the next step; the provider interface
+  already contains `capabilities.nativeDrafts`.
+- A multi-user mode is not planned; if needed, a separate ADR.

@@ -1,6 +1,6 @@
 # revdeck
 
-[English](README.md) | Русский
+[English](README.md) | Русский · [Документация](docs/ru/README.md)
 
 Локальный код-ревью для GitLab и GitHub, сделанный вокруг агента: агент читает контекст и пишет
 черновики, человек подтверждает и публикует. Работает как MCP-сервер, CLI и веб-интерфейс; токены
@@ -117,7 +117,7 @@ revdeck ui            # ссылка на локальный интерфейс
 человек в UI или CLI с `--yes`.
 
 Промпты `review-mr` и `close-feedback` доступны в клиентах, поддерживающих MCP prompts. В харнессах
-без MCP используйте CLI — возможности те же. Матрица адаптеров и `/`-команд: [docs/integrations.md](docs/integrations.md).
+без MCP используйте CLI — возможности те же. Матрица адаптеров и `/`-команд: [docs/ru/integrations.md](docs/ru/integrations.md).
 
 ## Правила проекта
 
@@ -153,7 +153,7 @@ publish:
 
 Селектор документа: `docs/File.md`, `docs/File.md#Заголовок` или `docs/File.md#L10-L25`. Без конфига
 revdeck ищет `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` и `docs/*` и предупреждает, если правил не
-нашлось. Полная схема — [docs/configuration.md](docs/configuration.md).
+нашлось. Полная схема — [docs/ru/configuration.md](docs/ru/configuration.md).
 
 ## Безопасность
 
@@ -165,7 +165,7 @@ revdeck ищет `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` и `docs/*` и пр
   картинки.
 - Текст MR — недоверенные данные; агентские инструкции это оговаривают.
 
-Подробно: [docs/threat-model.md](docs/threat-model.md). Гарантия формулируется так: токен не
+Подробно: [docs/ru/threat-model.md](docs/ru/threat-model.md). Гарантия формулируется так: токен не
 пересекает границу песочницы и не отдаётся по RPC. Если у процесса есть чтение домашнего каталога
 пользователя, он может прочитать конфигурацию `glab`/`gh` — для этого и нужна изоляция агента.
 
@@ -181,8 +181,8 @@ revdeck ищет `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` и `docs/*` и пр
 | `ui` | Svelte 5 + Vite |
 | `skills/revdeck` | процедуры ревью (SKILL, Review, Feedback, Criteria, Rules, Sources) |
 
-Подробно: [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protocol.md),
-[ADR-0001](docs/adr/0001-daemon-first.md).
+Подробно: [docs/ru/architecture.md](docs/ru/architecture.md), [docs/ru/protocol.md](docs/ru/protocol.md),
+[ADR-0001](docs/ru/adr/0001-daemon-first.md).
 
 ## Разработка
 

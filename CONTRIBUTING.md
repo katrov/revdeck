@@ -67,6 +67,8 @@ document it in `docs/integrations.md`. `init` must never overwrite files it does
 - The skill has two human-maintained packs: `skills/revdeck/ru/` and `skills/revdeck/en/`. They must
   keep the same structure and semantics; do not machine-translate the review procedure.
 - Tests that assert message text should pin the locale with `setLocale('ru')` or be language-agnostic.
+- Docs: `docs/` is English and canonical, `docs/ru/` is Russian. Keep headings, commands, code blocks
+  and file paths identical between the two; translate prose only.
 
 ## Pull requests
 

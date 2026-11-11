@@ -1,98 +1,91 @@
-# Архитектура
+# Architecture
 
-## Цели
+[English](architecture.md) | [Русский](ru/architecture.md)
 
-1. Агент получает контекст ревью и правила проекта детерминированно, без ручных файлов и без доступа
-   к токенам платформ.
-2. Публикация в GitLab/GitHub происходит только после подтверждения человеком и идемпотентна.
-3. Один инструмент работает в любом харнессе: MCP для агентских клиентов, CLI как универсальный
-   слой, веб-интерфейс для человека.
-4. Правила проекта конфигурируются, а не зашиты в промпт.
+## Goals
 
-## Не цели
+1. The agent receives review context and project rules deterministically, without manual files and
+   without access to platform tokens.
+2. Publishing to GitLab/GitHub happens only after human approval and is idempotent.
+3. One tool works in any harness: MCP for agent clients, the CLI as the universal layer, and a web UI
+   for humans.
+4. Project rules are [configured](configuration.md), not hardcoded in the prompt.
 
-- Замена нативного diff-вьюера GitLab/GitHub. UI оптимизирован под триаж и подтверждение.
-- Собственный статический анализ. Проверки делегируются линту, типам и тестам проекта.
-- Многопользовательский сервер. Модель — один пользователь, несколько ревью, демон на хосте.
+## Non-goals
 
-## Компоненты
+- Replacing GitLab/GitHub's native diff viewer. The UI is optimized for triage and approval.
+- Built-in static analysis. Checks are delegated to the project's linter, types, and tests.
+- A multi-user server. The model is one user, several reviews, and a
+  [daemon on the host](adr/0001-daemon-first.md).
 
-```
-┌──────────────┐  MCP stdio   ┌──────────────┐
-│ агент        │─────────────▶│ revdeck daemon│──┐
-└──────────────┘              └──────────────┘  │ JSON-RPC (unix socket)
-┌──────────────┐   CLI        ┌──────────────┐  │
-│ человек      │─────────────▶│ revdeck    │──┤
-└──────────────┘              └──────────────┘  │
-┌──────────────┐  HTTP/SSE    ┌──────────────┐  │
-│ браузер      │─────────────▶│ revdeck daemon   │◀─┘
-└──────────────┘              │  service     │
-                              │  store (SQLite)
-                              │  providers   │──glab/gh──▶ GitLab/GitHub
-                              └──────────────┘
+## Components
+
+```text
+agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
+                         │
+                   SQLite + UI ◀── human
 ```
 
-- `src/core` — чистые функции и модели: парсер unified diff, правила, fingerprints замечаний,
-  санитайзер публикации, редакция секретов, безопасный запуск процессов.
-- `src/providers` — единственное место, знающее о платформах. `Provider` нормализует MR/PR, diff,
-  треды, ответы, резолв и создание комментариев.
-- `src/daemon/service.ts` — оркестратор: обновление ревью, черновики, решения, план публикации,
-  approval, идемпотентная запись, фоновый sync.
-- `src/daemon/store.ts` — SQLite (`node:sqlite`): ревью, снимок diff/тредов, черновики, замечания,
-  решения, комментарии, approvals, аудит.
-- `src/daemon/rpc.ts` — JSON-RPC поверх unix-сокета (0600) для CLI и MCP.
-- `src/daemon/http.ts` — UI и `/api/*`, SSE-события, cookie-сессия с одноразовым токеном.
-- `src/cli` — команды, `init`, `doctor`, экспорт/импорт старого файлового формата.
-- `src/mcp` — MCP-сервер: инструменты и промпты, тонкая обёртка над RPC.
-- `ui` — Svelte 5 SPA, собирается в `dist/ui`.
+- `src/core` — pure functions and models: unified diff parser, rules, finding fingerprints,
+  [publication sanitizer](threat-model.md), secret redaction, safe process execution.
+- `src/providers` — the only place that knows about platforms. `Provider` normalizes MR/PR, diff,
+  threads, replies, resolution, and comment creation.
+- `src/daemon/service.ts` — orchestrator: review refresh, drafts, decisions, publication plan,
+  approval, idempotent writes, background sync.
+- `src/daemon/store.ts` — SQLite (`node:sqlite`): reviews, diff/thread snapshot, drafts, findings,
+  decisions, comments, approvals, audit.
+- `src/daemon/rpc.ts` — [JSON-RPC](protocol.md) over a Unix socket (0600) for the CLI and MCP.
+- `src/daemon/http.ts` — UI and `/api/*`, SSE events, cookie session with a one-time token.
+- `src/cli` — commands, `init`, `doctor`, export/import of the old file format.
+- `src/mcp` — MCP server: tools and prompts, a thin wrapper over RPC.
+- `ui` — Svelte 5 SPA, built into `dist/ui`.
 
-## Поток данных
+## Data flow
 
-1. `revdeck open 42` → RPC `reviews.open` с `root` рабочей копии.
-2. Демон определяет платформу/хост/проект (аргументы → конфиг → git remote), создаёт провайдер,
-   читает MR, diff и треды, сохраняет снимок и синтетические черновики.
-3. Агент запрашивает `revdeck_context`: демон собирает эффективные правила (документы и секции для
-   изменённых путей), сниппеты, треды и замечания.
-4. Агент пишет черновики (`drafts.put`, `findings.put`, `summary.put`, `notes.update`).
-5. Человек в UI вызывает `publish.preview` → видит точный план и хеш → `publish.approve` →
-   `publish.commit`. Демон выполняет только пункты, вошедшие в подтверждённый план.
-6. Фоновый sync раз в 2 минуты обновляет открытые ревью и рассылает SSE-события UI.
+1. `revdeck open 42` → RPC `reviews.open` with the working copy `root`.
+2. The daemon determines the platform/host/project (arguments → config → git remote), creates a
+   provider, reads the MR, diff, and threads, and saves a snapshot and synthetic drafts.
+3. The agent requests `revdeck_context`: the daemon assembles effective rules (documents and sections
+   for changed paths), snippets, threads, and findings.
+4. The agent writes drafts (`drafts.put`, `findings.put`, `summary.put`, `notes.update`).
+5. A human in the UI calls `publish.preview` → sees the exact plan and hash → `publish.approve` →
+   `publish.commit`. The daemon executes only the items included in the approved plan.
+6. Background sync every 2 minutes refreshes open reviews and broadcasts SSE events to the UI.
 
-## Модель данных
+## Data model
 
-- `ReviewRef` — платформа, хост, проект, номер. `reviewId` — `platform:host/project!number`.
-- `DiffFile`/`Hunk`/`DiffLine` — номера строк по старой и новой версии; `line` замечания всегда по
-  новому файлу.
-- `Thread`/`Note` — общая модель обсуждений.
-- `Finding` — замечание с `id`, `fingerprint`, уровнем, файлом/строкой, текстом и статусом
+- `ReviewRef` — platform, host, project, number. `reviewId` — `platform:host/project!number`.
+- `DiffFile`/`Hunk`/`DiffLine` — line numbers in the old and new versions; a finding's `line` always
+  refers to the new file.
+- `Thread`/`Note` — shared discussion model.
+- `Finding` — a review finding with `id`, `fingerprint`, severity, file/line, text, and status
   (`draft`, `accepted`, `rejected`, `published`, `fixed`, `stale`).
-- `Approval` — одноразовый id, привязанный к `hash = sha256(canonicalJson({reviewId, kind, items}))`,
-  TTL 10 минут.
+- `Approval` — a one-time id tied to `hash = sha256(canonicalJson({reviewId, kind, items}))`,
+  with a 10-minute TTL.
 
-## Идемпотентность и конкурентность
+## Idempotency and concurrency
 
-- Записи черновиков и замечаний идут через один процесс; SQLite в WAL.
-- Публикация помечает approval использованным до выполнения. Пункты, которые уже ушли (совпадающий
-  `posted`, `published`), пропускаются. Ошибка одного пункта не отменяет остальные и записывается в
-  черновик/замечание.
-- Хеш плана защищает от правки агентом между показом человеку и публикацией: изменился текст → хеш
-  не совпал → approve отклонён.
-- `findings.put` — замена набора с сохранением `id` и решения; исчезнувшие замечания помечаются
-  `stale`, а не удаляются.
+- Draft and finding writes go through a single process; SQLite in WAL mode.
+- Publication marks the approval as used before execution. Items that have already been posted
+  (matching `posted`, `published`) are skipped. A failure of one item does not cancel the others and
+  is recorded in the draft/finding.
+- The plan hash protects against agent edits between the moment the plan is shown to the human and
+  publication: text changed → hash mismatch → approval rejected.
+- `findings.put` — replaces the set while preserving `id` and decision; findings that disappear are
+  marked `stale` rather than deleted.
 
-## Расширение
+## Extension
 
-- **Новая платформа**: реализовать `Provider` и добавить ветку в `createProvider`; всё остальное не
-  меняется.
-- **Новый харнесс**: `revdeck init --adapters <имя>` копирует skill и пишет MCP-конфиг. Для
-  харнессов без MCP используется CLI.
-- **Правила**: `rules.map`/`rules.sources` в `.revdeck.yml`; паки правил можно распространять как
-  обычный файл конфигурации.
-- **Проверки**: `checks` с argv без shell; запуск только по явному подтверждению.
+- **New platform**: implement `Provider` and add a branch in `createProvider`; nothing else changes.
+- **New harness**: `revdeck init --adapters <name>` copies the skill and writes the MCP config.
+  Harnesses without MCP use the CLI.
+- **Rules**: `rules.map`/`rules.sources` in `.revdeck.yml`; rule packs can be distributed as a regular
+  configuration file.
+- **Checks**: `checks` with argv, no shell; run only on explicit confirmation.
 
-## Производительность
+## Performance
 
-- Diff парсится на сервере, UI получает файлы списком и hunks по одному файлу.
-- Состояние ревью не содержит полный diff; SSE сообщает об изменениях, UI перезапрашивает состояние.
-- Сниппеты для тредов и замечаний считаются на сервере и ограничены по размеру.
-- Контекст правил ограничен 320 КБ; MCP-контекст — параметром `max_bytes`.
+- The diff is parsed on the server; the UI receives files as a list and hunks one file at a time.
+- Review state does not contain the full diff; SSE reports changes and the UI refetches the state.
+- Snippets for threads and findings are computed on the server and size-limited.
+- Rule context is capped at 320 KB; MCP context is capped by the `max_bytes` parameter.

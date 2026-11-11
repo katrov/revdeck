@@ -1,29 +1,31 @@
-# Интеграция с харнессами
+# Harness integrations
 
-У revdeck два переносимых слоя и один адаптерный:
+[English](integrations.md) | [Русский](ru/integrations.md)
 
-- **MCP** (stdio) — инструменты `revdeck_*` работают в любом клиенте с MCP.
-- **CLI** — те же возможности без MCP: `revdeck open/context/findings/reply/publish`.
-- **`/`-команда** — у каждого харнесса своя; `revdeck init` создаёт нужный файл.
+revdeck has two portable layers and one adapter layer:
 
-Полноценная интеграция = MCP + skill (процедуры) + команда (точка входа). Без MCP остаются CLI и
-skill: агент вызывает команды через shell.
+- **MCP** (stdio) — the `revdeck_*` tools work in any MCP-capable client.
+- **CLI** — the same capabilities without MCP: `revdeck open/context/findings/reply/publish`.
+- **`/` command** — each harness has its own; `revdeck init` creates the right file.
 
-## Матрица
+A full integration = MCP + skill (procedures) + command (entry point). Without MCP, the CLI and
+skill remain: the agent calls commands through the shell.
 
-| Харнесс | `/`-команда | Что пишет `init` |
+## Matrix
+
+| Harness | `/` command | What `init` writes |
 |---|---|---|
 | Claude Code | `/revdeck` | `.claude/commands/revdeck.md`, `.claude/skills/revdeck/*`, `.mcp.json` |
 | Cursor | `/revdeck` | `.cursor/commands/revdeck.md`, `.cursor/mcp.json` |
-| Codex CLI | prompt `revdeck` | `.codex/prompts/revdeck.md`; MCP — в `~/.codex/config.toml` (вручную) |
-| Gemini CLI | `/revdeck` | `.gemini/commands/revdeck.toml`; MCP — в настройках Gemini (вручную) |
+| Codex CLI | prompt `revdeck` | `.codex/prompts/revdeck.md`; MCP in `~/.codex/config.toml` (manually) |
+| Gemini CLI | `/revdeck` | `.gemini/commands/revdeck.toml`; MCP in the Gemini settings (manually) |
 | OpenCode | `/revdeck` | `.opencode/command/revdeck.md` |
-| GitHub Copilot | prompt-файл | `.github/prompts/revdeck.prompt.md` |
-| DSH | плагин (см. ниже) | `.agents/skills/revdeck/*` + YAML-сниппет в выводе |
-| Универсальный | — | `.agents/skills/revdeck/*` + MCP |
+| GitHub Copilot | prompt file | `.github/prompts/revdeck.prompt.md` |
+| DSH | plugin (see below) | `.agents/skills/revdeck/*` + YAML snippet in the output |
+| Universal | — | `.agents/skills/revdeck/*` + MCP |
 
-`revdeck init --adapters dsh,claude` включает нужные явно. Повторный `init` не перезаписывает
-существующие командные файлы и не затирает чужие ключи `.mcp.json`.
+`revdeck init --adapters dsh,claude` explicitly enables the adapters you need. A repeated `init`
+does not overwrite existing command files and does not clobber other keys in `.mcp.json`.
 
 ## MCP
 
@@ -39,12 +41,13 @@ skill: агент вызывает команды через shell.
 }
 ```
 
-Если бинарник не установлен глобально, `init` пишет `npx -y revdeck mcp`. Публикация через MCP
-требует `approval_id`: его выдаёт человек в UI или CLI с `--yes`, агент получить не может.
+`init` writes `npx -y revdeck mcp` into the MCP config. Publishing over MCP
+requires an `approval_id`: a human issues it in the UI or in the CLI with `--yes`, and the agent
+cannot obtain it.
 
 ## DSH
 
-MCP-клиент DSH подключается в профиле Cordis:
+The DSH MCP client is configured in the Cordis profile:
 
 ```yaml
 - id: mcp-revdeck
@@ -58,23 +61,24 @@ MCP-клиент DSH подключается в профиле Cordis:
       REVDECK_LANG: en
 ```
 
-Инструменты появятся как `mcp__revdeck__*`. MCP prompt templates DSH не поддерживает, поэтому
-`/revdeck` требует host-команды (`ctx.commands.register`) или client action — это отдельный
-плагин-обёртка. До него используйте skill + MCP-инструменты: `/`-слэш не обязателен для работы.
+The tools will appear as `mcp__revdeck__*`. DSH does not support MCP prompt templates, so `/revdeck`
+requires a host command (`ctx.commands.register`) or a client action — that is a separate wrapper
+plugin. Until then, use the skill + MCP tools: the `/` slash is not required for things to work.
 
-## Контейнер
+## Container
 
-Демон работает на хосте, агент — в контейнере. Варианты по убыванию удобства:
+The daemon runs on the host, the agent in a container. Options in decreasing order of convenience:
 
-1. Смонтировать `$XDG_RUNTIME_DIR/revdeck` в контейнер тем же путём — сокет заработает как есть.
-2. `REVDECK_URL=http://host.docker.internal:<port>` и `REVDECK_TOKEN=<token>` — HTTP-транспорт.
-   Порт и токен печатает `revdeck daemon start` (или `daemon.json` в state-каталоге).
-3. `revdeck export <N>` на хосте и `revdeck import <N>` в контейнере — файловый мост.
+1. Mount `$XDG_RUNTIME_DIR/revdeck` into the container at the same path — the socket works as is.
+2. `REVDECK_URL=http://host.docker.internal:<port>` and `REVDECK_TOKEN=<token>` — the HTTP transport.
+   The port and token are printed by `revdeck daemon start` (or in `daemon.json` in the state
+   directory).
+3. `revdeck export <N>` on the host and `revdeck import <N>` in the container — a file bridge.
 
-## Проверка
+## Verification
 
 ```bash
 revdeck doctor
 ```
 
-Показывает найденные бинарники, авторизацию `glab`/`gh`, состояние демона и установленный адаптер.
+Shows the binaries found, `glab`/`gh` authorization, daemon status and the installed adapter.

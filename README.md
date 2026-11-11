@@ -13,7 +13,7 @@ and a web UI. Platform tokens stay on the host.
 
 ![revdeck UI](docs/screenshot.png)
 
-[Русская версия](README.ru.md) · [Docs](docs/) (Russian for now)
+[Русская версия](README.ru.md) · [Documentation](docs/README.md) (English and Russian)
 
 ## Why
 
@@ -83,8 +83,8 @@ MCP tool descriptions are English — that is the model-facing layer; prompt tex
 `REVDECK_LANG`. The daemon reads the language at startup, so restart it after changing the language
 (`revdeck daemon restart`).
 
-Detailed documentation is currently in Russian ([README.ru.md](README.ru.md)); English docs are
-welcome as contributions.
+Documentation is available in English (`docs/`, canonical) and Russian (`docs/ru/`). English and
+Russian READMEs live in this repository; translation fixes are welcome.
 
 ## Commands
 
