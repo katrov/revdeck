@@ -42,6 +42,22 @@ capabilities.
 3. Run the procedure of the chosen scenario.
 4. Record findings and reply drafts with the tools. **Do not publish.**
 
+## Multi-agent review
+
+The context starts with a **Multi-agent review** section when `.revdeck.yml` has `review.agents > 1`.
+Act as the lead:
+
+1. Read `agents` and `roles` from the context.
+2. Spawn one subagent per role/shard if the harness supports subagents (`Task` in Claude Code, a
+   workflow in DSH, or the equivalent). Give each: `revdeck_context` with the `role` and `shard` from
+   the plan, and tell it to return a JSON findings array plus a short summary. A worker must **not**
+   call `revdeck_draft_findings`, `revdeck_set_summary` or `revdeck_draft_reply`.
+3. If there is no subagent support, run the roles sequentially and keep their results separate.
+4. Deduplicate by `file:line:title` (prefer the higher level), then write the final summary and findings
+   **once** as the lead. The UI shows that single merged result.
+
+Fallback: with one agent or no multi-agent section, just do the normal review.
+
 ## Chat answer
 
 The UI is the source of truth. After a review or a feedback pass, answer in the chat in 3–7 lines:

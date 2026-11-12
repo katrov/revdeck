@@ -160,6 +160,25 @@ Every finding has a private **Note for the agent** field, and every thread has t
 reply. The text is included in `revdeck_context` / MCP but never published to GitLab or GitHub. Findings
 also keep their decision note separately.
 
+## Multi-agent review
+
+Configure independent reviewers in `.revdeck.yml`:
+
+```yaml
+review:
+  agents: 3
+  roles: [correctness, architecture, tests]
+```
+
+The lead agent reads this plan from `revdeck_context`, starts one subagent per role/shard, and gives each
+`revdeck context <N> --role <role> --shard i/N` (the MCP tool takes the same `role` and `shard`). Workers
+return findings as JSON and do not write to revdeck; the lead deduplicates by `file:line:title` and writes
+the final summary/findings once.
+
+Built-in roles: `correctness`, `architecture`, `tests`, `security`, `performance`, `compatibility`,
+`docs`, `concurrency`, `ux`, `general`. Default is three agents with correctness, architecture and tests.
+A role list shorter than `agents` is repeated.
+
 ## Devcontainer
 
 The daemon, `glab` and `gh` stay on the host. From the repository root:

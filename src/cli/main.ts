@@ -21,6 +21,7 @@ import { runDevcontainer } from './devcontainer.js';
 import { exportReview, importReview } from './export.js';
 import { attachmentSpec, MAX_ATTACHMENT_BYTES } from '../core/attachments.js';
 import { contextPayload, renderContext } from '../context.js';
+import { REVIEW_ROLE_IDS, type ReviewRoleId } from '../core/review-roles.js';
 
 const OPTIONS = {
     json: { type: 'boolean', default: false },
@@ -63,6 +64,8 @@ const OPTIONS = {
     toAgent: { type: 'boolean', default: true },
     all: { type: 'boolean', default: false },
     lang: { type: 'string' },
+    role: { type: 'string' },
+    shard: { type: 'string' },
 } as const;
 
 type Values = Record<string, string | boolean | undefined>;
@@ -86,7 +89,7 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
   revdeck list            открытые ревью (локальный кеш), --remote — с платформы
   revdeck open <url|N>    открыть ревью и получить контекст
   revdeck ui [N]          ссылка на локальный интерфейс
-  revdeck context <N>     контекст для агента: правила, diff, треды
+  revdeck context <N>     контекст для агента: правила, diff, треды [--role <роль>] [--shard i/N]
   revdeck threads <N>     обсуждения
   revdeck diff <N> [--file <путь>]
   revdeck findings <N> [list|set --file <json>|decide --id <id> --decision accept|reject|discuss]
@@ -115,7 +118,7 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
   revdeck list            open reviews (local cache), --remote — from the platform
   revdeck open <url|N>    open a review and get the context
   revdeck ui [N]          link to the local UI
-  revdeck context <N>     agent context: rules, diff, threads
+  revdeck context <N>     agent context: rules, diff, threads [--role <role>] [--shard i/N]
   revdeck threads <N>     discussions
   revdeck diff <N> [--file <path>]
   revdeck findings <N> [list|set --file <json>|decide --id <id> --decision accept|reject|discuss]
@@ -438,14 +441,39 @@ async function status(): Promise<void> {
     });
 }
 
+function parseRole(value: string | undefined): ReviewRoleId | undefined {
+    if (!value) return undefined;
+    if (!(REVIEW_ROLE_IDS as readonly string[]).includes(value)) {
+        fail(tr(`неизвестная роль ${value}`, `unknown role ${value}`), `revdeck context --role <${REVIEW_ROLE_IDS.join('|')}>`);
+    }
+    return value as ReviewRoleId;
+}
+
+function parseShard(value: string | undefined): { index: number; count: number } | undefined {
+    if (!value) return undefined;
+    const match = /^(\d+)\/(\d+)$/.exec(value);
+    if (!match) fail(tr(`некорректный шард ${value}`, `invalid shard ${value}`), tr('формат: --shard 1/3', 'format: --shard 1/3'));
+    const index = Number(match[1]);
+    const count = Number(match[2]);
+    if (index < 1 || count < 1 || index > count) fail(tr(`некорректный шард ${value}`, `invalid shard ${value}`), tr('индекс от 1 до количества', 'index must be between 1 and the count'));
+    return { index, count };
+}
+
 async function context(root: string, arg: string | undefined, values: Values): Promise<void> {
     await withClient(async ({ client }) => {
         const { review } = await resolveReview(client, root, reviewArg(values, arg), values);
-        const { rules } = await client.request<{ rules: { markdown: string; configPath: string | null; warnings: string[]; checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[]; language: 'ru' | 'en'; maxBytes?: number } }>('rules.get', {
+        const { rules } = await client.request<{ rules: { markdown: string; configPath: string | null; warnings: string[]; checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[]; language: 'ru' | 'en'; maxBytes?: number; agents: number; roles: import('../core/review-roles.js').ReviewRoleId[] } }>('rules.get', {
             review: review.id,
         });
         if (values.json) return printJson(contextPayload(review, rules));
-        writers.out(renderContext(review, rules, { language: rules.language, ...(rules.maxBytes !== undefined ? { maxBytes: rules.maxBytes } : {}) }));
+        const role = parseRole(values.role as string | undefined);
+        const shard = parseShard(values.shard as string | undefined);
+        writers.out(renderContext(review, rules, {
+            language: rules.language,
+            ...(rules.maxBytes !== undefined ? { maxBytes: rules.maxBytes } : {}),
+            ...(role ? { role } : {}),
+            ...(shard ? { shard } : {}),
+        }));
     });
 }
 

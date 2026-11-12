@@ -20,6 +20,8 @@ describe('config', () => {
         expect(config.rules.map).toEqual([]);
         expect(config.rules.maxDocumentBytes).toBe(0);
         expect(config.rules.maxTotalBytes).toBe(0);
+        expect(config.review.agents).toBe(3);
+        expect(config.review.roles).toEqual(['correctness', 'architecture', 'tests']);
     });
 
     it('parses a map and checks', () => {
@@ -38,6 +40,13 @@ checks:
 `);
         expect(config.rules.map[0]!.docs).toEqual(['docs/Architecture.md#Layers']);
         expect(config.checks[0]!.consent).toBe(true);
+    });
+
+    it('accepts a custom multi-agent plan and rejects unknown roles', () => {
+        const config = parseConfig('version: 1\nreview:\n  agents: 2\n  roles: [security, performance]\n');
+        expect(config.review.agents).toBe(2);
+        expect(config.review.roles).toEqual(['security', 'performance']);
+        expect(() => parseConfig('version: 1\nreview:\n  roles: [nope]\n')).toThrow(/review/);
     });
 
     it('rejects unknown levels and bad shapes', () => {

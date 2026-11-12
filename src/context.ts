@@ -1,6 +1,7 @@
 import type { ReviewView } from './daemon/view.js';
 import { truncate, when } from './cli/format.js';
 import type { Locale } from './core/locale.js';
+import { DEFAULT_REVIEW_ROLES, REVIEW_ROLES, effectiveReviewRoles, reviewRoleFocus, reviewRoleTitle, type ReviewRoleId } from './core/review-roles.js';
 
 export interface RulesPayload {
     markdown: string;
@@ -10,17 +11,36 @@ export interface RulesPayload {
     language: Locale;
     /** 0 — без ограничения размера контекста. */
     maxBytes?: number;
+    agents?: number;
+    roles?: ReviewRoleId[];
+}
+
+export interface ContextOptions {
+    maxBytes?: number;
+    language?: Locale;
+    role?: ReviewRoleId;
+    shard?: { index: number; count: number };
+    agents?: number;
+    roles?: ReviewRoleId[];
 }
 
 /**
  * Контекст для агента: один детерминированный документ вместо десятка
  * файлов и ручной таблицы «какой документ читать для этого пути».
  */
-export function renderContext(review: ReviewView, rules: RulesPayload, options: { maxBytes?: number; language?: Locale } = {}): string {
+export function renderContext(review: ReviewView, rules: RulesPayload, options: ContextOptions = {}): string {
     const maxBytes = options.maxBytes ?? 200_000;
     const limit = maxBytes > 0 ? maxBytes : Number.POSITIVE_INFINITY;
     const language: Locale = options.language ?? rules.language ?? 'en';
     const t = (ru: string, en: string): string => (language === 'ru' ? ru : en);
+    const agents = Math.max(1, options.agents ?? rules.agents ?? 1);
+    const roles = effectiveReviewRoles(agents, options.roles ?? rules.roles ?? DEFAULT_REVIEW_ROLES);
+    const shardCount = options.shard?.count ?? 1;
+    const shardIndex = options.shard?.index ?? 1;
+    const visibleFiles = shardCount > 1 ? review.files.filter((_, index) => index % shardCount === shardIndex - 1) : review.files;
+    const visiblePaths = new Set(visibleFiles.map((file) => file.path));
+    const visibleThreads = shardCount > 1 ? review.threads.filter((thread) => !thread.path || visiblePaths.has(thread.path)) : review.threads;
+    const visibleNotes = shardCount > 1 ? review.notes.filter((note) => visiblePaths.has(note.file)) : review.notes;
     const lines: string[] = [];
     const push = (line = ''): void => {
         lines.push(line);
@@ -44,6 +64,33 @@ export function renderContext(review: ReviewView, rules: RulesPayload, options: 
         push('**Язык вывода:** пиши замечания, ответы и выжимку по-русски. Правила проекта могут быть на другом языке — цитируй их как есть.');
     }
     push('');
+    if (agents > 1 || options.role || shardCount > 1) {
+        push(`## ${t('Многоагентное ревью', 'Multi-agent review')}`);
+        push(`${t('Агентов', 'Agents')}: ${agents}`);
+        push(`${t('Роли', 'Roles')}: ${roles.map((role) => reviewRoleTitle(role, language)).join(', ')}`);
+        if (options.role) {
+            push(`### ${t('Роль', 'Role')}: ${reviewRoleTitle(options.role, language)}`);
+            push(`${t('Критерии', 'Criteria')}: Criteria.md ${REVIEW_ROLE_CRITERIA(options.role)}`);
+            push(`${t('Фокус', 'Focus')}: ${reviewRoleFocus(options.role, language)}`);
+        }
+        if (shardCount > 1) {
+            push(`### ${t('Шард', 'Shard')}: ${shardIndex}/${shardCount}`);
+            push(t('Файлы этого шарда:', 'Files in this shard:'));
+            for (const file of visibleFiles) push(`- ${file.path}`);
+        }
+        if (options.role || shardCount > 1) {
+            push(t(
+                'Это независимый шард-ревьюер. Не вызывай revdeck_draft_findings, revdeck_set_summary, revdeck_draft_reply: верни лид-агенту JSON с замечаниями и короткой выжимкой.',
+                'This is an independent shard reviewer. Do not call revdeck_draft_findings, revdeck_set_summary or revdeck_draft_reply: return JSON with findings and a short summary to the lead agent.',
+            ));
+        } else {
+            push(t(
+                'Ты лид-агент: запусти по одному субагенту на роль и шард, передай каждому `revdeck_context --role <role> --shard i/N`, собери JSON, убери дубли по file:line:title и только потом запиши итоговые findings и summary.',
+                'You are the lead agent: spawn one subagent per role and shard, give each `revdeck_context --role <role> --shard i/N`, collect JSON, deduplicate by file:line:title, and only then write the final findings and summary.',
+            ));
+        }
+        push('');
+    }
     if (review.summary) {
         push(`## ${t('Выжимка', 'Summary')}`);
         if (review.summary.title) push(`**${review.summary.title}**`);
@@ -59,16 +106,16 @@ export function renderContext(review: ReviewView, rules: RulesPayload, options: 
         }
         push('');
     }
-    push(`## ${t('Файлы', 'Files')} (${review.files.length})`);
-    for (const file of review.files) {
+    push(`## ${t('Файлы', 'Files')} (${visibleFiles.length}${shardCount > 1 ? ` / ${review.files.length}` : ''})`);
+    for (const file of visibleFiles) {
         push(`- ${file.path} (${file.status}, +${file.additions} −${file.deletions})${file.binary ? ' [binary]' : ''}`);
     }
     push('');
     push(rules.markdown.trim());
     push('');
-    const openThreads = review.threads.filter((thread) => !thread.resolved);
-    push(`## ${t('Обсуждения', 'Discussions')} (${review.threads.length}, ${t('открытых', 'open')} ${openThreads.length})`);
-    for (const thread of review.threads) {
+    const openThreads = visibleThreads.filter((thread) => !thread.resolved);
+    push(`## ${t('Обсуждения', 'Discussions')} (${visibleThreads.length}${shardCount > 1 ? ` / ${review.threads.length}` : ''}, ${t('открытых', 'open')} ${openThreads.length})`);
+    for (const thread of visibleThreads) {
         const place = thread.path ? `${thread.path}:${thread.line ?? '?'}` : t('общий', 'general');
         push(`### ${place} · ${thread.resolved ? t('закрыт', 'resolved') : t('открыт', 'open')} · \`${thread.id}\``);
         if (thread.snippet) {
@@ -96,9 +143,9 @@ export function renderContext(review: ReviewView, rules: RulesPayload, options: 
         if (finding.agentNote) push(`  → ${t('агенту', 'to agent')}: ${truncate(finding.agentNote, 500)}`);
     }
     push('');
-    if (review.notes.length) {
-        push(`## ${t('Комментарии пользователя к строкам', 'Line comments from the human')} (${review.notes.length})`);
-        for (const note of review.notes) {
+    if (visibleNotes.length) {
+        push(`## ${t('Комментарии пользователя к строкам', 'Line comments from the human')} (${visibleNotes.length})`);
+        for (const note of visibleNotes) {
             push(`- \`${note.id}\` · ${note.file}:${note.line} · ${note.toAgent ? t('агенту', 'to agent') : t('себе', 'private')}${note.agentAction ? ` · ${note.agentAction}` : ''}`);
             push(`  ${truncate(note.text, 500)}`);
             if (note.agentReply) push(`  → ${truncate(note.agentReply, 500)}`);
@@ -143,6 +190,10 @@ export function renderContext(review: ReviewView, rules: RulesPayload, options: 
         : text;
 }
 
+function REVIEW_ROLE_CRITERIA(role: ReviewRoleId): string {
+    return `§${REVIEW_ROLES[role].criteria.join(', §')}`;
+}
+
 /** Структурированный вариант для --json и MCP structuredContent. */
 export function contextPayload(review: ReviewView, rules: RulesPayload): Record<string, unknown> {
     return {
@@ -162,5 +213,6 @@ export function contextPayload(review: ReviewView, rules: RulesPayload): Record<
         },
         rules,
         language: rules.language,
+        multiAgent: { agents: rules.agents ?? 1, roles: rules.roles ?? DEFAULT_REVIEW_ROLES },
     };
 }

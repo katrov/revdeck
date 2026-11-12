@@ -8,6 +8,7 @@ import { messageOf } from '../core/errors.js';
 import { findRepoRoot, findConfigFile } from '../core/paths.js';
 import { loadConfig } from '../core/config.js';
 import { buildEffectiveRules, renderRules } from '../core/rules.js';
+import { DEFAULT_REVIEW_ROLES, type ReviewRoleId } from '../core/review-roles.js';
 import { diffStats, changedPaths, findNewLine, linePosition, snippetAround } from '../core/diff.js';
 import { sanitizeBody, normalizeMediaLinks } from '../core/sanitize.js';
 import { attachmentSpec, decodeAttachment, matchesSignature } from '../core/attachments.js';
@@ -938,7 +939,16 @@ export class ReviewService {
 
     // ---------------------------------------------------------------- rules & checks
 
-    async rules(id: string): Promise<{ markdown: string; configPath: string | null; warnings: string[]; checks: CommandCheck[]; language: Locale; maxBytes: number }> {
+    async rules(id: string): Promise<{
+        markdown: string;
+        configPath: string | null;
+        warnings: string[];
+        checks: CommandCheck[];
+        language: Locale;
+        maxBytes: number;
+        agents: number;
+        roles: ReviewRoleId[];
+    }> {
         const stored = this.store.getReview(id);
         if (!stored) throw new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`));
         const info = this.store.info(id);
@@ -971,6 +981,8 @@ export class ReviewService {
             checks: effective.checks,
             language,
             maxBytes,
+            agents: config.review?.agents ?? 3,
+            roles: (config.review?.roles ?? DEFAULT_REVIEW_ROLES) as ReviewRoleId[],
         };
     }
 

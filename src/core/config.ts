@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { globToRegExp } from './glob.js';
 import { tr } from './locale.js';
+import { DEFAULT_REVIEW_ROLES, REVIEW_ROLE_IDS } from './review-roles.js';
 
 const matchSchema = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]);
 
@@ -25,6 +26,14 @@ export const reviewConfigSchema = z.object({
     output: z
         .object({
             language: z.enum(['auto', 'ru', 'en']).default('auto'),
+        })
+        .prefault({}),
+    review: z
+        .object({
+            /** Сколько независимых ревьюеров запускать. */
+            agents: z.number().int().min(1).max(8).default(3),
+            /** Роли агентов; при нехватке ролей они повторяются. */
+            roles: z.array(z.enum(REVIEW_ROLE_IDS)).min(1).max(10).default([...DEFAULT_REVIEW_ROLES]),
         })
         .prefault({}),
     rules: z

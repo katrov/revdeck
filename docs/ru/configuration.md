@@ -14,6 +14,9 @@ provider:
   base: develop
 output:
   language: auto        # auto | ru | en — язык замечаний и ответов
+review:
+  agents: 3
+  roles: [correctness, architecture, tests]
 rules:
   sources: [AGENTS.md]
   map:
@@ -53,6 +56,42 @@ publish:
 - Это язык **результата ревью**, а не интерфейса CLI/UI. Интерфейс переключается `--lang ru|en`,
   `REVDECK_LANG` или переключателем в UI.
 - `revdeck init --lang en` выбирает английский skill и пишет `REVDECK_LANG` в MCP-конфиг.
+
+## review
+
+Ревью можно разделить между независимыми агентами. Демон хранит итог; запуск агентов выполняет harness
+(субагенты Claude Code, workflow DSH или другой оркестратор).
+
+```yaml
+review:
+  agents: 3
+  roles: [correctness, architecture, tests]
+```
+
+| Поле | По умолчанию | Смысл |
+|---|---|---|
+| `agents` | `3` | число независимых ревьюеров, 1–8 |
+| `roles` | correctness, architecture, tests | роли ревьюеров; короткий список повторяется до `agents` |
+
+Доступные роли:
+
+| Роль | Фокус | Criteria.md |
+|---|---|---|
+| `correctness` | логика, граничные случаи, ошибки, async и состояние | §6, §10 |
+| `architecture` | слои, ответственность, связность, прецеденты, ADR | §3–§5, §7 |
+| `tests` | покрытие, assertions, пропущенные случаи, нестабильность | §8 |
+| `security` | авторизация, валидация, секреты, инъекции, shell | §10 |
+| `performance` | сложность, N+1, аллокации, блокирующие операции | §10 |
+| `compatibility` | публичный API, миграции, конфиги, обратная совместимость | §6, §7 |
+| `docs` | документация, конфиги, CHANGELOG и AI-инструкции | §9 |
+| `concurrency` | гонки, блокировки, идемпотентность, retries, отмена | §10 |
+| `ux` | состояния UI, доступность, ошибки, узкие экраны | §9, §10 |
+| `general` | полное ревью по всем разделам | §1–§12 |
+
+`revdeck context <N> --role <роль> --shard i/N` отдаёт контекст только с файлами шарда (и тредами по
+этим файлам) и напоминает не писать findings. MCP-инструмент принимает те же `role` и `shard`.
+Лид-агент собирает JSON воркеров, дедуплицирует по `file:line:title` и только потом вызывает
+`revdeck_set_summary` / `revdeck_draft_findings`.
 
 ## rules
 

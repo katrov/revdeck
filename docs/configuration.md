@@ -14,6 +14,9 @@ provider:
   base: develop
 output:
   language: auto        # auto | ru | en — language of findings and replies
+review:
+  agents: 3
+  roles: [correctness, architecture, tests]
 rules:
   sources: [AGENTS.md]
   map:
@@ -55,6 +58,42 @@ review to a different project.
 - This is the language of the **review output**, not of the CLI/UI interface. The interface is switched
   via `--lang ru|en`, `REVDECK_LANG`, or the toggle in the UI.
 - `revdeck init --lang en` selects the English skill and writes `REVDECK_LANG` to the MCP config.
+
+## review
+
+The review can be split between independent agents. The daemon stores the final result; spawning is done
+by the harness (Claude Code subagents, DSH workflow, or another orchestrator).
+
+```yaml
+review:
+  agents: 3
+  roles: [correctness, architecture, tests]
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `agents` | `3` | number of independent reviewers, 1–8 |
+| `roles` | correctness, architecture, tests | roles for the reviewers; a shorter list is repeated to reach `agents` |
+
+Available roles:
+
+| Role | Focus | Criteria.md |
+|---|---|---|
+| `correctness` | logic, edge cases, errors, async and state | §6, §10 |
+| `architecture` | layers, responsibility, coupling, precedents, ADRs | §3–§5, §7 |
+| `tests` | coverage, assertions, missing cases, flakiness | §8 |
+| `security` | authorization, validation, secrets, injections, shell | §10 |
+| `performance` | complexity, N+1, allocations, blocking work | §10 |
+| `compatibility` | public API, migrations, config and backward compatibility | §6, §7 |
+| `docs` | documentation, configs, CHANGELOG and AI instructions | §9 |
+| `concurrency` | races, locks, idempotency, retries, cancellation | §10 |
+| `ux` | UI states, accessibility, errors, narrow screens | §9, §10 |
+| `general` | full review across all sections | §1–§12 |
+
+`revdeck context <N> --role <role> --shard i/N` renders a worker context with only its files (and threads
+for those files), plus a reminder not to write findings. The MCP tool accepts the same `role` and `shard`
+arguments. The lead agent should collect the workers' JSON, deduplicate by `file:line:title`, and only
+then call `revdeck_set_summary` / `revdeck_draft_findings`.
 
 ## rules
 

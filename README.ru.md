@@ -146,6 +146,25 @@ API загрузки вложений, поэтому кнопка там отк
 ответом. Текст попадает в `revdeck_context` / MCP, но никогда не публикуется в GitLab или GitHub.
 Решение по замечанию хранится отдельно.
 
+## Многоагентное ревью
+
+Независимые ревьюеры настраиваются в `.revdeck.yml`:
+
+```yaml
+review:
+  agents: 3
+  roles: [correctness, architecture, tests]
+```
+
+Лид-агент читает план из `revdeck_context`, запускает по субагенту на роль/шард и выдаёт каждому
+`revdeck context <N> --role <роль> --shard i/N` (MCP-инструмент принимает те же `role` и `shard`).
+Воркеры возвращают замечания JSON и не пишут в revdeck; лид дедуплицирует по `file:line:title` и один
+раз записывает итоговые summary/findings.
+
+Встроенные роли: `correctness`, `architecture`, `tests`, `security`, `performance`, `compatibility`,
+`docs`, `concurrency`, `ux`, `general`. По умолчанию три агента: correctness, architecture, tests.
+Если ролей меньше, чем `agents`, список повторяется.
+
 ## Devcontainer
 
 Демон, `glab` и `gh` остаются на хосте. Из корня репозитория:

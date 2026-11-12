@@ -11,6 +11,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { ensureDaemon, RpcError, type DaemonClient } from '../client.js';
 import { contextPayload, renderContext, type RulesPayload } from '../context.js';
+import { REVIEW_ROLE_IDS } from '../core/review-roles.js';
 import { redact } from '../core/redact.js';
 import { VERSION } from '../version.js';
 import { detectLocale, setLocale, tr } from '../core/locale.js';
@@ -154,14 +155,30 @@ server.registerTool(
             refresh: z.boolean().optional().describe('Fetch fresh diff and threads from the platform'),
             file: z.string().optional().describe('Append the diff of one file'),
             max_bytes: z.number().int().positive().max(500_000).optional(),
+            role: z.enum(REVIEW_ROLE_IDS).optional().describe('Role for an independent shard reviewer'),
+            shard: z.string().regex(/^\d+\/\d+$/).optional().describe('Shard as i/N, for example 1/3'),
             root: rootSchema,
         },
     },
-    async ({ review, refresh, file, max_bytes }) => {
+    async ({ review, refresh, file, max_bytes, role, shard }) => {
         try {
             const { review: view } = await call<{ review: ReviewView }>('reviews.get', { review, refresh: refresh === true });
             const { rules } = await call<{ rules: RulesPayload }>('rules.get', { review });
-            let text = renderContext(view, rules, { maxBytes: max_bytes ?? rules.maxBytes ?? 200_000, language: rules.language });
+            const parsedShard = shard
+                ? (() => {
+                      const [index, count] = shard.split('/').map(Number) as [number, number];
+                      if (!Number.isInteger(index) || !Number.isInteger(count) || index < 1 || count < 1 || index > count) {
+                          throw new Error('shard must be i/N with 1 <= i <= N');
+                      }
+                      return { index, count };
+                  })()
+                : undefined;
+            let text = renderContext(view, rules, {
+                maxBytes: max_bytes ?? rules.maxBytes ?? 200_000,
+                language: rules.language,
+                ...(role ? { role } : {}),
+                ...(parsedShard ? { shard: parsedShard } : {}),
+            });
             if (file) {
                 const { file: diff } = await call<{ file: { hunks: { header: string; lines: { kind: string; text: string }[] }[] } | null }>('diff.get', {
                     review,

@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Multi-agent review plan in `.revdeck.yml` (`review.agents`, `review.roles`) with role catalog, role/shard
+  context via `revdeck context --role --shard` and MCP `role`/`shard`, plus lead/worker instructions in
+  the skill.
+
 ## [0.4.6] - 2026-11-12
 
 ### Added
