@@ -183,7 +183,7 @@ export async function runDevcontainer(rootInput: string, options: DevcontainerOp
     writers.out(tr('  1. На хосте: revdeck daemon restart — он создаст сокет моста.', '  1. On the host: revdeck daemon restart — it creates the bridge socket.'));
     writers.out(tr('  2. Пересоберите/переоткройте devcontainer.', '  2. Rebuild/reopen the devcontainer.'));
     writers.out(tr('  3. В контейнере: revdeck doctor — он не будет искать glab/gh внутри.', '  3. In the container: revdeck doctor — it will not look for glab/gh inside.'));
-    writers.out(tr('  Для UI/MCP из контейнера (или если сокет не монтируется) запустите демон на хосте с --host 0.0.0.0.', '  For the UI/MCP from the container (or when the socket cannot be mounted), start the daemon on the host with --host 0.0.0.0.'));
+    writers.out(tr('  Для UI/MCP из контейнера (или если сокет не монтируется) перезапустите демон на хосте с --host 0.0.0.0.', '  For the UI/MCP from the container (or when the socket cannot be mounted), restart the daemon on the host with --host 0.0.0.0.'));
 }
 
 /** Добавляет REVDECK_* в env MCP-сервера, чтобы он не поднимал демон в контейнере. */

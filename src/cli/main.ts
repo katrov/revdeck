@@ -369,6 +369,9 @@ async function daemon(action: string, values: Values = {}): Promise<void> {
         client.close();
         const info = await daemonInfo();
         writers.out(`${started ? tr('запущен', 'started') : tr('уже работает', 'already running')} ${tr('демон', 'daemon')} pid ${ping.pid}, ${tr('версия', 'version')} ${ping.version}`);
+        if (values.host && !started) {
+            writers.err(tr('! уже запущенный демон не меняет bind-адрес: используйте revdeck daemon restart --host 0.0.0.0', '! a running daemon does not rebind: use revdeck daemon restart --host 0.0.0.0'));
+        }
         if (info) writers.out(`${uiBaseUrl(info)}/?t=${info.token}`);
         return;
     }
@@ -383,7 +386,7 @@ async function daemon(action: string, values: Values = {}): Promise<void> {
         return;
     }
     if (action === 'install') {
-        await installService();
+        await installService(values.host ? String(values.host) : undefined);
         return;
     }
     if (action === 'uninstall') {

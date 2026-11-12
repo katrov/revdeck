@@ -105,8 +105,8 @@ revdeck devcontainer --write  # добавить их в .devcontainer/devcontai
 контейнер. В контейнере revdeck никогда не запускает свой демон: если сокет недоступен, команда
 падает с ошибкой `DEVCONTAINER` и подсказкой. `revdeck doctor` не ищет `glab`/`gh` в контейнере.
 
-Если сокет хоста не монтируется (например, Docker Desktop на macOS), запустите демон с
-`revdeck daemon start --host 0.0.0.0`. Контейнер прочитает `daemon.json` из смонтированного state и
+Если сокет хоста не монтируется (например, Docker Desktop на macOS), перезапустите демон с
+`revdeck daemon restart --host 0.0.0.0` (или `revdeck daemon install --host 0.0.0.0` для сервиса). Контейнер прочитает `daemon.json` из смонтированного state и
 переключится на HTTP через `host.docker.internal` с тем же токеном сессии; токен в репозиторий не
 пишется. `revdeck devcontainer --write` также добавляет переменные `REVDECK_*` в MCP-сервер `revdeck`
 в `.mcp.json` и `.cursor/mcp.json`. Привязка к `0.0.0.0` открывает HTTP-порт в сеть — используйте

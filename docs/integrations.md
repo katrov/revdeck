@@ -106,8 +106,8 @@ the container. Inside the container `revdeck` never starts its own daemon: if th
 it fails with a `DEVCONTAINER` error and a hint. `revdeck doctor` does not look for `glab`/`gh` in the
 container.
 
-If the host socket cannot be mountable (notably Docker Desktop on macOS), start the daemon with
-`revdeck daemon start --host 0.0.0.0`. The container reads `daemon.json` from the mounted state and
+If the host socket cannot be mounted (notably Docker Desktop on macOS), restart the daemon with
+`revdeck daemon restart --host 0.0.0.0` (or `revdeck daemon install --host 0.0.0.0` for a service). The container reads `daemon.json` from the mounted state and
 falls back to HTTP using `host.docker.internal` and the same session token; no token is written to the
 repository. `revdeck devcontainer --write` also adds the `REVDECK_*` variables to the `revdeck` MCP
 server in `.mcp.json` and `.cursor/mcp.json`. Binding to `0.0.0.0` exposes the HTTP port to the network;

@@ -176,8 +176,8 @@ rebuild the container. Inside the container revdeck never starts a local daemon,
 never invoked there; if the host socket is missing it fails with a clear `DEVCONTAINER` error.
 `revdeck doctor` is aware of this mode.
 
-If a Unix socket cannot be mounted (for example Docker Desktop on macOS), start the host daemon with
-`revdeck daemon start --host 0.0.0.0`. The container reads `daemon.json` from the mounted state and
+If a Unix socket cannot be mounted (for example Docker Desktop on macOS), restart the host daemon with
+`revdeck daemon restart --host 0.0.0.0` (or `revdeck daemon install --host 0.0.0.0` for a service). The container reads `daemon.json` from the mounted state and
 falls back to HTTP with the same session token; `.mcp.json` / `.cursor/mcp.json` get the required
 `REVDECK_*` env from `revdeck devcontainer --write`. Binding the daemon to `0.0.0.0` exposes its HTTP
 port to the network, so use it only on a trusted network.

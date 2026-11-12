@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-12
+
+### Fixed
+
+- `revdeck daemon start --host` now warns when a daemon is already running and does not rebind;
+  use `revdeck daemon restart --host 0.0.0.0`. `revdeck daemon install --host 0.0.0.0` writes the
+  binding into the systemd unit / launchd plist.
+
 ## [0.4.0] - 2026-11-12
 
 ### Added

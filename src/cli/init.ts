@@ -297,7 +297,7 @@ async function ensureGitignore(root: string): Promise<void> {
     writers.out(tr('✔ .revdeck/ добавлен в .gitignore', '✔ .revdeck/ added to .gitignore'));
 }
 
-export async function installService(): Promise<string> {
+export async function installService(host?: string): Promise<string> {
     const glab = await resolveExecutable('glab');
     const gh = await resolveExecutable('gh');
     const envVars = [
@@ -307,6 +307,7 @@ export async function installService(): Promise<string> {
     ];
     const root = packageRoot();
     const daemon = path.join(root, 'dist', 'daemon.js');
+    const hostArgs = host ? ` --host ${host}` : '';
     if (!existsSync(daemon)) throw new Error(tr('нет dist/daemon.js: сначала выполните npm run build', 'dist/daemon.js is missing: run npm run build first'));
     if (daemon.includes(`${path.sep}_npx${path.sep}`)) {
         writers.err(tr('! пакет запущен через npx: путь к демону может исчезнуть при очистке кеша.', '! running from an npx cache: the daemon path can be evicted.'));
@@ -324,7 +325,7 @@ export async function installService(): Promise<string> {
                 'After=default.target',
                 '',
                 '[Service]',
-                `ExecStart=${process.execPath} ${daemon}`,
+                `ExecStart=${process.execPath} ${daemon}${hostArgs}`,
                 ...envVars.map((item) => `Environment="${systemdEscape(item)}"`),
                 'Restart=on-failure',
                 'RestartSec=2',
@@ -348,7 +349,7 @@ export async function installService(): Promise<string> {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>io.revdeck.daemon</string>
-<key>ProgramArguments</key><array><string>${process.execPath}</string><string>${daemon}</string></array>
+<key>ProgramArguments</key><array><string>${process.execPath}</string><string>${daemon}</string>${host ? `<string>--host</string><string>${xmlEscape(host)}</string>` : ''}</array>
 <key>EnvironmentVariables</key><dict>${envVars.map((item) => `<key>${xmlEscape(item.slice(0, item.indexOf('=')))}</key><string>${xmlEscape(item.slice(item.indexOf('=') + 1))}</string>`).join('')}</dict>
 <key>RunAtLoad</key><true/>
 <key>KeepAlive</key><true/>

@@ -162,8 +162,8 @@ revdeck devcontainer --write  # добавить их в .devcontainer/devcontai
 вызываются; если сокет хоста недоступен, команда падает с понятной ошибкой `DEVCONTAINER`.
 `revdeck doctor` знает об этом режиме.
 
-Если Unix-сокет не монтируется (например, Docker Desktop на macOS), запустите демон на хосте с
-`revdeck daemon start --host 0.0.0.0`. Клиент в контейнере прочитает `daemon.json` из смонтированного
+Если Unix-сокет не монтируется (например, Docker Desktop на macOS), перезапустите демон на хосте с
+`revdeck daemon restart --host 0.0.0.0` (или `revdeck daemon install --host 0.0.0.0` для сервиса). Клиент в контейнере прочитает `daemon.json` из смонтированного
 state и переключится на HTTP с тем же токеном сессии; `revdeck devcontainer --write` добавляет нужные
 `REVDECK_*` в `.mcp.json` / `.cursor/mcp.json`. Привязка к `0.0.0.0` открывает HTTP-порт в сеть —
 используйте это только в доверенной сети.
