@@ -197,7 +197,7 @@ read the CLI configuration — isolate the agent.
 | `src/cli` | commands, `init`, `doctor`, export/import |
 | `src/mcp` | MCP server over stdio |
 | `ui` | Svelte 5 + Vite |
-| `skills/revdeck` | review procedures (SKILL, Review, Feedback, Criteria, Rules, Sources) |
+| `skills/revdeck` | review procedures (SKILL, Review, Feedback, Criteria, Rules, Sources, `agents/openai.yaml`) |
 
 More: [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protocol.md),
 [ADR-0001](docs/adr/0001-daemon-first.md).

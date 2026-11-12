@@ -1,0 +1,4 @@
+interface:
+  display_name: "revdeck — MR/PR review"
+  short_description: "Review GitLab/GitHub merge and pull requests, work through findings"
+  default_prompt: "Use $revdeck to open the review, read the project rules and work through the findings."

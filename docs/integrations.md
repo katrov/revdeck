@@ -15,17 +15,23 @@ skill remain: the agent calls commands through the shell.
 
 | Harness | `/` command | What `init` writes |
 |---|---|---|
-| Claude Code | `/revdeck` | `.claude/commands/revdeck.md`, `.claude/skills/revdeck/*`, `.mcp.json` |
+| Claude Code | `/revdeck` | `.claude/commands/revdeck.md`, `.claude/skills/revdeck` → `../../.agents/skills/revdeck`, `.mcp.json` |
 | Cursor | `/revdeck` | `.cursor/commands/revdeck.md`, `.cursor/mcp.json` |
 | Codex CLI | prompt `revdeck` | `.codex/prompts/revdeck.md`; MCP in `~/.codex/config.toml` (manually) |
 | Gemini CLI | `/revdeck` | `.gemini/commands/revdeck.toml`; MCP in the Gemini settings (manually) |
 | OpenCode | `/revdeck` | `.opencode/command/revdeck.md` |
 | GitHub Copilot | prompt file | `.github/prompts/revdeck.prompt.md` |
-| DSH | plugin (see below) | `.agents/skills/revdeck/*` + YAML snippet in the output |
-| Universal | — | `.agents/skills/revdeck/*` + MCP |
+| DSH | plugin (see below) | `.agents/skills/revdeck/*` (including `agents/openai.yaml`) + YAML snippet in the output |
+| Universal | — | `.agents/skills/revdeck/*` (including `agents/openai.yaml`) + MCP |
 
 `revdeck init --adapters dsh,claude` explicitly enables the adapters you need. A repeated `init`
 does not overwrite existing command files and does not clobber other keys in `.mcp.json`.
+
+The skill has one canonical copy: `.agents/skills/revdeck` (including `agents/openai.yaml` for OpenAI
+harnesses). Harnesses that keep skills under their own directory get a link to it — `.claude/skills/revdeck`
+is a symlink to `../../.agents/skills/revdeck`, with a copy fallback on Windows and on filesystems without
+symlink support. Old copies created by an earlier `init` are replaced when they still carry
+`name: revdeck`.
 
 ## MCP
 

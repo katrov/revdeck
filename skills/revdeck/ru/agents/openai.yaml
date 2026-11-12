@@ -1,0 +1,4 @@
+interface:
+  display_name: "revdeck — ревью MR/PR"
+  short_description: "Ревью merge/pull request в GitLab/GitHub и разбор замечаний"
+  default_prompt: "Используй $revdeck, чтобы открыть ревью, прочитать правила проекта и разобрать замечания."

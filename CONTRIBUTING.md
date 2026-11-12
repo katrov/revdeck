@@ -56,8 +56,9 @@ Rules of thumb:
 
 ## Adding a harness adapter
 
-Add a `SPECS` entry in `src/cli/init.ts` with the skill target, MCP config path or command file, then
-document it in `docs/integrations.md`. `init` must never overwrite files it does not own.
+Add a `SPECS` entry in `src/cli/init.ts` with the MCP config path, command file or `linkSkill` flag, then
+document it in `docs/integrations.md`. The canonical skill is always `.agents/skills/revdeck`; adapters
+link to it instead of copying the procedure files. `init` must never overwrite files it does not own.
 
 ## Translations
 

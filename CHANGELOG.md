@@ -15,6 +15,12 @@ All notable changes to this project are documented here. The format is based on
   the local cache from a repository. It is preview-only without `--yes` and leaves foreign files and
   other MCP servers intact.
 
+### Fixed
+
+- `revdeck init` keeps one canonical skill in `.agents/skills/revdeck` (now including
+  `agents/openai.yaml`) and links `.claude/skills/revdeck` to it instead of copying the procedure files.
+  A copy is used only on platforms without symlink support.
+
 ## [0.1.0] - 2026-11-11
 
 First public release.

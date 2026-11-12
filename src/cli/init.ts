@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { appendFile, cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, cp, lstat, mkdir, readdir, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { findRepoRoot, findConfigFile, packageRoot } from '../core/paths.js';
 import { gitRemote } from '../core/git.js';
@@ -69,8 +69,10 @@ export async function runInit(rootInput: string, options: InitOptions): Promise<
     await ensureGitignore(root);
     const adapters = options.adapters.length ? options.adapters : detectAdapters(root);
     const mcp = mcpServer(options.locale);
+    // Канонический скилл всегда живёт в .agents; .claude и другие харнессы ссылаются на него.
+    const canonicalSkill = await installSkill(root, options.locale);
     for (const adapter of adapters) {
-        await installAdapter(root, adapter, mcp, options.locale);
+        await installAdapter(root, adapter, mcp, options.locale, canonicalSkill);
     }
 
     if (!options.noService) {
@@ -85,9 +87,11 @@ export async function runInit(rootInput: string, options: InitOptions): Promise<
     writers.out('  revdeck ui');
 }
 
+const CANONICAL_SKILL = '.agents/skills/revdeck';
+
 interface AdapterSpec {
-    /** Куда скопировать skills/revdeck. */
-    skills?: string;
+    /** Создать ссылку на канонический .agents/skills/revdeck (иначе — копия на Windows). */
+    linkSkill?: boolean;
     /** Куда дописать MCP-сервер в JSON. */
     mcp?: string;
     files?: { path: string; content: string | ((locale: Locale) => string) }[];
@@ -122,10 +126,10 @@ function commandToml(locale: Locale): string {
 }
 
 const SPECS: Record<string, AdapterSpec> = {
-    agents: { skills: '.agents/skills/revdeck' },
-    dsh: { skills: '.agents/skills/revdeck' },
+    agents: {},
+    dsh: {},
     claude: {
-        skills: '.claude/skills/revdeck',
+        linkSkill: true,
         mcp: '.mcp.json',
         files: [{ path: '.claude/commands/revdeck.md', content: commandMd }],
     },
@@ -151,25 +155,19 @@ function detectAdapters(root: string): string[] {
     return [...adapters];
 }
 
-async function installAdapter(root: string, adapter: string, mcp: McpConfig, locale: Locale): Promise<void> {
+async function installAdapter(
+    root: string,
+    adapter: string,
+    mcp: McpConfig,
+    locale: Locale,
+    canonicalSkill: string | null,
+): Promise<void> {
     const spec = SPECS[adapter];
     if (!spec) {
         writers.err(`! ${tr('неизвестный адаптер', 'unknown adapter')}: ${adapter} (${Object.keys(SPECS).join(', ')})`);
         return;
     }
-    if (spec.skills) {
-        const skills = path.join(packageRoot(), 'skills', 'revdeck', locale);
-        if (!existsSync(skills)) {
-            writers.err(`! ${tr('каталог skills/revdeck не найден: пакет собран не полностью', 'skills/revdeck not found: the package is incomplete')}`);
-        } else {
-            const target = path.join(root, spec.skills);
-            await mkdir(target, { recursive: true });
-            for (const entry of await skillFiles(skills)) {
-                await cp(path.join(skills, entry), path.join(target, entry), { force: true });
-            }
-            writers.out(`✔ ${tr('скилл', 'skill')}: ${path.relative(root, target)}`);
-        }
-    }
+    if (spec.linkSkill && canonicalSkill) await linkSkill(root, canonicalSkill);
     if (spec.mcp) await mergeMcpJson(path.join(root, spec.mcp), root, mcp);
     for (const file of spec.files ?? []) {
         const target = path.join(root, file.path);
@@ -196,9 +194,77 @@ async function installAdapter(root: string, adapter: string, mcp: McpConfig, loc
     }
 }
 
-async function skillFiles(dir: string): Promise<string[]> {
-    const names = ['SKILL.md', 'Review.md', 'Feedback.md', 'Criteria.md', 'Rules.md', 'Sources.md'];
-    return names.filter((name) => existsSync(path.join(dir, name)));
+/** Канонический скилл: .agents/skills/revdeck, включая agents/openai.yaml. */
+async function installSkill(root: string, locale: Locale): Promise<string | null> {
+    const source = path.join(packageRoot(), 'skills', 'revdeck', locale);
+    if (!existsSync(source)) {
+        writers.err(`! ${tr('каталог skills/revdeck не найден: пакет собран не полностью', 'skills/revdeck not found: the package is incomplete')}`);
+        return null;
+    }
+    const target = path.join(root, CANONICAL_SKILL);
+    await copySkill(source, target);
+    writers.out(`✔ ${tr('скилл', 'skill')}: ${CANONICAL_SKILL}`);
+    return target;
+}
+
+async function copySkill(source: string, target: string): Promise<void> {
+    await mkdir(target, { recursive: true });
+    for (const entry of await skillFiles(source)) {
+        const file = path.join(target, entry);
+        await mkdir(path.dirname(file), { recursive: true });
+        await cp(path.join(source, entry), file, { force: true });
+    }
+}
+
+/**
+ * .claude/skills/revdeck — ссылка на канонический скилл, а не копия процедур.
+ * Старую копию, созданную предыдущим init, заменяем; чужие файлы не трогаем.
+ */
+async function linkSkill(root: string, canonicalSkill: string): Promise<void> {
+    const target = path.join(root, '.claude', 'skills', 'revdeck');
+    const relative = path.relative(path.dirname(target), canonicalSkill);
+    await mkdir(path.dirname(target), { recursive: true });
+    const existing = await lstat(target).catch(() => null);
+    if (existing) {
+        if (existing.isSymbolicLink()) {
+            const current = await readlink(target).catch(() => '');
+            if (current === relative) {
+                writers.out(`✔ ${tr('скилл', 'skill')}: .claude/skills/revdeck -> ${CANONICAL_SKILL}`);
+                return;
+            }
+            await rm(target, { force: true });
+        } else if (existing.isDirectory() && (await isManagedSkillDir(target))) {
+            await rm(target, { recursive: true, force: true });
+        } else {
+            writers.out(`! .claude/skills/revdeck ${tr('уже есть: не перезаписываю', 'already exists: not overwriting')}`);
+            return;
+        }
+    }
+    if (process.platform === 'win32') {
+        // Символические ссылки на Windows требуют прав; копия сохраняет совместимость.
+        await copySkill(canonicalSkill, target);
+    } else {
+        await symlink(relative, target, 'dir');
+    }
+    writers.out(`✔ ${tr('скилл', 'skill')}: .claude/skills/revdeck -> ${CANONICAL_SKILL}`);
+}
+
+async function isManagedSkillDir(dir: string): Promise<boolean> {
+    const skill = path.join(dir, 'SKILL.md');
+    if (!existsSync(skill)) return false;
+    const text = await readFile(skill, 'utf8').catch(() => '');
+    return /^name:\s*revdeck\s*$/m.test(text);
+}
+
+async function skillFiles(dir: string, prefix = ''): Promise<string[]> {
+    const entries = await readdir(path.join(dir, prefix), { withFileTypes: true });
+    const files: string[] = [];
+    for (const entry of entries) {
+        const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) files.push(...(await skillFiles(dir, relative)));
+        else if (entry.isFile()) files.push(relative);
+    }
+    return files.sort();
 }
 
 async function mergeMcpJson(file: string, root: string, mcp: McpConfig): Promise<void> {

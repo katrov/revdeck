@@ -77,7 +77,8 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
 
 - **Новая платформа**: реализовать `Provider` и добавить ветку в `createProvider`; всё остальное не
   меняется.
-- **Новый харнесс**: `revdeck init --adapters <имя>` копирует skill и пишет MCP-конфиг. Для
+- **Новый харнесс**: `revdeck init --adapters <имя>` пишет MCP-конфиг или файл команды и ссылается на
+  канонический skill `.agents/skills/revdeck`. Для
   харнессов без MCP используется CLI.
 - **Правила**: `rules.map`/`rules.sources` в `.revdeck.yml`; паки правил можно распространять как
   обычный файл конфигурации.

@@ -1,10 +1,11 @@
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readlink, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setLocale } from '../src/core/locale.js';
 import { runEject } from '../src/cli/eject.js';
+import { runInit } from '../src/cli/init.js';
 
 let root: string;
 
@@ -30,6 +31,37 @@ async function seed(): Promise<void> {
     await mkdir(path.join(root, '.revdeck'), { recursive: true });
     await writeFile(path.join(root, '.revdeck', 'state.json'), '{}');
 }
+
+describe('revdeck init', () => {
+    const options = { force: false, adapters: ['claude'], noService: true, locale: 'en' as const, outputLanguage: 'en' as const };
+
+    it('keeps the canonical skill in .agents and links .claude to it', async () => {
+        await runInit(root, options);
+
+        expect(existsSync(path.join(root, '.agents', 'skills', 'revdeck', 'SKILL.md'))).toBe(true);
+        expect(existsSync(path.join(root, '.agents', 'skills', 'revdeck', 'Review.md'))).toBe(true);
+        expect(existsSync(path.join(root, '.agents', 'skills', 'revdeck', 'agents', 'openai.yaml'))).toBe(true);
+
+        const link = path.join(root, '.claude', 'skills', 'revdeck');
+        expect((await lstat(link)).isSymbolicLink()).toBe(true);
+        expect((await readlink(link)).replaceAll('\\', '/')).toBe('../../.agents/skills/revdeck');
+        expect(existsSync(path.join(link, 'Review.md'))).toBe(true);
+        expect(existsSync(path.join(root, '.claude', 'commands', 'revdeck.md'))).toBe(true);
+        expect(existsSync(path.join(root, '.mcp.json'))).toBe(true);
+    });
+
+    it('replaces an old copied .claude skill with a link', async () => {
+        await mkdir(path.join(root, '.claude', 'skills', 'revdeck'), { recursive: true });
+        await writeFile(path.join(root, '.claude', 'skills', 'revdeck', 'SKILL.md'), '---\nname: revdeck\n---\n');
+        await writeFile(path.join(root, '.claude', 'skills', 'revdeck', 'Review.md'), 'old copy');
+
+        await runInit(root, options);
+
+        const link = path.join(root, '.claude', 'skills', 'revdeck');
+        expect((await lstat(link)).isSymbolicLink()).toBe(true);
+        expect(await readFile(path.join(link, 'Review.md'), 'utf8')).not.toBe('old copy');
+    });
+});
 
 describe('revdeck eject', () => {
     it('removes only revdeck-owned artifacts and keeps foreign files', async () => {

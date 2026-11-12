@@ -15,14 +15,14 @@ skill: агент вызывает команды через shell.
 
 | Харнесс | `/`-команда | Что пишет `init` |
 |---|---|---|
-| Claude Code | `/revdeck` | `.claude/commands/revdeck.md`, `.claude/skills/revdeck/*`, `.mcp.json` |
+| Claude Code | `/revdeck` | `.claude/commands/revdeck.md`, `.claude/skills/revdeck` → `../../.agents/skills/revdeck`, `.mcp.json` |
 | Cursor | `/revdeck` | `.cursor/commands/revdeck.md`, `.cursor/mcp.json` |
 | Codex CLI | prompt `revdeck` | `.codex/prompts/revdeck.md`; MCP — в `~/.codex/config.toml` (вручную) |
 | Gemini CLI | `/revdeck` | `.gemini/commands/revdeck.toml`; MCP — в настройках Gemini (вручную) |
 | OpenCode | `/revdeck` | `.opencode/command/revdeck.md` |
 | GitHub Copilot | prompt-файл | `.github/prompts/revdeck.prompt.md` |
-| DSH | плагин (см. ниже) | `.agents/skills/revdeck/*` + YAML-сниппет в выводе |
-| Универсальный | — | `.agents/skills/revdeck/*` + MCP |
+| DSH | плагин (см. ниже) | `.agents/skills/revdeck/*` (включая `agents/openai.yaml`) + YAML-сниппет в выводе |
+| Универсальный | — | `.agents/skills/revdeck/*` (включая `agents/openai.yaml`) + MCP |
 
 `revdeck init --adapters dsh,claude` включает нужные явно. Повторный `init` не перезаписывает
 существующие командные файлы и не затирает чужие ключи `.mcp.json`.

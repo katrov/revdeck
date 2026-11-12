@@ -77,7 +77,8 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
 ## Extension
 
 - **New platform**: implement `Provider` and add a branch in `createProvider`; nothing else changes.
-- **New harness**: `revdeck init --adapters <name>` copies the skill and writes the MCP config.
+- **New harness**: `revdeck init --adapters <name>` writes the MCP config or command file and links the
+  canonical `.agents/skills/revdeck` skill.
   Harnesses without MCP use the CLI.
 - **Rules**: `rules.map`/`rules.sources` in `.revdeck.yml`; rule packs can be distributed as a regular
   configuration file.

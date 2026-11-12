@@ -184,7 +184,7 @@ revdeck ищет `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` и `docs/*` и пр
 | `src/cli` | команды, `init`, `doctor`, экспорт/импорт |
 | `src/mcp` | MCP-сервер (stdio) |
 | `ui` | Svelte 5 + Vite |
-| `skills/revdeck` | процедуры ревью (SKILL, Review, Feedback, Criteria, Rules, Sources) |
+| `skills/revdeck` | процедуры ревью (SKILL, Review, Feedback, Criteria, Rules, Sources, `agents/openai.yaml`) |
 
 Подробно: [docs/ru/architecture.md](docs/ru/architecture.md), [docs/ru/protocol.md](docs/ru/protocol.md),
 [ADR-0001](docs/ru/adr/0001-daemon-first.md).
