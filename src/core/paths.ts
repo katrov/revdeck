@@ -117,8 +117,8 @@ export async function readTextNoFollow(file: string, maxBytes = 4 * 1024 * 1024)
 }
 
 /** Атомарная запись: временный файл в том же каталоге и rename. */
-export async function writeFileAtomic(file: string, data: string, mode = 0o600): Promise<void> {
-    await ensureDir(path.dirname(file));
+export async function writeFileAtomic(file: string, data: string, mode = 0o600, dirMode = 0o700): Promise<void> {
+    await ensureDir(path.dirname(file), dirMode);
     const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${Date.now().toString(36)}.tmp`);
     let handle;
     try {

@@ -298,6 +298,12 @@ export class ReviewService {
         return this.store.listReviews();
     }
 
+    removeReview(id: string): void {
+        this.requireReview(id);
+        this.store.removeReview(id);
+        this.events.emit('review', { reviewId: id, at: this.now().toISOString() });
+    }
+
     async listRemote(
         rootInput: string,
         scope: 'open' | 'mine' | 'reviewing',
@@ -345,13 +351,13 @@ export class ReviewService {
                 .map((entry) => String(entry ?? '').trim())
                 .filter(Boolean)
                 .slice(0, limit)
-                .map((entry) => entry.slice(0, 2000));
+                .map((entry) => entry.slice(0, 4000));
         const summary: ReviewSummary = {
-            title: String(value.title ?? '').slice(0, 500),
-            scope: String(value.scope ?? '').slice(0, 1000),
-            summary: String(value.summary ?? '').slice(0, 5000),
-            changes: list(value.changes, 50),
-            focus: list(value.focus, 50),
+            title: String(value.title ?? '').slice(0, 1000),
+            scope: String(value.scope ?? '').slice(0, 2000),
+            summary: String(value.summary ?? '').slice(0, 20_000),
+            changes: list(value.changes, 100),
+            focus: list(value.focus, 100),
         };
         this.store.setSummary(id, summary);
         this.emit(id);

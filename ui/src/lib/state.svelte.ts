@@ -31,6 +31,7 @@ export const app = $state({
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+let loadRequest = 0;
 
 export function notify(text: string, kind: Toast['kind'] = 'info'): void {
     app.toast = { text, kind, id: Date.now() };
@@ -59,10 +60,12 @@ export async function loadReviews(): Promise<void> {
 }
 
 export async function loadReview(id: string, options: { refresh?: boolean; silent?: boolean } = {}): Promise<void> {
+    const request = ++loadRequest;
     if (!options.silent) app.loading = true;
     app.error = '';
     try {
         const data = options.refresh ? await refreshReview(id) : await getState(id);
+        if (request !== loadRequest) return;
         app.review = data.review;
         app.reviews = data.reviews;
         if (!app.diffFile || !data.review.files.some((file) => file.path === app.diffFile)) {
@@ -71,10 +74,11 @@ export async function loadReview(id: string, options: { refresh?: boolean; silen
         void loadReactions(data.review);
         writeHash(false);
     } catch (error) {
+        if (request !== loadRequest) return;
         app.error = errorText(error);
         if (!options.silent) notify(app.error, 'error');
     } finally {
-        app.loading = false;
+        if (request === loadRequest) app.loading = false;
     }
 }
 
@@ -91,7 +95,15 @@ export function subscribe(): () => void {
     const source = new EventSource('/api/events');
     source.addEventListener('review', () => scheduleReload());
     source.addEventListener('hello', () => undefined);
-    return () => source.close();
+    // Страховка на случай, если SSE не доходит (прокси, devcontainer):
+    // агент пишет черновики, UI подхватывает их без ручного «Обновить».
+    const poll = setInterval(() => {
+        if (document.visibilityState === 'visible') scheduleReload();
+    }, 10_000);
+    return () => {
+        source.close();
+        clearInterval(poll);
+    };
 }
 
 const TABS: readonly Tab[] = ['overview', 'threads', 'findings', 'diff', 'rules'];

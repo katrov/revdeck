@@ -1,6 +1,8 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { app, applyRoute, bootstrap, loadReview, loadReviews, notify, setTab, subscribe } from './lib/state.svelte';
+    import { removeReview as removeReviewApi } from './lib/api';
+    import type { ReviewListItem } from './lib/types';
     import type { Tab } from './lib/types';
     import { i18n, plural, setLocale, t } from './lib/i18n.svelte';
     import Overview from './components/Overview.svelte';
@@ -58,6 +60,32 @@
         app.focus = null;
         app.diffFocus = null;
         void loadReview(id);
+    }
+
+    async function removeReview(item: ReviewListItem): Promise<void> {
+        if (!confirm(t(`Удалить #${item.number} из списка? Это не удалит MR на платформе.`, `Remove #${item.number} from the list? This does not delete the MR on the platform.`))) return;
+        try {
+            await removeReviewApi(item.id);
+            const wasCurrent = app.review?.id === item.id;
+            await loadReviews();
+            if (!wasCurrent) {
+                notify(t('Ревью убрано из списка', 'Review removed from the list'), 'ok');
+                return;
+            }
+            const next = app.reviews[0];
+            if (next) {
+                openReview(next.id);
+            } else {
+                app.review = null;
+                app.focus = null;
+                app.diffFocus = null;
+                app.diffFile = null;
+                history.replaceState(null, '', `${location.pathname}${location.search}`);
+            }
+            notify(t('Ревью убрано из списка', 'Review removed from the list'), 'ok');
+        } catch (error) {
+            notify(error instanceof Error ? error.message : String(error), 'error');
+        }
     }
 
     function refresh(): void {
@@ -152,10 +180,13 @@
         </div>
         <div class="sidebar-list">
             {#each app.reviews as review (review.id)}
-                <button class="review-row" class:active={app.review?.id === review.id} onclick={() => openReview(review.id)}>
-                    <span class="title">#{review.number} {review.title}</span>
-                    <span class="meta">{review.project} · {review.author}</span>
-                </button>
+                <div class="sidebar-review-row" class:active={app.review?.id === review.id}>
+                    <button class="review-row" class:active={app.review?.id === review.id} onclick={() => openReview(review.id)}>
+                        <span class="title">#{review.number} {review.title}</span>
+                        <span class="meta">{review.project} · {review.author}</span>
+                    </button>
+                    <button class="review-remove" type="button" title={t('Удалить из списка', 'Remove from list')} aria-label={t('Удалить из списка', 'Remove from list')} onclick={() => void removeReview(review)}>×</button>
+                </div>
             {:else}
                 <p class="muted small" style="padding: 8px">{t('Ревью ещё не открывались.', 'No reviews opened yet.')}</p>
             {/each}
@@ -173,7 +204,7 @@
         </div>
     </aside>
 
-    <main class="main">
+    <main class="main" aria-busy={app.loading}>
         {#if app.review}
             {@const review = app.review}
             <header class="header">
@@ -212,6 +243,10 @@
                     </div>
                 </div>
             </header>
+
+            {#if app.loading}
+                <div class="loading-bar" role="progressbar" aria-label={t('Загрузка ревью', 'Loading review')}></div>
+            {/if}
 
             <nav class="tabs" aria-label={t('Разделы ревью', 'Review sections')}>
                 {#each tabs as tab (tab.id)}

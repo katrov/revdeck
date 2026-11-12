@@ -45,6 +45,7 @@ authorization is enforced by the socket file's permissions.
 | `reviews.remoteList` | `root`, `scope`, `limit` | open reviews from the platform |
 | `reviews.open` | `root`, `input`/`platform`/`project`/`host`/`branch` | review snapshot |
 | `reviews.refresh` | `review` | refreshed snapshot |
+| `reviews.remove` | `review` | remove the review from the local list (not the platform) |
 | `reviews.get` | `review`, `refresh?` | snapshot (without the full diff) |
 | `diff.get` | `review`, `file` | file hunks |
 | `drafts.put` | `review`, `threadId`, `patch` | draft |

@@ -3,6 +3,17 @@
 Thanks for taking the time to contribute. revdeck is a small, dependency-light project: a review
 procedure, a local daemon, platform providers, an MCP server, a CLI and a Svelte UI.
 
+## Documentation is part of the change
+
+A behavior change is not complete until its documentation is updated in the same change:
+
+- `README.md` and `README.ru.md` for user-facing commands and behavior;
+- `docs/` and `docs/ru/` for architecture, configuration, protocol and integrations;
+- `CHANGELOG.md` under `Unreleased` (or the release section);
+- `revdeck --help` and MCP tool descriptions when arguments or capabilities change.
+
+If a change is intentionally undocumented, say why in the pull request.
+
 ## Good first issues
 
 - A new `Provider` (Bitbucket, Forgejo, Azure DevOps).

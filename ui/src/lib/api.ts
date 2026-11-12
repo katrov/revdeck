@@ -60,6 +60,8 @@ export const openReview = (root: string, input: string, options: { platform?: st
         body: { root, input, ...options },
     });
 
+export const removeReview = (review: string) => api<{ ok: true }>('/api/reviews/remove', { body: { review } });
+
 export const refreshReview = (review: string) => api<{ review: import('./types').ReviewView; reviews: import('./types').ReviewListItem[] }>('/api/reviews/refresh', { body: { review } });
 
 export const saveDraft = (review: string, threadId: string, patch: Record<string, unknown>) =>

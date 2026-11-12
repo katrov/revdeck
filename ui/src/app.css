@@ -586,7 +586,14 @@ textarea.agent {
     background: var(--panel);
 }
 
+.diff-content {
+    display: block;
+    width: max-content;
+    min-width: 100%;
+}
+
 .hunk-head {
+    width: 100%;
     position: sticky;
     top: 0;
     background: var(--panel-2);
@@ -601,7 +608,8 @@ textarea.agent {
 
 .diff-line {
     display: grid;
-    grid-template-columns: 52px 52px 16px minmax(0, 1fr);
+    grid-template-columns: 52px 52px 16px minmax(max-content, 1fr);
+    width: 100%;
     font-family: var(--mono);
     font-size: 12px;
     line-height: 1.55;
@@ -638,7 +646,7 @@ textarea.agent {
 
 .diff-line .text {
     padding-left: 8px;
-    min-width: 0;
+    min-width: max-content;
 }
 
 .note-composer {
@@ -1172,4 +1180,83 @@ mark {
     .header-actions .btn {
         flex: 1 1 auto;
     }
+}
+
+.finding-location {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    max-width: 55%;
+}
+
+.finding-location .path-link {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.loading-bar {
+    height: 2px;
+    background: var(--panel-2);
+    overflow: hidden;
+}
+
+.loading-bar::after {
+    content: '';
+    display: block;
+    width: 35%;
+    height: 100%;
+    background: var(--accent);
+    animation: revdeck-loading 1s ease-in-out infinite;
+}
+
+@keyframes revdeck-loading {
+    from {
+        transform: translateX(-100%);
+    }
+    to {
+        transform: translateX(300%);
+    }
+}
+
+.sidebar-review-row {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    border-radius: 8px;
+    margin-bottom: 2px;
+}
+
+.sidebar-review-row.active {
+    background: var(--accent-soft);
+}
+
+.sidebar-review-row .review-row {
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0;
+}
+
+.review-remove {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 6px;
+    width: 24px;
+    font-size: 16px;
+    line-height: 1;
+    opacity: 0;
+}
+
+.sidebar-review-row:hover .review-remove,
+.sidebar-review-row.active .review-remove,
+.review-remove:focus-visible {
+    opacity: 1;
+}
+
+.review-remove:hover {
+    color: var(--danger);
+    background: var(--danger-soft);
 }

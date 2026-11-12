@@ -130,6 +130,8 @@ sidebar, `p` opens publishing, `?` opens the command palette. The sidebar choice
 
 The UI shows the MR/PR description, supports deep links to threads, findings and diff lines (with
 working browser Back/Forward), and keeps a per-review "viewed" state and file filter in the diff.
+A review can be removed from the local sidebar with **×**; this never deletes the MR/PR on the platform.
+A thin progress bar shows review loading, and finding paths can be copied from the card.
 
 ## Attachments
 
@@ -176,11 +178,16 @@ rebuild the container. Inside the container revdeck never starts a local daemon,
 never invoked there; if the host socket is missing it fails with a clear `DEVCONTAINER` error.
 `revdeck doctor` is aware of this mode.
 
-If a Unix socket cannot be mounted (for example Docker Desktop on macOS), restart the host daemon with
-`revdeck daemon restart --host 0.0.0.0` (or `revdeck daemon install --host 0.0.0.0` for a service). The container reads `daemon.json` from the mounted state and
-falls back to HTTP with the same session token; `.mcp.json` / `.cursor/mcp.json` get the required
-`REVDECK_*` env from `revdeck devcontainer --write`. Binding the daemon to `0.0.0.0` exposes its HTTP
-port to the network, so use it only on a trusted network.
+On macOS with Docker Desktop the host Unix socket is not proxied into the container. The client then
+falls back to HTTP: `revdeck daemon restart` is enough, because the bridge `daemon.json` is readable by
+the container user (the private parent stays `0700`) and the loopback server accepts
+`Host: host.docker.internal`. On Linux, if the socket is not reachable, use
+`revdeck daemon restart --host 0.0.0.0` (or `revdeck daemon install --host 0.0.0.0` for a service);
+binding to `0.0.0.0` exposes the HTTP port to the network, so use it only on a trusted network.
+
+`revdeck devcontainer --write` updates `.mcp.json` / `.cursor/mcp.json` inside the repository. A
+user-level MCP configuration outside the repository must get the same `REVDECK_*` variables manually;
+otherwise it can start a second daemon inside the container.
 
 ## MCP
 

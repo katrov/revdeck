@@ -176,18 +176,22 @@ export async function runDevcontainer(rootInput: string, options: DevcontainerOp
     }
     await writeFile(file, output);
     writers.out(`✔ ${path.relative(root, file)}`);
-    await mergeMcpEnv(root, patch.containerEnv);
+    const mcpFiles = await mergeMcpEnv(root, patch.containerEnv);
+    if (!mcpFiles) {
+        writers.out(tr('  MCP-конфиг в репозитории не найден: для пользовательского MCP добавьте REVDECK_* вручную.', '  No MCP config in the repository: add the REVDECK_* variables to a user-level MCP manually.'));
+    }
     if (existed) writers.out(tr('  комментарии сохранены.', '  comments were preserved.'));
     writers.out('');
     writers.out(tr('Дальше:', 'Next:'));
     writers.out(tr('  1. На хосте: revdeck daemon restart — он создаст сокет моста.', '  1. On the host: revdeck daemon restart — it creates the bridge socket.'));
     writers.out(tr('  2. Пересоберите/переоткройте devcontainer.', '  2. Rebuild/reopen the devcontainer.'));
     writers.out(tr('  3. В контейнере: revdeck doctor — он не будет искать glab/gh внутри.', '  3. In the container: revdeck doctor — it will not look for glab/gh inside.'));
-    writers.out(tr('  Для UI/MCP из контейнера (или если сокет не монтируется) перезапустите демон на хосте с --host 0.0.0.0.', '  For the UI/MCP from the container (or when the socket cannot be mounted), restart the daemon on the host with --host 0.0.0.0.'));
+    writers.out(tr('  macOS/Docker Desktop: достаточно revdeck daemon restart; Linux при недоступном сокете: revdeck daemon restart --host 0.0.0.0.', '  macOS/Docker Desktop: revdeck daemon restart is enough; on Linux with an unreachable socket: revdeck daemon restart --host 0.0.0.0.'));
 }
 
 /** Добавляет REVDECK_* в env MCP-сервера, чтобы он не поднимал демон в контейнере. */
-async function mergeMcpEnv(root: string, env: Record<string, string>): Promise<void> {
+async function mergeMcpEnv(root: string, env: Record<string, string>): Promise<number> {
+    let changed = 0;
     for (const relative of ['.mcp.json', '.cursor/mcp.json']) {
         const file = path.join(root, relative);
         if (!existsSync(file)) continue;
@@ -198,9 +202,11 @@ async function mergeMcpEnv(root: string, env: Record<string, string>): Promise<v
             if (!server) continue;
             server.env = { ...(isRecord(server.env) ? server.env : {}), ...env };
             await writeFile(file, `${JSON.stringify(data, null, 2)}\n`);
+            changed += 1;
             writers.out(`✔ MCP env: ${relative}`);
         } catch (error) {
             writers.err(`! ${relative}: ${tr('не JSON — не трогаю', 'not JSON — leaving it untouched')} (${(error as Error).message})`);
         }
     }
+    return changed;
 }

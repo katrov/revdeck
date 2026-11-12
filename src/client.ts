@@ -137,12 +137,16 @@ export async function connectSocket(file = socketPath(), timeoutMs = 1500): Prom
 }
 
 /** Есть ли уже запущенный демон (без автозапуска). */
-export async function daemonInfo(): Promise<DaemonInfo | null> {
+export async function daemonInfoRead(): Promise<{ info: DaemonInfo | null; error: string }> {
     try {
-        return JSON.parse(await readFile(daemonInfoPath(), 'utf8')) as DaemonInfo;
-    } catch {
-        return null;
+        return { info: JSON.parse(await readFile(daemonInfoPath(), 'utf8')) as DaemonInfo, error: '' };
+    } catch (error) {
+        return { info: null, error: (error as Error).message };
     }
+}
+
+export async function daemonInfo(): Promise<DaemonInfo | null> {
+    return (await daemonInfoRead()).info;
 }
 
 /** Запущены ли мы внутри devcontainer, где демон и gh/glab остаются на хосте. */
@@ -161,11 +165,12 @@ export function devcontainerHint(): string {
     ].join('; ');
 }
 
-async function devcontainerHttpClient(): Promise<DaemonClient | null> {
-    const info = await daemonInfo();
-    if (!info?.port || !info.token) return null;
+async function devcontainerHttpClient(): Promise<{ client: DaemonClient | null; error: string }> {
+    const { info, error } = await daemonInfoRead();
+    if (!info) return { client: null, error: `${daemonInfoPath()}: ${error}` };
+    if (!info.port || !info.token) return { client: null, error: `${daemonInfoPath()}: нет port/token` };
     const host = process.env.REVDECK_UI_HOST ?? 'host.docker.internal';
-    return new HttpClient(`http://${host}:${info.port}`, info.token);
+    return { client: new HttpClient(`http://${host}:${info.port}`, info.token), error: '' };
 }
 
 export async function ensureDaemon(options: { autoStart?: boolean; daemonArgs?: string[] } = {}): Promise<{ client: DaemonClient; started: boolean }> {
@@ -180,19 +185,19 @@ export async function ensureDaemon(options: { autoStart?: boolean; daemonArgs?: 
     } catch (error) {
         if (isDevContainer()) {
             const http = await devcontainerHttpClient();
-            if (http) {
+            if (http.client) {
                 try {
-                    await http.request('ping');
-                    return { client: http, started: false };
+                    await http.client.request('ping');
+                    return { client: http.client, started: false };
                 } catch (httpError) {
                     throw new RpcError(
                         `devcontainer HTTP: ${(httpError as Error).message}`,
                         'DEVCONTAINER',
-                        'на хосте: revdeck daemon start --host 0.0.0.0; проверьте REVDECK_UI_HOST и mounts',
+                        'проверьте, что демон на хосте запущен; на macOS достаточно revdeck daemon restart; на Linux при недоступном сокете — --host 0.0.0.0',
                     );
                 }
             }
-            throw new RpcError(`devcontainer: ${devcontainerHint()}`, 'DEVCONTAINER', 'revdeck devcontainer --write и пересоберите контейнер');
+            throw new RpcError(`devcontainer: ${http.error || devcontainerHint()}`, 'DEVCONTAINER', 'проверьте права на devcontainer/state/daemon.json и mounts');
         }
         if (options.autoStart === false) throw error;
     }

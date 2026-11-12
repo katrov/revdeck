@@ -246,38 +246,40 @@
         {:else if diff.binary}
             <p class="muted" style="padding: 12px">{t('Бинарный файл: diff не отображается.', 'Binary file: no diff to display.')}</p>
         {:else}
-            {#each rows.slice(0, limit) as row}
-                {#if row.kind === 'hunk'}
-                    <div class="hunk-head">{row.header}</div>
-                {:else}
-                    {@const line = row.line}
-                    {@const number = line.newLine ?? line.oldLine ?? 0}
-                    <div
-                        class="diff-line"
-                        class:add={line.kind === '+'}
-                        class:del={line.kind === '-'}
-                        class:target-line={app.diffFocus?.line === number && app.diffFocus?.file === diff.path}
-                        id={`line-${number}`}
-                        onclick={() => pickLine(line.newLine)}
-                        onkeydown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
-                                pickLine(line.newLine);
-                            }
-                        }}
-                        role="button"
-                        tabindex="0"
-                        title={marks.get(number)?.join(', ') ?? ''}
-                    >
-                        <span class="n">{line.newLine ?? ''}</span>
-                        <span class="n">{line.oldLine ?? ''}</span>
-                        <span class="k">{line.kind === ' ' ? '' : line.kind}</span>
-                        <span class="text">
-                            {line.text}{#if marks.has(number)}<span class="badge minor" style="margin-left: 8px">{truncate(marks.get(number)!.join(', '), 40)}</span>{/if}
-                        </span>
-                    </div>
-                {/if}
-            {/each}
+            <div class="diff-content">
+                {#each rows.slice(0, limit) as row}
+                    {#if row.kind === 'hunk'}
+                        <div class="hunk-head">{row.header}</div>
+                    {:else}
+                        {@const line = row.line}
+                        {@const number = line.newLine ?? line.oldLine ?? 0}
+                        <div
+                            class="diff-line"
+                            class:add={line.kind === '+'}
+                            class:del={line.kind === '-'}
+                            class:target-line={app.diffFocus?.line === number && app.diffFocus?.file === diff.path}
+                            id={`line-${number}`}
+                            onclick={() => pickLine(line.newLine)}
+                            onkeydown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    pickLine(line.newLine);
+                                }
+                            }}
+                            role="button"
+                            tabindex="0"
+                            title={marks.get(number)?.join(', ') ?? ''}
+                        >
+                            <span class="n">{line.newLine ?? ''}</span>
+                            <span class="n">{line.oldLine ?? ''}</span>
+                            <span class="k">{line.kind === ' ' ? '' : line.kind}</span>
+                            <span class="text">
+                                {line.text}{#if marks.has(number)}<span class="badge minor" style="margin-left: 8px">{truncate(marks.get(number)!.join(', '), 40)}</span>{/if}
+                            </span>
+                        </div>
+                    {/if}
+                {/each}
+            </div>
             {#if rows.length > limit}
                 <div style="padding: 12px">
                     <button class="btn" onclick={() => (limit += 2600)}>{t('Показать ещё', 'Show more')} ({rows.length - limit} {t('строк', 'lines')})</button>

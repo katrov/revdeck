@@ -58,6 +58,7 @@ export async function dispatch(service: ReviewService, method: string, params: R
             return { review: service.getView(id), reviews: service.listReviews() };
         }
         case 'reviews.remove':
+            service.removeReview(String(params.review ?? ''));
             return { ok: true };
         case 'diff.get': {
             const file = service.diffFile(String(params.review ?? ''), String(params.file ?? ''));
@@ -146,8 +147,12 @@ export async function dispatch(service: ReviewService, method: string, params: R
     }
 }
 
-export async function startRpcServer(service: ReviewService, socketFile: string): Promise<RpcServerHandle> {
-    await ensureDir(pathDirname(socketFile), 0o700);
+export async function startRpcServer(
+    service: ReviewService,
+    socketFile: string,
+    options: { mode?: number; dirMode?: number } = {},
+): Promise<RpcServerHandle> {
+    await ensureDir(pathDirname(socketFile), options.dirMode ?? 0o700);
     await unlink(socketFile).catch(() => undefined);
 
     const server = net.createServer((socket) => {
@@ -182,7 +187,7 @@ export async function startRpcServer(service: ReviewService, socketFile: string)
         server.once('error', reject);
         server.listen(socketFile, () => resolve());
     });
-    await chmod(socketFile, 0o600);
+    await chmod(socketFile, options.mode ?? 0o600);
 
     return {
         path: socketFile,

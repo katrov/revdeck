@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Remove a review from the local sidebar (the MR/PR on the platform is untouched).
+- Copy a finding's file path from the card; long paths truncate with an ellipsis.
+- A loading bar for review switches and a request guard so a slow older response cannot overwrite a
+  newer review.
+
+### Fixed
+
+- Diff rows keep their colored background across the full horizontal scroll, including long code lines.
+- Agent edits (summary, findings, replies, notes) reach the open UI immediately via SSE, with a 10-second
+  polling fallback when SSE is unavailable.
+- Devcontainer bridge permissions: `run`/`state` are `0755`, the bridge socket `0666`, `daemon.json`
+  `0644`, while the private parent stays `0700`. The loopback HTTP server accepts
+  `Host: host.docker.internal`, so macOS Docker Desktop works without `--host 0.0.0.0`. Missing
+  `daemon.json` permissions and HTTP `Host` errors now produce distinct hints.
+- `revdeck devcontainer --write` warns when it cannot find a repository MCP config for the
+  user-level one.
+
+### Documentation
+
+- Added an explicit project rule: documentation is part of every change (`AGENTS.md`, `CONTRIBUTING.md`).
+- Skills now ask for a short chat answer and put details in the summary/findings.
+
 ## [0.4.1] - 2026-11-12
 
 ### Fixed

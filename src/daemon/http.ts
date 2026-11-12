@@ -102,7 +102,8 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
         const port = (server.address() as { port: number } | null)?.port ?? 0;
         const expectedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]);
         for (const name of options.allowedHosts ?? []) expectedHosts.add(`${name}:${port}`);
-        if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') expectedHosts.add(`host.docker.internal:${port}`);
+        // Docker Desktop на macOS доставляет host.docker.internal на loopback-порт хоста.
+        expectedHosts.add(`host.docker.internal:${port}`);
         if (!expectedHosts.has(String(req.headers.host ?? ''))) {
             reply(res, 403, { ok: false, error: 'недопустимый Host' });
             return;
@@ -256,6 +257,11 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                             ...(typeof body.branch === 'string' ? { branch: body.branch } : {}),
                         });
                         reply(res, 200, { ok: true, review: service.getView(opened.id), reviews: service.listReviews() });
+                        return;
+                    }
+                    case '/api/reviews/remove': {
+                        service.removeReview(review);
+                        reply(res, 200, { ok: true });
                         return;
                     }
                     case '/api/reviews/refresh': {

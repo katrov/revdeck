@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -165,6 +165,10 @@ describe('devcontainer', () => {
         });
         expect(existsSync(devcontainerSocketPath())).toBe(true);
         expect(existsSync(devcontainerInfoPath())).toBe(true);
+        expect(statSync(path.dirname(devcontainerSocketPath())).mode & 0o777).toBe(0o755);
+        expect(statSync(path.dirname(devcontainerInfoPath())).mode & 0o777).toBe(0o755);
+        expect(statSync(devcontainerSocketPath()).mode & 0o777).toBe(0o666);
+        expect(statSync(devcontainerInfoPath()).mode & 0o777).toBe(0o644);
         const client = await connectSocket(devcontainerSocketPath());
         await expect(client.request('reviews.list')).resolves.toEqual({ reviews: [] });
         client.close();

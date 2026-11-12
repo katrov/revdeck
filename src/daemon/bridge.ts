@@ -1,5 +1,7 @@
 import { unlink } from 'node:fs/promises';
+import path from 'node:path';
 import {
+    devcontainerBridgeDir,
     devcontainerInfoPath,
     devcontainerRunDir,
     devcontainerSocketPath,
@@ -29,12 +31,17 @@ export async function startDevcontainerBridge(
     service: ReviewService,
     info: Omit<DevcontainerBridgeInfo, 'socket'>,
 ): Promise<{ close(): Promise<void> }> {
-    await ensureDir(devcontainerRunDir(), 0o700);
-    await ensureDir(devcontainerStateDir(), 0o700);
-    const rpc = await startRpcServer(service, devcontainerSocketPath());
+    // Мост монтируется в контейнер с другим uid: каталоги и файлы должны быть читаемы.
+    // Родительский ~/.local/state/revdeck остаётся 0700, поэтому другие пользователи хоста
+    // до моста не дойдут; монтирование обходит родительские каталоги.
+    await ensureDir(path.dirname(devcontainerBridgeDir()), 0o700);
+    await ensureDir(devcontainerBridgeDir(), 0o700);
+    await ensureDir(devcontainerRunDir(), 0o755);
+    await ensureDir(devcontainerStateDir(), 0o755);
+    const rpc = await startRpcServer(service, devcontainerSocketPath(), { mode: 0o666, dirMode: 0o755 });
     try {
         const payload: DevcontainerBridgeInfo = { ...info, socket: devcontainerSocketPath() };
-        await writeFileAtomic(devcontainerInfoPath(), `${JSON.stringify(payload, null, 2)}\n`, 0o600);
+        await writeFileAtomic(devcontainerInfoPath(), `${JSON.stringify(payload, null, 2)}\n`, 0o644, 0o755);
     } catch (error) {
         await rpc.close();
         throw error;

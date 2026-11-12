@@ -106,12 +106,17 @@ the container. Inside the container `revdeck` never starts its own daemon: if th
 it fails with a `DEVCONTAINER` error and a hint. `revdeck doctor` does not look for `glab`/`gh` in the
 container.
 
-If the host socket cannot be mounted (notably Docker Desktop on macOS), restart the daemon with
-`revdeck daemon restart --host 0.0.0.0` (or `revdeck daemon install --host 0.0.0.0` for a service). The container reads `daemon.json` from the mounted state and
-falls back to HTTP using `host.docker.internal` and the same session token; no token is written to the
-repository. `revdeck devcontainer --write` also adds the `REVDECK_*` variables to the `revdeck` MCP
-server in `.mcp.json` and `.cursor/mcp.json`. Binding to `0.0.0.0` exposes the HTTP port to the network;
-use it only on a trusted network.
+On macOS with Docker Desktop the host Unix socket is not proxied. The bridge `daemon.json` is readable
+by the container user (`run`/`state` are `0755`, the file is `0644`, while the private parent stays
+`0700`), and the loopback HTTP server accepts `Host: host.docker.internal`; `revdeck daemon restart` is
+enough. On Linux, if the socket is not reachable, use `revdeck daemon restart --host 0.0.0.0` (or
+`revdeck daemon install --host 0.0.0.0` for a service); this exposes the HTTP port to the network, so
+use it only on a trusted network. The container reads `daemon.json`, falls back to HTTP with the same
+session token, and no token is written to the repository.
+
+`revdeck devcontainer --write` adds the `REVDECK_*` variables to the `revdeck` MCP server in `.mcp.json`
+and `.cursor/mcp.json` inside the repository. A user-level MCP configuration outside the repository
+needs the same variables manually, otherwise it may start a second daemon in the container.
 
 The container user must be able to connect to the host socket (normally the same UID; the socket is
 0600). To open the UI from the container, start the host daemon with `revdeck daemon start --host

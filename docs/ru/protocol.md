@@ -45,6 +45,7 @@
 | `reviews.remoteList` | `root`, `scope`, `limit` | открытые ревью с платформы |
 | `reviews.open` | `root`, `input`/`platform`/`project`/`host`/`branch` | снимок ревью |
 | `reviews.refresh` | `review` | обновлённый снимок |
+| `reviews.remove` | `review` | удалить ревью из локального списка (не с платформы) |
 | `reviews.get` | `review`, `refresh?` | снимок (без полного diff) |
 | `diff.get` | `review`, `file` | hunks файла |
 | `drafts.put` | `review`, `threadId`, `patch` | черновик |

@@ -380,6 +380,13 @@ describe('ReviewService', () => {
         expect(rules.language).toBe('en');
     });
 
+    it('removes a review from the local list without touching the platform', async () => {
+        const review = await open();
+        service.removeReview(review.id);
+        expect(service.listReviews()).toEqual([]);
+        expect(() => service.getReview(review.id)).toThrow(/не найдено/);
+    });
+
     it('reports multiple reviews', async () => {
         await open();
         const items = service.listReviews();

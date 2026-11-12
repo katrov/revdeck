@@ -97,6 +97,14 @@
         app.publishing = { kind: 'finding', ids };
     }
 
+    function copyPath(finding: { file: string; line: number | null }): void {
+        const value = `${finding.file}${finding.line ? `:${finding.line}` : ''}`;
+        void navigator.clipboard?.writeText(value).then(
+            () => notify(t('Путь скопирован', 'Path copied'), 'ok'),
+            () => notify(t('Не удалось скопировать', 'Could not copy'), 'error'),
+        );
+    }
+
     $effect(() => {
         const focus = app.focus;
         if (focus?.kind !== 'finding') return;
@@ -146,7 +154,10 @@
             {#if finding.publishedAt}<span class="muted small">{t('опубликовано', 'published')} {relativeTime(finding.publishedAt)}</span>{/if}
             <div class="grow"></div>
             <button class="btn icon" type="button" title={t('Скопировать ссылку на замечание', 'Copy finding link')} onclick={() => copyFocusLink({ kind: 'finding', id: finding.id }, 'findings')}>🔗</button>
-            <button class="path-link" onclick={() => focusLine(finding.file, finding.line)}>{finding.file}:{finding.line ?? '—'}</button>
+            <span class="finding-location">
+                <button class="path-link" title={`${finding.file}${finding.line ? `:${finding.line}` : ''}`} onclick={() => focusLine(finding.file, finding.line)}>{finding.file}:{finding.line ?? '—'}</button>
+                <button class="btn icon" type="button" title={t('Скопировать путь', 'Copy path')} aria-label={t('Скопировать путь', 'Copy path')} onclick={() => copyPath(finding)}>⧉</button>
+            </span>
         </div>
 
         <div class="card-title" style="margin-top: 6px">{finding.title}</div>
