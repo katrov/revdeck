@@ -6,9 +6,12 @@
 
 1. **Unix-сокет** (основной): `$XDG_RUNTIME_DIR/revdeck/daemon.sock`, каталог 0700, сокет 0600.
    Строки JSON, по одному запросу/ответу на строку.
-2. **HTTP**: `POST /api/rpc` на loopback с cookie-сессией. Нужен для контейнеров, куда сокет не
+2. **Сокет моста для devcontainer**: `~/.local/state/revdeck/devcontainer/run/daemon.sock`, тот же
+   протокол по стабильному домашнему пути. Демон обслуживает его дополнительно к основному сокету и
+   кладёт копию `daemon.json` в `~/.local/state/revdeck/devcontainer/state/`.
+3. **HTTP**: `POST /api/rpc` на loopback с cookie-сессией. Нужен для контейнеров, куда сокет не
    проброшен (`REVDECK_URL` + `REVDECK_TOKEN`).
-3. **UI HTTP**: `/api/*` и SSE `/api/events` для браузера.
+4. **UI HTTP**: `/api/*` и SSE `/api/events` для браузера.
 
 ## Сообщения
 

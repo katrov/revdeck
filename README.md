@@ -139,12 +139,17 @@ revdeck devcontainer          # print the mounts and environment
 revdeck devcontainer --write  # merge them into .devcontainer/devcontainer.json
 ```
 
-The command mounts the host runtime directory at `/run/revdeck` (socket) and the state directory at
-`/var/lib/revdeck` (read-only `daemon.json`), and sets `REVDECK_RUNTIME_DIR`, `REVDECK_STATE_DIR`,
-`REVDECK_DEV_CONTAINER=1` and `REVDECK_UI_HOST`. After rebuilding the container, start the daemon on
-the host. Inside the container revdeck never starts a local daemon, so `gh`/`glab` are never invoked
-there; if the host socket is missing it fails with a clear `DEVCONTAINER` error. `revdeck doctor` is
-aware of this mode. For the UI from the container, start the host daemon with
+The command mounts the stable host bridge `~/.local/state/revdeck/devcontainer/run` at `/run/revdeck`
+(socket) and `~/.local/state/revdeck/devcontainer/state` at `/var/lib/revdeck` (read-only
+`daemon.json`), and sets `REVDECK_RUNTIME_DIR`, `REVDECK_STATE_DIR`, `REVDECK_DEV_CONTAINER=1` and
+`REVDECK_UI_HOST`. The JSON uses `${localEnv:HOME}${localEnv:USERPROFILE}` instead of an absolute
+home path, so the same `.devcontainer/devcontainer.json` works for every developer. Comments and
+foreign keys in an existing JSONC file are preserved.
+
+The daemon creates the bridge socket on startup, so on the host run `revdeck daemon restart`, then
+rebuild the container. Inside the container revdeck never starts a local daemon, so `gh`/`glab` are
+never invoked there; if the host socket is missing it fails with a clear `DEVCONTAINER` error.
+`revdeck doctor` is aware of this mode. For the UI from the container, start the host daemon with
 `revdeck daemon start --host 0.0.0.0`.
 
 ## MCP

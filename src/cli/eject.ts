@@ -3,6 +3,7 @@ import { lstat, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { findRepoRoot } from '../core/paths.js';
 import { isRecord, parseJsonc } from '../core/jsonc.js';
+import { applyEdits, modify } from 'jsonc-parser';
 import { CONTAINER_RUNTIME_DIR, CONTAINER_STATE_DIR } from './devcontainer.js';
 import { tr } from '../core/locale.js';
 import { writers } from './format.js';
@@ -103,36 +104,38 @@ export async function runEject(rootInput: string, options: EjectOptions): Promis
         try {
             const parsed = parseJsonc(text);
             if (isRecord(parsed)) {
-                const next = { ...parsed };
+                const formatting = { formattingOptions: { insertSpaces: true, tabSize: 2 } };
+                let current = text;
                 let changed = false;
-                if (Array.isArray(next.mounts)) {
-                    const mounts = next.mounts.filter((item) => !(isRecord(item) && (item.target === CONTAINER_RUNTIME_DIR || item.target === CONTAINER_STATE_DIR)));
-                    if (mounts.length !== next.mounts.length) {
-                        next.mounts = mounts;
+                if (Array.isArray(parsed.mounts)) {
+                    const mounts = parsed.mounts.filter((item) => !(isRecord(item) && (item.target === CONTAINER_RUNTIME_DIR || item.target === CONTAINER_STATE_DIR)));
+                    if (mounts.length !== parsed.mounts.length) {
+                        current = applyEdits(current, modify(current, ['mounts'], mounts, formatting));
                         changed = true;
                     }
                 }
                 for (const key of ['containerEnv', 'remoteEnv'] as const) {
-                    if (!isRecord(next[key])) continue;
-                    const env = { ...(next[key] as Record<string, unknown>) };
+                    if (!isRecord(parsed[key])) continue;
+                    const env = { ...(parsed[key] as Record<string, unknown>) };
                     for (const name of ['REVDECK_RUNTIME_DIR', 'REVDECK_STATE_DIR', 'REVDECK_DEV_CONTAINER', 'REVDECK_UI_HOST']) delete env[name];
-                    if (Object.keys(env).length !== Object.keys(next[key] as Record<string, unknown>).length) {
-                        next[key] = env;
+                    if (Object.keys(env).length !== Object.keys(parsed[key] as Record<string, unknown>).length) {
+                        current = applyEdits(current, modify(current, [key], env, formatting));
                         changed = true;
                     }
                 }
-                if (Array.isArray(next.runArgs)) {
-                    const args = next.runArgs.filter((item) => item !== '--add-host=host.docker.internal:host-gateway');
-                    if (args.length !== next.runArgs.length) {
-                        next.runArgs = args;
+                if (Array.isArray(parsed.runArgs)) {
+                    const args = parsed.runArgs.filter((item) => item !== '--add-host=host.docker.internal:host-gateway');
+                    if (args.length !== parsed.runArgs.length) {
+                        current = applyEdits(current, modify(current, ['runArgs'], args, formatting));
                         changed = true;
                     }
                 }
                 if (changed) {
+                    const output = current.endsWith('\n') ? current : `${current}\n`;
                     changes.push({
                         path: '.devcontainer/devcontainer.json',
                         action: tr('убрать подключение к демону хоста', 'remove the host daemon connection'),
-                        remove: () => writeFile(devcontainer, `${JSON.stringify(next, null, 2)}\n`),
+                        remove: () => writeFile(devcontainer, output),
                     });
                 }
             }

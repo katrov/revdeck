@@ -1,6 +1,6 @@
 {
   "name": "revdeck",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Agent-first code review for GitLab and GitHub: local daemon, CLI, MCP server and a triage UI.",
   "license": "MIT",
   "type": "module",
@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "jsonc-parser": "^3.3.1",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },

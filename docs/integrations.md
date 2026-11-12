@@ -84,7 +84,8 @@ revdeck devcontainer          # print the mounts and environment
 revdeck devcontainer --write  # merge them into .devcontainer/devcontainer.json
 ```
 
-`--write` mounts the host runtime and state directories at fixed paths and sets:
+`--write` mounts the stable bridge `~/.local/state/revdeck/devcontainer/run` (socket) and
+`~/.local/state/revdeck/devcontainer/state` (read-only `daemon.json`) and sets:
 
 ```json
 {
@@ -95,13 +96,15 @@ revdeck devcontainer --write  # merge them into .devcontainer/devcontainer.json
 }
 ```
 
-The runtime directory is mounted read-write (the socket lives there), the state directory is
-read-only (the client reads `daemon.json` with the token). Existing mounts, environment variables and
-`runArgs` are preserved; only the two revdeck mounts and the `REVDECK_*` keys are managed.
+The mount sources in `devcontainer.json` use `${localEnv:HOME}${localEnv:USERPROFILE}`, never an
+absolute home directory, so the shared repository file is valid for every developer. Existing mounts,
+environment variables, `runArgs`, comments and foreign keys are preserved; only the two revdeck mounts
+and the `REVDECK_*` keys are managed.
 
-After rebuilding the container, start the daemon on the host (`revdeck daemon start`). Inside the
-container `revdeck` never starts its own daemon: if the socket is unreachable it fails with a
-`DEVCONTAINER` error and a hint. `revdeck doctor` does not look for `glab`/`gh` in the container.
+The daemon creates the bridge socket on startup. On the host run `revdeck daemon restart`, then rebuild
+the container. Inside the container `revdeck` never starts its own daemon: if the socket is unreachable
+it fails with a `DEVCONTAINER` error and a hint. `revdeck doctor` does not look for `glab`/`gh` in the
+container.
 
 The container user must be able to connect to the host socket (normally the same UID; the socket is
 0600). To open the UI from the container, start the host daemon with `revdeck daemon start --host

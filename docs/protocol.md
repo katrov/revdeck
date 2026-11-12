@@ -6,9 +6,12 @@
 
 1. **Unix socket** (primary): `$XDG_RUNTIME_DIR/revdeck/daemon.sock`, directory 0700, socket 0600.
    JSON lines, one request/response per line.
-2. **HTTP**: `POST /api/rpc` on loopback with a cookie session. Needed for containers where the socket
+2. **Devcontainer bridge socket**: `~/.local/state/revdeck/devcontainer/run/daemon.sock`, the same
+   protocol on a stable home-based path. The daemon serves it in addition to the primary socket and
+   writes a copy of `daemon.json` to `~/.local/state/revdeck/devcontainer/state/`.
+3. **HTTP**: `POST /api/rpc` on loopback with a cookie session. Needed for containers where the socket
    is not forwarded (`REVDECK_URL` + `REVDECK_TOKEN`).
-3. **UI HTTP**: `/api/*` and SSE `/api/events` for the browser.
+4. **UI HTTP**: `/api/*` and SSE `/api/events` for the browser.
 
 ## Messages
 

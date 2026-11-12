@@ -49,8 +49,9 @@ We build the product around a [local daemon](../architecture.md):
   socket. The client can start the daemon itself.
 - Socket permissions are part of the security model: directory 0700, socket 0600.
 - In a container, either a mounted socket or `REVDECK_URL`/`REVDECK_TOKEN` is needed; otherwise, use
-  `export`/`import` and run on the host. `revdeck devcontainer --write` generates the socket/state
-  mounts and marks the container with `REVDECK_DEV_CONTAINER=1`, so it never starts its own daemon.
+  `export`/`import` and run on the host. `revdeck devcontainer --write` mounts a stable bridge socket from
+  `~/.local/state/revdeck/devcontainer/run` and marks the container with `REVDECK_DEV_CONTAINER=1`, so it
+  never starts its own daemon.
 - One daemon serves several repositories: `root` is passed on `open`, and the config is read from that
   root.
 - Client and daemon versions must match; [`PROTOCOL_VERSION`](../protocol.md) was added.

@@ -13,6 +13,7 @@ import { Store } from './store.js';
 import { ReviewService } from './service.js';
 import { startHttpServer } from './http.js';
 import { startRpcServer } from './rpc.js';
+import { startDevcontainerBridge } from './bridge.js';
 
 export interface DaemonInfo {
     pid: number;
@@ -95,6 +96,13 @@ async function main(): Promise<void> {
         protocol: PROTOCOL_VERSION,
     };
     await writeFileAtomic(daemonInfoPath(), `${JSON.stringify(info, null, 2)}\n`, 0o600);
+    let bridge: { close(): Promise<void> } | null = null;
+    try {
+        bridge = await startDevcontainerBridge(service, info);
+    } catch (error) {
+        // Мост нужен только devcontainer; его сбой не должен ронять демон.
+        await log(`devcontainer bridge unavailable: ${redactLine(error instanceof Error ? error.message : error)}`);
+    }
     service.startSync();
 
     process.stdout.write(
@@ -114,6 +122,7 @@ async function main(): Promise<void> {
         closing = true;
         await log(`daemon stopping (${signal})`);
         try {
+            await bridge?.close();
             await rpc.close();
             await http.close();
         } finally {

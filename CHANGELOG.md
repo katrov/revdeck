@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-12
+
+### Fixed
+
+- `revdeck devcontainer --write` no longer writes absolute host paths into the shared
+  `devcontainer.json`: mounts use `${localEnv:HOME}${localEnv:USERPROFILE}` and a stable
+  `~/.local/state/revdeck/devcontainer/{run,state}` bridge. The daemon listens on a second RPC socket
+  there for containers. Comments and formatting in an existing JSONC file are preserved.
+
 ## [0.2.0] - 2026-11-12
 
 ### Added

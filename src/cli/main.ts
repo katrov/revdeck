@@ -352,6 +352,15 @@ function openBrowser(url: string): void {
 }
 
 async function daemon(action: string, values: Values = {}): Promise<void> {
+    if (isDevContainer() && ['start', 'stop', 'restart', 'install', 'uninstall'].includes(action)) {
+        fail(
+            tr(
+                'в devcontainer демоном управляет хост: выполните команду на хосте',
+                'the daemon is managed by the host in a devcontainer: run this command on the host',
+            ),
+            tr('revdeck daemon restart на хосте', 'revdeck daemon restart on the host'),
+        );
+    }
     if (action === 'start') {
         const { client, started } = await ensureDaemon({
             ...(values.host ? { daemonArgs: ['--host', String(values.host)] } : {}),

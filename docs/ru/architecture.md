@@ -34,6 +34,7 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
 - `src/daemon/store.ts` — SQLite (`node:sqlite`): ревью, снимок diff/тредов, черновики, замечания,
   решения, комментарии, approvals, аудит.
 - `src/daemon/rpc.ts` — JSON-RPC поверх unix-сокета (0600) для CLI и MCP.
+- `src/daemon/bridge.ts` — дополнительный RPC-сокет в стабильном домашнем каталоге для devcontainer.
 - `src/daemon/http.ts` — UI и `/api/*`, SSE-события, cookie-сессия с одноразовым токеном.
 - `src/cli` — команды, `init`, `doctor`, экспорт/импорт старого файлового формата.
 - `src/mcp` — MCP-сервер: инструменты и промпты, тонкая обёртка над RPC.

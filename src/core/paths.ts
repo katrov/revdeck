@@ -48,6 +48,32 @@ export function daemonInfoPath(): string {
     return path.join(stateDir(), 'daemon.json');
 }
 
+/**
+ * Стабильный мост для devcontainer: каталог в домашней директории, не зависящий
+ * от XDG/REVDECK_* переменных. В отличие от runtime/state, этот путь можно
+ * записать в общий devcontainer.json как ${localEnv:HOME}/...
+ */
+export function devcontainerBridgeDir(): string {
+    if (process.env.REVDECK_DEVCONTAINER_DIR) return path.resolve(process.env.REVDECK_DEVCONTAINER_DIR);
+    return path.join(os.homedir(), '.local', 'state', 'revdeck', 'devcontainer');
+}
+
+export function devcontainerRunDir(): string {
+    return path.join(devcontainerBridgeDir(), 'run');
+}
+
+export function devcontainerStateDir(): string {
+    return path.join(devcontainerBridgeDir(), 'state');
+}
+
+export function devcontainerSocketPath(): string {
+    return path.join(devcontainerRunDir(), 'daemon.sock');
+}
+
+export function devcontainerInfoPath(): string {
+    return path.join(devcontainerStateDir(), 'daemon.json');
+}
+
 export function logPath(): string {
     return path.join(stateDir(), 'daemon.log');
 }

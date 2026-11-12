@@ -125,12 +125,18 @@ revdeck devcontainer          # показать mounts и окружение
 revdeck devcontainer --write  # добавить их в .devcontainer/devcontainer.json
 ```
 
-Команда монтирует runtime-каталог хоста в `/run/revdeck` (сокет) и state-каталог в `/var/lib/revdeck`
-(только чтение, `daemon.json`) и выставляет `REVDECK_RUNTIME_DIR`, `REVDECK_STATE_DIR`,
-`REVDECK_DEV_CONTAINER=1` и `REVDECK_UI_HOST`. После пересборки контейнера запустите демон на хосте.
-В контейнере revdeck никогда не запускает свой демон, поэтому `gh`/`glab` там не вызываются; если
-сокет хоста недоступен, команда падает с понятной ошибкой `DEVCONTAINER`. `revdeck doctor` знает об
-этом режиме. Для UI из контейнера запустите демон на хосте с `revdeck daemon start --host 0.0.0.0`.
+Команда монтирует стабильный мост хоста `~/.local/state/revdeck/devcontainer/run` в `/run/revdeck`
+(сокет) и `~/.local/state/revdeck/devcontainer/state` в `/var/lib/revdeck` (только чтение,
+`daemon.json`) и выставляет `REVDECK_RUNTIME_DIR`, `REVDECK_STATE_DIR`, `REVDECK_DEV_CONTAINER=1` и
+`REVDECK_UI_HOST`. В JSON пишется `${localEnv:HOME}${localEnv:USERPROFILE}`, а не абсолютный домашний
+путь, поэтому один `.devcontainer/devcontainer.json` работает у всех разработчиков. Комментарии и
+чужие ключи в существующем JSONC сохраняются.
+
+Демон создаёт сокет моста при старте: на хосте выполните `revdeck daemon restart`, затем пересоберите
+контейнер. В контейнере revdeck никогда не запускает свой демон, поэтому `gh`/`glab` там не
+вызываются; если сокет хоста недоступен, команда падает с понятной ошибкой `DEVCONTAINER`.
+`revdeck doctor` знает об этом режиме. Для UI из контейнера запустите демон на хосте с
+`revdeck daemon start --host 0.0.0.0`.
 
 ## MCP
 

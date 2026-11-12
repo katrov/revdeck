@@ -83,7 +83,8 @@ revdeck devcontainer          # показать mounts и окружение
 revdeck devcontainer --write  # добавить их в .devcontainer/devcontainer.json
 ```
 
-`--write` монтирует runtime- и state-каталоги хоста по фиксированным путям и выставляет:
+`--write` монтирует стабильный мост `~/.local/state/revdeck/devcontainer/run` (сокет) и
+`~/.local/state/revdeck/devcontainer/state` (только чтение, `daemon.json`) и выставляет:
 
 ```json
 {
@@ -94,13 +95,14 @@ revdeck devcontainer --write  # добавить их в .devcontainer/devcontai
 }
 ```
 
-Runtime-каталог монтируется на запись (там сокет), state-каталог — только на чтение (клиент читает
-`daemon.json` с токеном). Чужие mounts, переменные окружения и `runArgs` сохраняются; revdeck
-управляет только двумя своими mounts и ключами `REVDECK_*`.
+В `devcontainer.json` источники mounts записываются через
+`${localEnv:HOME}${localEnv:USERPROFILE}`, а не абсолютным домашним путём, поэтому общий файл
+репозитория подходит всем разработчикам. Чужие mounts, переменные окружения, `runArgs`, комментарии
+и ключи сохраняются; revdeck управляет только двумя своими mounts и ключами `REVDECK_*`.
 
-После пересборки контейнера запустите демон на хосте (`revdeck daemon start`). В контейнере revdeck
-никогда не запускает свой демон: если сокет недоступен, команда падает с ошибкой `DEVCONTAINER` и
-подсказкой. `revdeck doctor` не ищет `glab`/`gh` в контейнере.
+Демон создаёт сокет моста при старте. На хосте выполните `revdeck daemon restart`, затем пересоберите
+контейнер. В контейнере revdeck никогда не запускает свой демон: если сокет недоступен, команда
+падает с ошибкой `DEVCONTAINER` и подсказкой. `revdeck doctor` не ищет `glab`/`gh` в контейнере.
 
 Пользователь контейнера должен иметь доступ к сокету хоста (обычно совпадает UID; сокет 0600). Чтобы
 открыть UI из контейнера, запустите демон на хосте с `revdeck daemon start --host 0.0.0.0` и
