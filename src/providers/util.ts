@@ -21,6 +21,16 @@ export function parseJson<T>(stdout: string, source: string): T {
 export function cliError(error: unknown, platform: Platform, host: string): never {
     const message = redact((error as Error)?.message ?? error).trim();
     const lower = message.toLowerCase();
+    if (/enoent|executable file not found|spawn .* enoent/.test(lower)) {
+        const binary = platform === 'gitlab' ? 'glab' : 'gh';
+        throw new ProviderError(
+            `${platform}: ${message}`,
+            tr(
+                `${binary} не найден в PATH демона: установите его, добавьте каталог в PATH или задайте REVDECK_${binary.toUpperCase()}; проверьте revdeck doctor. Если демон запущен в контейнере — перенесите его на хост`,
+                `${binary} is not in the daemon PATH: install it, add its directory to PATH or set REVDECK_${binary.toUpperCase()}; check revdeck doctor. If the daemon runs in a container, move it to the host`,
+            ),
+        );
+    }
     if (/(auth|unauthor|401|403|not logged|token|credential|forbidden)/.test(lower)) {
         const hint =
             platform === 'gitlab'

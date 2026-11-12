@@ -123,6 +123,8 @@ publish:
 | `REVDECK_UI_HOST` | хост для `revdeck ui` из контейнера (например, `host.docker.internal`) |
 | `REVDECK_ROOT` | корень проекта для MCP-сервера |
 | `REVDECK_LANG` | язык CLI/MCP/демона: `ru` или `en` (по умолчанию системная локаль) |
+| `REVDECK_GLAB` | абсолютный путь к `glab`, если его нет в PATH демона |
+| `REVDECK_GH` | абсолютный путь к `gh`, если его нет в PATH демона |
 
 ## Валидация
 

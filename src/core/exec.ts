@@ -1,4 +1,7 @@
 import { execFile } from 'node:child_process';
+import { access, constants } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 export interface RunOptions {
     cwd?: string;
@@ -50,10 +53,57 @@ export function scrubEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
     return { ...env, ...extra };
 }
 
-export const run: Runner = (command, args, options = {}) =>
-    new Promise((resolve, reject) => {
+const RESOLVED = new Map<string, string | null>();
+
+/**
+ * Ищет исполняемый файл не только в PATH демона: systemd/launchd и
+ * devcontainer часто не видят mise/asdf/homebrew shims.
+ */
+export async function resolveExecutable(command: string): Promise<string | null> {
+    if (command.includes('/') || command.includes('\\')) {
+        try {
+            await access(command, constants.X_OK);
+            return command;
+        } catch {
+            return null;
+        }
+    }
+    const override = process.env[`REVDECK_${command.toUpperCase()}`];
+    if (override) return override;
+    const cached = RESOLVED.get(command);
+    if (cached) return cached;
+    const dirs = [
+        ...(process.env.PATH ?? '').split(path.delimiter),
+        path.join(os.homedir(), '.local', 'bin'),
+        path.join(os.homedir(), '.local', 'share', 'mise', 'shims'),
+        path.join(os.homedir(), '.asdf', 'shims'),
+        path.join(os.homedir(), '.npm-global', 'bin'),
+        '/opt/homebrew/bin',
+        '/usr/local/bin',
+        '/usr/bin',
+        '/bin',
+    ].filter(Boolean);
+    const extensions = process.platform === 'win32' ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';') : [''];
+    for (const dir of [...new Set(dirs)]) {
+        for (const extension of extensions) {
+            const candidate = path.join(dir, `${command}${extension}`);
+            try {
+                await access(candidate, constants.X_OK);
+                RESOLVED.set(command, candidate);
+                return candidate;
+            } catch {
+                // продолжаем поиск
+            }
+        }
+    }
+    return null;
+}
+
+export const run: Runner = async (command, args, options = {}) => {
+    const executable = (await resolveExecutable(command)) ?? command;
+    return new Promise((resolve, reject) => {
         const child = execFile(
-            command,
+            executable,
             args,
             {
                 cwd: options.cwd,
@@ -79,13 +129,9 @@ export const run: Runner = (command, args, options = {}) =>
             child.stdin?.end(options.input);
         }
     });
+};
 
-/** Есть ли исполняемый файл в PATH. */
+/** Есть ли исполняемый файл (PATH + типичные каталоги пакетных менеджеров). */
 export async function which(command: string): Promise<boolean> {
-    try {
-        await run(process.platform === 'win32' ? 'where' : 'which', [command], { timeoutMs: 5000 });
-        return true;
-    } catch {
-        return false;
-    }
+    return (await resolveExecutable(command)) !== null;
 }

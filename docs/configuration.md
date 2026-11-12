@@ -125,6 +125,8 @@ Running: `revdeck checks <N> --run --yes`. The MCP tool only shows the plan.
 | `REVDECK_UI_HOST` | host used by `revdeck ui` from a container (for example `host.docker.internal`) |
 | `REVDECK_ROOT` | project root for the MCP server |
 | `REVDECK_LANG` | CLI/MCP/daemon language: `ru` or `en` (default: system locale) |
+| `REVDECK_GLAB` | absolute path to `glab` when the daemon PATH does not contain it |
+| `REVDECK_GH` | absolute path to `gh` when the daemon PATH does not contain it |
 
 ## Validation
 

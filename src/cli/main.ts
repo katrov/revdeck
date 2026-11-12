@@ -8,8 +8,8 @@ import { loadConfig } from '../core/config.js';
 import { buildEffectiveRules, renderRules } from '../core/rules.js';
 import { changedPaths } from '../core/diff.js';
 import type { ReviewView } from '../daemon/view.js';
-import { isDaemonRunning, ensureDaemon, daemonInfo, uiBaseUrl, isDevContainer, type DaemonClient } from '../client.js';
-import { run, which } from '../core/exec.js';
+import { daemonBinaries, isDaemonRunning, ensureDaemon, daemonInfo, uiBaseUrl, isDevContainer, type DaemonClient } from '../client.js';
+import { resolveExecutable, run } from '../core/exec.js';
 import { redactLine } from '../core/redact.js';
 import { gitRemote } from '../core/git.js';
 import { VERSION } from '../version.js';
@@ -765,13 +765,23 @@ async function doctor(root: string): Promise<void> {
     }
     const binaries: Record<string, boolean> = {};
     for (const bin of ['glab', 'gh', 'git']) {
-        const present = await which(bin);
+        const resolved = await resolveExecutable(bin);
+        const present = resolved !== null;
         binaries[bin] = present;
         if (container && (bin === 'glab' || bin === 'gh')) {
             rows.push([bin, 'ok', present ? tr('есть в контейнере, но не используется', 'present in the container but unused') : tr('не нужен в контейнере: работает на хосте', 'not needed in the container: the host runs it')]);
             continue;
         }
-        rows.push([bin, present ? 'ok' : 'warn', present ? tr('найден', 'found') : tr('не найден', 'not found')]);
+        rows.push([
+            bin,
+            present ? 'ok' : 'warn',
+            present
+                ? resolved
+                : tr(
+                      `не найден: установите ${bin} или добавьте его в PATH (REVDECK_${bin.toUpperCase()})`,
+                      `not found: install ${bin} or add it to PATH (REVDECK_${bin.toUpperCase()})`,
+                  ),
+        ]);
     }
 
     let host: string | undefined;
@@ -816,6 +826,20 @@ async function doctor(root: string): Promise<void> {
               : tr('не запущен (запустится сам)', 'not running (starts on demand)'),
     ]);
     rows.push(['ui', running ? 'ok' : 'warn', info ? uiBaseUrl(info) : tr('будет доступен после запуска', 'available after the daemon starts')]);
+    if (running) {
+        const seen = await daemonBinaries();
+        for (const bin of ['glab', 'gh'] as const) {
+            if (!seen) {
+                rows.push([`daemon ${bin}`, 'warn', tr('демон старой версии: перезапустите его', 'old daemon version: restart it')]);
+                continue;
+            }
+            rows.push([
+                `daemon ${bin}`,
+                seen[bin] ? 'ok' : 'fail',
+                seen[bin] ?? tr('демон не видит бинарник: обновите PATH или переустановите сервис', 'the daemon cannot see the binary: update PATH or reinstall the service'),
+            ]);
+        }
+    }
 
     const { existsSync } = await import('node:fs');
     const skill =

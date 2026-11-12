@@ -122,5 +122,6 @@ Fallbacks:
 revdeck doctor
 ```
 
-Shows the binaries found, `glab`/`gh` authorization, daemon status and the installed adapter. In a
-devcontainer it checks the host daemon instead of looking for `glab`/`gh` inside.
+Shows the binaries found, `glab`/`gh` authorization, daemon status, the paths the daemon itself
+resolves for `glab`/`gh`, and the installed adapter. In a devcontainer it checks the host daemon instead
+of looking for `glab`/`gh` inside.

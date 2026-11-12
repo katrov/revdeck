@@ -6,6 +6,7 @@ import { gitRemote } from '../core/git.js';
 import { loadConfig } from '../core/config.js';
 import { redactLine } from '../core/redact.js';
 import { tr, type Locale } from '../core/locale.js';
+import { resolveExecutable } from '../core/exec.js';
 import { writers } from './format.js';
 
 export interface InitOptions {
@@ -293,6 +294,13 @@ async function ensureGitignore(root: string): Promise<void> {
 }
 
 export async function installService(): Promise<string> {
+    const glab = await resolveExecutable('glab');
+    const gh = await resolveExecutable('gh');
+    const envVars = [
+        `PATH=${process.env.PATH ?? ''}`,
+        ...(glab ? [`REVDECK_GLAB=${glab}`] : []),
+        ...(gh ? [`REVDECK_GH=${gh}`] : []),
+    ];
     const root = packageRoot();
     const daemon = path.join(root, 'dist', 'daemon.js');
     if (!existsSync(daemon)) throw new Error(tr('нет dist/daemon.js: сначала выполните npm run build', 'dist/daemon.js is missing: run npm run build first'));
@@ -313,6 +321,7 @@ export async function installService(): Promise<string> {
                 '',
                 '[Service]',
                 `ExecStart=${process.execPath} ${daemon}`,
+                ...envVars.map((item) => `Environment="${systemdEscape(item)}"`),
                 'Restart=on-failure',
                 'RestartSec=2',
                 '',
@@ -336,6 +345,7 @@ export async function installService(): Promise<string> {
 <plist version="1.0"><dict>
 <key>Label</key><string>io.revdeck.daemon</string>
 <key>ProgramArguments</key><array><string>${process.execPath}</string><string>${daemon}</string></array>
+<key>EnvironmentVariables</key><dict>${envVars.map((item) => `<key>${xmlEscape(item.slice(0, item.indexOf('=')))}</key><string>${xmlEscape(item.slice(item.indexOf('=') + 1))}</string>`).join('')}</dict>
 <key>RunAtLoad</key><true/>
 <key>KeepAlive</key><true/>
 </dict></plist>
@@ -360,4 +370,12 @@ export async function tailLog(lines = 80): Promise<string> {
 
 export function describeError(error: unknown): string {
     return redactLine(error instanceof Error ? error.message : error);
+}
+
+function systemdEscape(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%');
+}
+
+function xmlEscape(value: string): string {
+    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

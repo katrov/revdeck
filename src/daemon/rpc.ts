@@ -4,6 +4,7 @@ import { ensureDir } from '../core/paths.js';
 import { redact } from '../core/redact.js';
 import { messageOf, MrReviewError } from '../core/errors.js';
 import { PROTOCOL_VERSION, VERSION } from '../version.js';
+import { resolveExecutable } from '../core/exec.js';
 import type { ReviewService } from './service.js';
 import type { PublishKind } from '../core/types.js';
 
@@ -23,8 +24,10 @@ const MAX_LINE = 40 * 1024 * 1024;
 
 export async function dispatch(service: ReviewService, method: string, params: Record<string, unknown>): Promise<unknown> {
     switch (method) {
-        case 'ping':
-            return { ok: true, version: VERSION, protocol: PROTOCOL_VERSION, pid: process.pid };
+        case 'ping': {
+            const [glab, gh, git] = await Promise.all(['glab', 'gh', 'git'].map((name) => resolveExecutable(name)));
+            return { ok: true, version: VERSION, protocol: PROTOCOL_VERSION, pid: process.pid, binaries: { glab, gh, git } };
+        }
         case 'reviews.list':
             return { reviews: service.listReviews() };
         case 'reviews.open': {

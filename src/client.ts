@@ -228,6 +228,24 @@ export function uiBaseUrl(info: { url: string; port: number }): string {
     return `http://${host}:${info.port}`;
 }
 
+export interface DaemonBinaries {
+    glab: string | null;
+    gh: string | null;
+    git: string | null;
+}
+
+/** Пути, которые видит уже запущенный демон (а не текущий shell). */
+export async function daemonBinaries(): Promise<DaemonBinaries | null> {
+    try {
+        const client = await connectSocket(undefined, 800);
+        const ping = await client.request<{ binaries?: DaemonBinaries }>('ping');
+        client.close();
+        return ping.binaries ?? null;
+    } catch {
+        return null;
+    }
+}
+
 export async function isDaemonRunning(): Promise<boolean> {
     try {
         const client = await connectSocket(undefined, 400);

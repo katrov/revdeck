@@ -40,7 +40,9 @@ agent (MCP/CLI) ──unix socket──▶ revdeck daemon ──glab/gh──▶
 ## Install
 
 Requirements: Node.js ≥ 22.13 (Node 24 LTS recommended — `node:sqlite` is experimental in 22.x), `git`, and an authenticated platform CLI
-(`glab auth login` or `gh auth login`). revdeck never reads or stores their tokens.
+(`glab auth login` or `gh auth login`). The CLI must be in the daemon's `PATH`; set `REVDECK_GLAB` or
+`REVDECK_GH` to an absolute path if it lives in a mise/asdf/homebrew shim or a custom location. revdeck
+never reads or stores their tokens.
 
 ```bash
 # one-off
@@ -67,6 +69,11 @@ the `revdeck` MCP entry and the local `.revdeck/` cache, leaving foreign files a
 untouched. It only shows the plan by default; add `--yes` to apply (`--keep-config` keeps
 `.revdeck.yml`). Auto-start on login: `revdeck daemon install` (systemd user unit on Linux, launchd
 plist on macOS). Use a global install for this — an `npx` cache path can be evicted.
+
+If `glab` works in the shell but the UI refresh fails with `spawn glab ENOENT`, the daemon has a
+different `PATH` (systemd/launchd often do). Run `revdeck doctor`; it shows the path resolved by the
+running daemon. Set `REVDECK_GLAB=/absolute/path/to/glab` (or `REVDECK_GH`), or reinstall the service
+with `revdeck daemon install` so it captures the current `PATH`, then restart the daemon.
 
 ## Languages
 

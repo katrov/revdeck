@@ -37,7 +37,9 @@ npx revdeck@latest init
 ```
 
 Требования: Node.js ≥ 22.13 (рекомендуется Node 24 LTS: в 22.x `node:sqlite` экспериментален), `git`, для GitLab — `glab` с выполненным `glab auth login`, для
-GitHub — `gh` с `gh auth login`. Токены revdeck не читает и не хранит.
+GitHub — `gh` с `gh auth login`. CLI должен быть в `PATH` демона; если это mise/asdf/homebrew shim или
+нестандартное место, задайте `REVDECK_GLAB` или `REVDECK_GH` с абсолютным путём. Токены revdeck не
+читает и не хранит.
 
 В проекте:
 
@@ -56,6 +58,11 @@ revdeck ui            # ссылка на локальный интерфейс
 `.revdeck.yml`). Автозапуск демона при входе в систему — `revdeck daemon install`: создаёт systemd user unit
 (Linux) или launchd plist (macOS) и печатает команду включения. Для автозапуска ставьте пакет глобально:
 путь в кеше `npx` может быть очищен.
+
+Если `glab` работает в шелле, а обновление в UI падает с `spawn glab ENOENT`, у демона другой `PATH`
+(так часто бывает у systemd/launchd). Запустите `revdeck doctor`: он покажет путь, который видит
+работающий демон. Задайте `REVDECK_GLAB=/абсолютный/путь/glab` (или `REVDECK_GH`) либо переустановите
+сервис через `revdeck daemon install`, чтобы он сохранил текущий `PATH`, и перезапустите демон.
 
 ## Языки
 

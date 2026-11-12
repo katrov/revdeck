@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-12
+
+### Fixed
+
+- The daemon resolves `glab`/`gh` outside its own `PATH` (mise/asdf shims, `~/.local/bin`, Homebrew) and
+  accepts `REVDECK_GLAB`/`REVDECK_GH` overrides. `daemon install` captures the current PATH and resolved
+  binary paths in the systemd unit/launchd plist. A missing CLI now returns an install/PATH hint instead
+  of only `spawn glab ENOENT`; `doctor` prints the path resolved by the CLI and by the running daemon,
+  so a service with an outdated PATH is visible.
+
 ## [0.3.1] - 2026-11-12
 
 ### Fixed
