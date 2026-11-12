@@ -8,6 +8,10 @@ description: "Review a merge/pull request with the local revdeck. Two scenarios:
 The skill is platform-agnostic: revdeck normalizes GitLab and GitHub into a single model.
 Rules come from the repository, procedures come from this skill.
 
+Supporting files (`Review.md`, `Feedback.md`, `Criteria.md`, `Rules.md`, `Sources.md`) live in
+`.agents/skills/revdeck/`. If this file is opened through a symlink (for example
+`.claude/skills/revdeck/SKILL.md`), resolve those names in `.agents/skills/revdeck/`.
+
 ## Tools
 
 If the harness provides MCP, use the `revdeck_*` tools; otherwise use the CLI, which has the same

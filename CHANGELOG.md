@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-12
+
+### Fixed
+
+- `revdeck init` installs only `.claude/skills/revdeck/SKILL.md` — a symlink to
+  `.agents/skills/revdeck/SKILL.md`. The procedure files stay in `.agents`; old copied skill
+  directories are replaced, and Windows gets a short shim instead of a directory copy.
+
 ## [0.3.2] - 2026-11-12
 
 ### Fixed

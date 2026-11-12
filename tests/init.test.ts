@@ -35,31 +35,34 @@ async function seed(): Promise<void> {
 describe('revdeck init', () => {
     const options = { force: false, adapters: ['claude'], noService: true, locale: 'en' as const, outputLanguage: 'en' as const };
 
-    it('keeps the canonical skill in .agents and links .claude to it', async () => {
+    it('keeps the canonical skill in .agents and links only SKILL.md into .claude', async () => {
         await runInit(root, options);
 
         expect(existsSync(path.join(root, '.agents', 'skills', 'revdeck', 'SKILL.md'))).toBe(true);
         expect(existsSync(path.join(root, '.agents', 'skills', 'revdeck', 'Review.md'))).toBe(true);
         expect(existsSync(path.join(root, '.agents', 'skills', 'revdeck', 'agents', 'openai.yaml'))).toBe(true);
 
-        const link = path.join(root, '.claude', 'skills', 'revdeck');
+        const dir = path.join(root, '.claude', 'skills', 'revdeck');
+        const link = path.join(dir, 'SKILL.md');
+        expect((await lstat(dir)).isDirectory()).toBe(true);
         expect((await lstat(link)).isSymbolicLink()).toBe(true);
-        expect((await readlink(link)).replaceAll('\\', '/')).toBe('../../.agents/skills/revdeck');
-        expect(existsSync(path.join(link, 'Review.md'))).toBe(true);
+        expect((await readlink(link)).replaceAll('\\', '/')).toBe('../../../.agents/skills/revdeck/SKILL.md');
+        expect(existsSync(path.join(dir, 'Review.md'))).toBe(false);
+        expect(existsSync(path.join(dir, 'agents'))).toBe(false);
         expect(existsSync(path.join(root, '.claude', 'commands', 'revdeck.md'))).toBe(true);
         expect(existsSync(path.join(root, '.mcp.json'))).toBe(true);
     });
 
-    it('replaces an old copied .claude skill with a link', async () => {
+    it('replaces an old copied .claude skill with a single SKILL.md link', async () => {
         await mkdir(path.join(root, '.claude', 'skills', 'revdeck'), { recursive: true });
         await writeFile(path.join(root, '.claude', 'skills', 'revdeck', 'SKILL.md'), '---\nname: revdeck\n---\n');
         await writeFile(path.join(root, '.claude', 'skills', 'revdeck', 'Review.md'), 'old copy');
 
         await runInit(root, options);
 
-        const link = path.join(root, '.claude', 'skills', 'revdeck');
-        expect((await lstat(link)).isSymbolicLink()).toBe(true);
-        expect(await readFile(path.join(link, 'Review.md'), 'utf8')).not.toBe('old copy');
+        const dir = path.join(root, '.claude', 'skills', 'revdeck');
+        expect((await lstat(path.join(dir, 'SKILL.md'))).isSymbolicLink()).toBe(true);
+        expect(existsSync(path.join(dir, 'Review.md'))).toBe(false);
     });
 });
 

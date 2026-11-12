@@ -15,7 +15,7 @@ skill remain: the agent calls commands through the shell.
 
 | Harness | `/` command | What `init` writes |
 |---|---|---|
-| Claude Code | `/revdeck` | `.claude/commands/revdeck.md`, `.claude/skills/revdeck` → `../../.agents/skills/revdeck`, `.mcp.json` |
+| Claude Code | `/revdeck` | `.claude/commands/revdeck.md`, `.claude/skills/revdeck/SKILL.md` → `../../../.agents/skills/revdeck/SKILL.md`, `.mcp.json` |
 | Cursor | `/revdeck` | `.cursor/commands/revdeck.md`, `.cursor/mcp.json` |
 | Codex CLI | prompt `revdeck` | `.codex/prompts/revdeck.md`; MCP in `~/.codex/config.toml` (manually) |
 | Gemini CLI | `/revdeck` | `.gemini/commands/revdeck.toml`; MCP in the Gemini settings (manually) |
@@ -31,10 +31,10 @@ absolute URL; GitHub has no public attachment API, so the editor asks for a URL 
 does not overwrite existing command files and does not clobber other keys in `.mcp.json`.
 
 The skill has one canonical copy: `.agents/skills/revdeck` (including `agents/openai.yaml` for OpenAI
-harnesses). Harnesses that keep skills under their own directory get a link to it — `.claude/skills/revdeck`
-is a symlink to `../../.agents/skills/revdeck`, with a copy fallback on Windows and on filesystems without
-symlink support. Old copies created by an earlier `init` are replaced when they still carry
-`name: revdeck`.
+harnesses). Claude gets only `.claude/skills/revdeck/SKILL.md`, a symlink to
+`../../../.agents/skills/revdeck/SKILL.md`; the procedure files stay in `.agents`. On Windows and
+filesystems without symlink support, that single file is a short shim pointing to `.agents`. Old copied
+skill directories created by an earlier `init` are replaced when they still carry `name: revdeck`.
 
 ## MCP
 

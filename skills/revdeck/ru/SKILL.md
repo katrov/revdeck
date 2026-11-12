@@ -8,6 +8,10 @@ description: "Ревью merge/pull request через локальный revdec
 Скилл не привязан к платформе: revdeck нормализует GitLab и GitHub в одну модель.
 Правила берутся из репозитория, процедуры — из этого скилла.
 
+Вспомогательные файлы (`Review.md`, `Feedback.md`, `Criteria.md`, `Rules.md`, `Sources.md`) лежат в
+`.agents/skills/revdeck/`. Если этот файл открыт через симлинк (например
+`.claude/skills/revdeck/SKILL.md`), ищите их в `.agents/skills/revdeck/`.
+
 ## Инструменты
 
 Если харнесс даёт MCP, используйте инструменты `revdeck_*`; иначе — CLI с теми же возможностями.

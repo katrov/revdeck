@@ -168,7 +168,7 @@ async function installAdapter(
         writers.err(`! ${tr('неизвестный адаптер', 'unknown adapter')}: ${adapter} (${Object.keys(SPECS).join(', ')})`);
         return;
     }
-    if (spec.linkSkill && canonicalSkill) await linkSkill(root, canonicalSkill);
+    if (spec.linkSkill && canonicalSkill) await linkSkill(root, canonicalSkill, locale);
     if (spec.mcp) await mergeMcpJson(path.join(root, spec.mcp), root, mcp);
     for (const file of spec.files ?? []) {
         const target = path.join(root, file.path);
@@ -218,36 +218,36 @@ async function copySkill(source: string, target: string): Promise<void> {
 }
 
 /**
- * .claude/skills/revdeck — ссылка на канонический скилл, а не копия процедур.
- * Старую копию, созданную предыдущим init, заменяем; чужие файлы не трогаем.
+ * .claude/skills/revdeck — только SKILL.md, ссылающийся на канонический файл.
+ * Процедуры остаются в .agents; старую копию каталога заменяем.
  */
-async function linkSkill(root: string, canonicalSkill: string): Promise<void> {
+async function linkSkill(root: string, canonicalSkill: string, locale: Locale): Promise<void> {
     const target = path.join(root, '.claude', 'skills', 'revdeck');
-    const relative = path.relative(path.dirname(target), canonicalSkill);
+    const source = path.join(canonicalSkill, 'SKILL.md');
+    const skillTarget = path.join(target, 'SKILL.md');
     await mkdir(path.dirname(target), { recursive: true });
     const existing = await lstat(target).catch(() => null);
     if (existing) {
         if (existing.isSymbolicLink()) {
-            const current = await readlink(target).catch(() => '');
-            if (current === relative) {
-                writers.out(`✔ ${tr('скилл', 'skill')}: .claude/skills/revdeck -> ${CANONICAL_SKILL}`);
-                return;
-            }
             await rm(target, { force: true });
         } else if (existing.isDirectory() && (await isManagedSkillDir(target))) {
             await rm(target, { recursive: true, force: true });
         } else {
-            writers.out(`! .claude/skills/revdeck ${tr('уже есть: не перезаписываю', 'already exists: not overwriting')}`);
+            writers.out(`! .claude/skills/revdeck ${tr('уже есть и не похож на revdeck: не перезаписываю', 'already exists and does not look like revdeck: not overwriting')}`);
             return;
         }
     }
+    await mkdir(target, { recursive: true });
     if (process.platform === 'win32') {
-        // Символические ссылки на Windows требуют прав; копия сохраняет совместимость.
-        await copySkill(canonicalSkill, target);
+        // Симлинки на Windows требуют прав; короткий shim сохраняет только один файл.
+        const shim = locale === 'ru'
+            ? `---\nname: revdeck\ndescription: "Канонический скилл revdeck"\n---\n\nЭтот файл — shim. Полная процедура: \`.agents/skills/revdeck/SKILL.md\`; вспомогательные файлы — в \`.agents/skills/revdeck/\`.\n`
+            : `---\nname: revdeck\ndescription: "Canonical revdeck skill"\n---\n\nThis file is a shim. The full procedure is \`.agents/skills/revdeck/SKILL.md\`; supporting files are in \`.agents/skills/revdeck/\`.\n`;
+        await writeFile(skillTarget, shim);
     } else {
-        await symlink(relative, target, 'dir');
+        await symlink(path.relative(target, source), skillTarget, 'file');
     }
-    writers.out(`✔ ${tr('скилл', 'skill')}: .claude/skills/revdeck -> ${CANONICAL_SKILL}`);
+    writers.out(`✔ ${tr('скилл', 'skill')}: .claude/skills/revdeck/SKILL.md -> ${CANONICAL_SKILL}/SKILL.md`);
 }
 
 async function isManagedSkillDir(dir: string): Promise<boolean> {

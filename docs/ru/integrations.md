@@ -15,7 +15,7 @@ skill: агент вызывает команды через shell.
 
 | Харнесс | `/`-команда | Что пишет `init` |
 |---|---|---|
-| Claude Code | `/revdeck` | `.claude/commands/revdeck.md`, `.claude/skills/revdeck` → `../../.agents/skills/revdeck`, `.mcp.json` |
+| Claude Code | `/revdeck` | `.claude/commands/revdeck.md`, `.claude/skills/revdeck/SKILL.md` → `../../../.agents/skills/revdeck/SKILL.md`, `.mcp.json` |
 | Cursor | `/revdeck` | `.cursor/commands/revdeck.md`, `.cursor/mcp.json` |
 | Codex CLI | prompt `revdeck` | `.codex/prompts/revdeck.md`; MCP — в `~/.codex/config.toml` (вручную) |
 | Gemini CLI | `/revdeck` | `.gemini/commands/revdeck.toml`; MCP — в настройках Gemini (вручную) |
@@ -29,9 +29,10 @@ skill: агент вызывает команды через shell.
 
 Скилл хранится в одном каноническом месте: `.agents/skills/revdeck` (включая `agents/openai.yaml`
 для OpenAI-харнессов). Харнессы со своим каталогом скиллов получают ссылку на него:
-`.claude/skills/revdeck` — симлинк на `../../.agents/skills/revdeck`; на Windows и ФС без симлинков
-используется копия. Старые копии, созданные предыдущим `init`, заменяются, если в них остался
-`name: revdeck`.
+`.claude/skills/revdeck/SKILL.md` — симлинк на `../../../.agents/skills/revdeck/SKILL.md`;
+остальные процедуры остаются в `.agents`. На Windows и ФС без симлинков этот единственный файл —
+короткий shim со ссылкой на `.agents`. Старые скопированные каталоги, созданные предыдущим `init`,
+заменяются, если в них остался `name: revdeck`.
 
 Вложения комментариев загружает демон на хосте. GitLab использует project uploads и возвращает
 абсолютный URL; у GitHub публичного API загрузки нет, поэтому редактор просит вставить ссылку.
