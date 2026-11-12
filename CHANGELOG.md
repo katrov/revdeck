@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-12
+
 ### Added
 
 - Remove a review from the local sidebar (the MR/PR on the platform is untouched).

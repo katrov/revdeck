@@ -1,6 +1,6 @@
 {
   "name": "revdeck",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Agent-first code review for GitLab and GitHub: local daemon, CLI, MCP server and a triage UI.",
   "license": "MIT",
   "type": "module",
