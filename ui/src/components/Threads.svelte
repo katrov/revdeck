@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { app, copyFocusLink, draftFor, errorText, focusLine, notify, relativeTime } from '../lib/state.svelte';
-    import { saveDraft } from '../lib/api';
+    import { app, copyFocusLink, draftFor, errorText, focusLine, loadReview, notify, relativeTime } from '../lib/state.svelte';
+    import { deleteComment, saveDraft, updateComment } from '../lib/api';
     import type { ReplyDraft } from '../lib/types';
     import { plural, t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
@@ -11,6 +11,9 @@
     let selected = $state<string[]>([]);
     let saving = $state<string[]>([]);
     let openAgent = $state<string[]>([]);
+    let editingNote = $state<string | null>(null);
+    let editBody = $state('');
+    let noteBusy = $state<string | null>(null);
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
     const threads = $derived((app.review?.threads ?? []).filter((thread) => filter === 'all' || !thread.resolved));
@@ -78,6 +81,47 @@
         selected = changedDrafts.map((draft) => draft.threadId);
     }
 
+    function canEdit(note: { author: string }): boolean {
+        return Boolean(app.review?.user && note.author === app.review.user.username);
+    }
+
+    function startEdit(note: { id: string; body: string }): void {
+        editingNote = note.id;
+        editBody = note.body;
+    }
+
+    async function saveEdit(note: { id: string }): Promise<void> {
+        const review = app.review;
+        if (!review) return;
+        noteBusy = note.id;
+        try {
+            await updateComment(review.id, note.id, editBody);
+            await loadReview(review.id, { silent: true });
+            editingNote = null;
+            notify(t('Комментарий обновлён', 'Comment updated'), 'ok');
+        } catch (error) {
+            notify(errorText(error), 'error');
+        } finally {
+            noteBusy = null;
+        }
+    }
+
+    async function removeNote(note: { id: string }): Promise<void> {
+        const review = app.review;
+        if (!review) return;
+        if (!confirm(t('Удалить комментарий?', 'Delete the comment?'))) return;
+        noteBusy = note.id;
+        try {
+            await deleteComment(review.id, note.id);
+            await loadReview(review.id, { silent: true });
+            notify(t('Комментарий удалён', 'Comment deleted'), 'ok');
+        } catch (error) {
+            notify(errorText(error), 'error');
+        } finally {
+            noteBusy = null;
+        }
+    }
+
     $effect(() => {
         const focus = app.focus;
         if (focus?.kind !== 'thread') return;
@@ -133,9 +177,25 @@
         <div class="stack" style="margin-top: 10px">
             {#each thread.notes as note (note.id)}
                 <div>
-                    <div class="muted small"><strong style="color: var(--text)">{note.author}</strong> · {relativeTime(note.createdAt)}</div>
-                    <div class="md"><Markdown source={note.body} /></div>
-                    <Reactions reviewId={app.review!.id} {note} />
+                    <div class="spread">
+                        <div class="muted small"><strong style="color: var(--text)">{note.author}</strong> · {relativeTime(note.createdAt)}</div>
+                        {#if canEdit(note) && editingNote !== note.id}
+                            <div class="row" style="gap: 2px">
+                                <button class="btn icon" type="button" title={t('Редактировать', 'Edit')} disabled={noteBusy !== null} onclick={() => startEdit(note)}>✎</button>
+                                <button class="btn icon" type="button" title={t('Удалить', 'Delete')} disabled={noteBusy !== null} onclick={() => void removeNote(note)}>🗑</button>
+                            </div>
+                        {/if}
+                    </div>
+                    {#if editingNote === note.id}
+                        <MarkdownEditor bind:value={editBody} rows={2} />
+                        <div class="row end" style="margin-top: 4px">
+                            <button class="btn" type="button" onclick={() => (editingNote = null)}>{t('Отмена', 'Cancel')}</button>
+                            <button class="btn primary" type="button" disabled={noteBusy !== null} onclick={() => void saveEdit(note)}>{noteBusy ? t('Сохранение…', 'Saving…') : t('Сохранить', 'Save')}</button>
+                        </div>
+                    {:else}
+                        <div class="md"><Markdown source={note.body} /></div>
+                        <Reactions reviewId={app.review!.id} {note} />
+                    {/if}
                 </div>
             {/each}
         </div>

@@ -161,6 +161,13 @@ export function devcontainerHint(): string {
     ].join('; ');
 }
 
+async function devcontainerHttpClient(): Promise<DaemonClient | null> {
+    const info = await daemonInfo();
+    if (!info?.port || !info.token) return null;
+    const host = process.env.REVDECK_UI_HOST ?? 'host.docker.internal';
+    return new HttpClient(`http://${host}:${info.port}`, info.token);
+}
+
 export async function ensureDaemon(options: { autoStart?: boolean; daemonArgs?: string[] } = {}): Promise<{ client: DaemonClient; started: boolean }> {
     const url = process.env.REVDECK_URL;
     if (url) {
@@ -172,6 +179,19 @@ export async function ensureDaemon(options: { autoStart?: boolean; daemonArgs?: 
         return { client: await connectSocket(), started: false };
     } catch (error) {
         if (isDevContainer()) {
+            const http = await devcontainerHttpClient();
+            if (http) {
+                try {
+                    await http.request('ping');
+                    return { client: http, started: false };
+                } catch (httpError) {
+                    throw new RpcError(
+                        `devcontainer HTTP: ${(httpError as Error).message}`,
+                        'DEVCONTAINER',
+                        'на хосте: revdeck daemon start --host 0.0.0.0; проверьте REVDECK_UI_HOST и mounts',
+                    );
+                }
+            }
             throw new RpcError(`devcontainer: ${devcontainerHint()}`, 'DEVCONTAINER', 'revdeck devcontainer --write и пересоберите контейнер');
         }
         if (options.autoStart === false) throw error;
@@ -237,7 +257,7 @@ export interface DaemonBinaries {
 /** Пути, которые видит уже запущенный демон (а не текущий shell). */
 export async function daemonBinaries(): Promise<DaemonBinaries | null> {
     try {
-        const client = await connectSocket(undefined, 800);
+        const { client } = await ensureDaemon({ autoStart: false });
         const ping = await client.request<{ binaries?: DaemonBinaries }>('ping');
         client.close();
         return ping.binaries ?? null;
@@ -248,7 +268,7 @@ export async function daemonBinaries(): Promise<DaemonBinaries | null> {
 
 export async function isDaemonRunning(): Promise<boolean> {
     try {
-        const client = await connectSocket(undefined, 400);
+        const { client } = await ensureDaemon({ autoStart: false });
         await client.request('ping');
         client.close();
         return true;

@@ -279,7 +279,11 @@ async function mergeMcpJson(file: string, root: string, mcp: McpConfig): Promise
         }
     }
     const servers = (data.mcpServers ?? {}) as Record<string, unknown>;
-    servers['revdeck'] = mcp;
+    const previous = servers['revdeck'];
+    const previousEnv = previous && typeof previous === 'object' && 'env' in previous && previous.env && typeof previous.env === 'object'
+        ? (previous.env as Record<string, string>)
+        : {};
+    servers['revdeck'] = { ...mcp, env: { ...previousEnv, ...(mcp.env ?? {}) } };
     data.mcpServers = servers;
     await writeFile(file, `${JSON.stringify(data, null, 2)}\n`);
     writers.out(`✔ MCP: ${path.relative(root, file)}`);

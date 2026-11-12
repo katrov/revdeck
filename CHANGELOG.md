@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-12
+
+### Added
+
+- Private **Note for the agent** on every finding; it is included in the CLI/MCP context and never
+  published.
+- Reactions on the MR/PR itself (description) in the UI, HTTP API and RPC, in addition to thread-note
+  reactions. The current GitLab/GitHub user is stored with the review.
+- Edit and delete own platform comments from the thread card; local line comments can also be edited and
+  deleted before publishing.
+- Devcontainer MCP: `revdeck devcontainer --write` adds the `REVDECK_*` env to the `revdeck` server in
+  `.mcp.json` / `.cursor/mcp.json`, and a client in a devcontainer falls back to HTTP via the mounted
+  `daemon.json` when the Unix socket is unavailable.
+
+### Fixed
+
+- The sidebar is ordered by the MR/PR update time, not by local sync time, so opening a review no longer
+  reorders the list. Switching reviews keeps the active tab.
+
 ## [0.3.3] - 2026-11-12
 
 ### Fixed

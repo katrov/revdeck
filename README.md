@@ -149,6 +149,12 @@ Comment editors have GitLab/GitHub-style **Write / Preview** tabs and a Markdown
 videos from the platform host (including GitLab `/uploads/...` links and `{width=... height=...}`)
 render in the preview and in thread comments; external images are shown as links and are never loaded.
 
+## Notes for the agent
+
+Every finding has a private **Note for the agent** field, and every thread has the same note next to the
+reply. The text is included in `revdeck_context` / MCP but never published to GitLab or GitHub. Findings
+also keep their decision note separately.
+
 ## Devcontainer
 
 The daemon, `glab` and `gh` stay on the host. From the repository root:
@@ -168,8 +174,13 @@ foreign keys in an existing JSONC file are preserved.
 The daemon creates the bridge socket on startup, so on the host run `revdeck daemon restart`, then
 rebuild the container. Inside the container revdeck never starts a local daemon, so `gh`/`glab` are
 never invoked there; if the host socket is missing it fails with a clear `DEVCONTAINER` error.
-`revdeck doctor` is aware of this mode. For the UI from the container, start the host daemon with
-`revdeck daemon start --host 0.0.0.0`.
+`revdeck doctor` is aware of this mode.
+
+If a Unix socket cannot be mounted (for example Docker Desktop on macOS), start the host daemon with
+`revdeck daemon start --host 0.0.0.0`. The container reads `daemon.json` from the mounted state and
+falls back to HTTP with the same session token; `.mcp.json` / `.cursor/mcp.json` get the required
+`REVDECK_*` env from `revdeck devcontainer --write`. Binding the daemon to `0.0.0.0` exposes its HTTP
+port to the network, so use it only on a trusted network.
 
 ## MCP
 
@@ -280,8 +291,8 @@ Provider tests use recorded CLI responses and need no network. See [CONTRIBUTING
 - Project checks are planned by the agent; running them requires `revdeck checks --run --yes`.
 - The UI opens a review from the **Open review** dialog; the working-copy root is required so the daemon
   can read `.revdeck.yml`.
-- Thread resolution is in the thread card; reactions are available on thread notes in the UI and through
-  `revdeck react`.
+- Thread resolution is in the thread card; reactions are available on thread notes and on the MR/PR
+  description. Own platform comments can be edited or deleted from the thread card.
 - GitHub has no public attachment API: the Attach button is disabled there; uploads work in GitLab.
 - Auto-start is supported on Linux and macOS; on Windows run the daemon manually.
 

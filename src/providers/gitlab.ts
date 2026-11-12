@@ -257,8 +257,7 @@ export class GitLabProvider implements Provider {
         });
     }
 
-    async reactions(noteId: string): Promise<Reaction[]> {
-        const base = this.endpoint(`/notes/${encodeURIComponent(noteId)}/award_emoji`);
+    private async fetchAwards(base: string): Promise<Reaction[]> {
         const items = await this.paged<{ id: number; name: string; user?: GlUser }>(base);
         const me = await this.currentUser();
         const grouped = new Map<string, Reaction>();
@@ -276,8 +275,7 @@ export class GitLabProvider implements Provider {
         return [...grouped.values()].sort((left, right) => left.name.localeCompare(right.name));
     }
 
-    async react(noteId: string, emoji: string): Promise<{ active: boolean }> {
-        const base = this.endpoint(`/notes/${encodeURIComponent(noteId)}/award_emoji`);
+    private async toggleAward(base: string, emoji: string): Promise<{ active: boolean }> {
         const existing = await this.json<{ id: number; name: string; user?: GlUser }[]>([query(base, { per_page: 100 })]);
         const me = await this.currentUser();
         const mine = existing.find((item) => item.name === emoji && item.user?.username === me.username);
@@ -289,6 +287,32 @@ export class GitLabProvider implements Provider {
             await this.call(['--method', 'POST', base, '--input', file]);
         });
         return { active: true };
+    }
+
+    async reactions(noteId: string): Promise<Reaction[]> {
+        return this.fetchAwards(this.endpoint(`/notes/${encodeURIComponent(noteId)}/award_emoji`));
+    }
+
+    async react(noteId: string, emoji: string): Promise<{ active: boolean }> {
+        return this.toggleAward(this.endpoint(`/notes/${encodeURIComponent(noteId)}/award_emoji`), emoji);
+    }
+
+    async reviewReactions(): Promise<Reaction[]> {
+        return this.fetchAwards(this.endpoint('/award_emoji'));
+    }
+
+    async reactToReview(emoji: string): Promise<{ active: boolean }> {
+        return this.toggleAward(this.endpoint('/award_emoji'), emoji);
+    }
+
+    async updateNote(noteId: string, body: string): Promise<void> {
+        await withTempJson({ body }, async (file) => {
+            await this.call(['--method', 'PUT', this.endpoint(`/notes/${encodeURIComponent(noteId)}`), '--input', file]);
+        });
+    }
+
+    async deleteNote(noteId: string): Promise<void> {
+        await this.call(['--method', 'DELETE', this.endpoint(`/notes/${encodeURIComponent(noteId)}`)]);
     }
 
     async upload(input: UploadInput): Promise<UploadedAttachment> {

@@ -56,6 +56,9 @@
 | `notes.update` | `review`, `noteId`, `patch` | обновлённый комментарий |
 | `reactions.list` | `review`, `noteIds[]` | реакции, сгруппированные по id комментария |
 | `reactions.toggle` | `review`, `noteId`, `emoji` | `active` и актуальный список реакций |
+| `reactions.reviewToggle` | `review`, `emoji` | реакции на самом MR/PR |
+| `comments.update` | `review`, `noteId`, `body` | редактировать свой комментарий платформы |
+| `comments.delete` | `review`, `noteId` | удалить свой комментарий платформы |
 | `attachments.upload` | `review`, `name`, `contentType`, `data` (base64) | `name`, абсолютный `url`, `markdown` |
 | `notes.delete` | `review`, `noteId` | `{ok}` |
 | `publish.preview` | `review`, `kind`, `ids[]` | план + предупреждения |
@@ -94,6 +97,9 @@
 | POST | `/api/notes` | `action: add/update/delete` |
 | GET | `/api/reactions?review=&notes=` | реакции для id комментариев |
 | POST | `/api/reactions` | переключить реакцию |
+| GET | `/api/review-reactions?review=` | реакции на MR/PR |
+| POST | `/api/review-reactions` | переключить реакцию на MR/PR |
+| POST | `/api/comments` | `action: update/delete` для своих комментариев платформы |
 | POST | `/api/attachments` | загрузить картинку/видео и вернуть абсолютную ссылку |
 | POST | `/api/publish/preview`, `/approve`, `/commit` | публикация |
 | POST | `/api/checks` | проверки |

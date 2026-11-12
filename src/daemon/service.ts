@@ -205,11 +205,25 @@ export class ReviewService {
         } catch (error) {
             errors.push(`${tr('треды', 'threads')}: ${redact(messageOf(error))}`);
         }
+        let reactions = previous?.reactions ?? [];
+        try {
+            reactions = await provider.reviewReactions();
+        } catch (error) {
+            errors.push(`${tr('реакции', 'reactions')}: ${redact(messageOf(error))}`);
+        }
+        let user = previous?.user ?? null;
+        try {
+            user = await provider.currentUser();
+        } catch (error) {
+            errors.push(`${tr('текущий пользователь', 'current user')}: ${redact(messageOf(error))}`);
+        }
         info.stats = diffStats(diff);
         this.store.saveReview(info, root, syncedAt);
         this.store.saveSnapshot(id, {
             diff,
             threads,
+            reactions,
+            user,
             config: loaded.config,
             configPath: loaded.path,
             errors,
@@ -264,12 +278,13 @@ export class ReviewService {
             info,
             diff: snapshot.diff,
             threads,
+            reactions: snapshot.reactions,
             summary: this.store.getSummary(id),
             findings,
             drafts,
             notes: this.store.listNotes(id),
             decisions: this.store.listDecisions(id),
-            user: null,
+            user: snapshot.user,
             syncedAt: snapshot.syncedAt,
             errors: snapshot.errors,
         };
@@ -451,6 +466,26 @@ export class ReviewService {
         return result;
     }
 
+    async reactToReview(id: string, emoji: string): Promise<{ active: boolean; reactions: Reaction[] }> {
+        if (!(REACTIONS as readonly string[]).includes(emoji)) {
+            throw new Error(tr(`неизвестная реакция ${emoji}: ${REACTIONS.join(', ')}`, `unknown reaction ${emoji}: ${REACTIONS.join(', ')}`));
+        }
+        const provider = await this.providerFor(id);
+        const previous = this.store.getReview(id)?.snapshot.reactions ?? [];
+        const result = await provider.reactToReview(emoji);
+        let reactions = previous;
+        try {
+            reactions = await provider.reviewReactions();
+        } catch {
+            // Переключение уже произошло; оставляем прошлый список.
+        }
+        this.store.audit(id, 'reaction.review', { emoji, active: result.active });
+        const stored = this.store.getReview(id);
+        if (stored) this.store.saveSnapshot(id, { ...stored.snapshot, reactions });
+        this.emit(id);
+        return { active: result.active, reactions };
+    }
+
     async react(id: string, noteId: string, emoji: string): Promise<{ active: boolean; reactions: Reaction[] }> {
         if (!(REACTIONS as readonly string[]).includes(emoji)) {
             throw new Error(tr(`неизвестная реакция ${emoji}: ${REACTIONS.join(', ')}`, `unknown reaction ${emoji}: ${REACTIONS.join(', ')}`));
@@ -505,6 +540,56 @@ export class ReviewService {
         } finally {
             await rm(dir, { recursive: true, force: true });
         }
+    }
+
+    // ---------------------------------------------------------------- comments
+
+    private noteInReview(id: string, noteId: string) {
+        const review = this.getReview(id);
+        const thread = review.threads.find((item) => item.notes.some((note) => note.id === noteId));
+        const note = thread?.notes.find((item) => item.id === noteId);
+        return { review, thread: thread ?? null, note: note ?? null };
+    }
+
+    async updateComment(id: string, noteId: string, body: string): Promise<void> {
+        const { review, note } = this.noteInReview(id, noteId);
+        if (!note) throw new Error(tr(`комментария ${noteId} нет в этом ревью`, `comment ${noteId} is not in this review`));
+        if (!review.user || note.author !== review.user.username) {
+            throw new Error(tr('можно редактировать только свой комментарий', 'only your own comment can be edited'));
+        }
+        const check = sanitizeBody(body, review.info.ref.platform, { host: review.info.ref.host });
+        if (!check.ok) throw new Error(check.reason);
+        const provider = await this.providerFor(id);
+        await provider.updateNote(noteId, check.text);
+        const stored = this.store.getReview(id);
+        if (stored) {
+            const threads = stored.snapshot.threads.map((thread) => ({
+                ...thread,
+                notes: thread.notes.map((item) => (item.id === noteId ? { ...item, body: check.text } : item)),
+            }));
+            this.store.saveSnapshot(id, { ...stored.snapshot, threads });
+        }
+        this.store.audit(id, 'comment.update', { noteId });
+        this.emit(id);
+    }
+
+    async deleteComment(id: string, noteId: string): Promise<void> {
+        const { review, note } = this.noteInReview(id, noteId);
+        if (!note) throw new Error(tr(`комментария ${noteId} нет в этом ревью`, `comment ${noteId} is not in this review`));
+        if (!review.user || note.author !== review.user.username) {
+            throw new Error(tr('можно удалить только свой комментарий', 'only your own comment can be deleted'));
+        }
+        const provider = await this.providerFor(id);
+        await provider.deleteNote(noteId);
+        const stored = this.store.getReview(id);
+        if (stored) {
+            const threads = stored.snapshot.threads
+                .map((thread) => ({ ...thread, notes: thread.notes.filter((item) => item.id !== noteId) }))
+                .filter((thread) => thread.notes.length > 0);
+            this.store.saveSnapshot(id, { ...stored.snapshot, threads });
+        }
+        this.store.audit(id, 'comment.delete', { noteId });
+        this.emit(id);
     }
 
     // ---------------------------------------------------------------- notes

@@ -19,7 +19,7 @@
         placeholder?: string;
         rows?: number;
         disabled?: boolean;
-        onchange?: () => void;
+        onchange?: (value: string) => void;
     } = $props();
 
     let mode = $state<'write' | 'preview'>('write');
@@ -27,7 +27,7 @@
     let uploading = $state(0);
 
     function changed(): void {
-        onchange?.();
+        onchange?.(value);
     }
 
     function replaceSelection(prefix: string, suffix = prefix, fallback = ''): void {

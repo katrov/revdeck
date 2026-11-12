@@ -83,6 +83,9 @@ async function main(): Promise<void> {
         uiDir,
         ...(values.port ? { port: Number(values.port) } : {}),
         ...(values.host ? { host: String(values.host) } : {}),
+        ...(process.env.REVDECK_HTTP_ALLOWED_HOSTS
+            ? { allowedHosts: process.env.REVDECK_HTTP_ALLOWED_HOSTS.split(',').map((item) => item.trim()).filter(Boolean) }
+            : {}),
         version: VERSION,
     });
     const info: DaemonInfo = {

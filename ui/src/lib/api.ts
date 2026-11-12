@@ -49,6 +49,12 @@ export const getReactions = (review: string, noteIds: string[]) =>
 export const toggleReaction = (review: string, noteId: string, emoji: string) =>
     api<{ active: boolean; reactions: import('./types').Reaction[] }>('/api/reactions', { body: { review, noteId, emoji } });
 
+export const getReviewReactions = (review: string) =>
+    api<{ reactions: import('./types').Reaction[] }>(`/api/review-reactions?review=${encodeURIComponent(review)}`);
+
+export const toggleReviewReaction = (review: string, emoji: string) =>
+    api<{ active: boolean; reactions: import('./types').Reaction[] }>('/api/review-reactions', { body: { review, emoji } });
+
 export const openReview = (root: string, input: string, options: { platform?: string; project?: string; host?: string; branch?: string } = {}) =>
     api<{ review: import('./types').ReviewView; reviews: import('./types').ReviewListItem[] }>('/api/reviews/open', {
         body: { root, input, ...options },
@@ -71,6 +77,7 @@ export const saveFindings = (review: string, findings: import('./types').Finding
                 title: finding.title,
                 body: finding.body,
                 comment: finding.comment,
+                agentNote: finding.agentNote ?? '',
             })),
         },
     });
@@ -85,6 +92,12 @@ export const updateNote = (review: string, noteId: string, patch: Record<string,
     api<{ note: import('./types').LineNote }>('/api/notes', { body: { review, action: 'update', noteId, patch } });
 
 export const deleteNote = (review: string, noteId: string) => api<{ ok: true }>('/api/notes', { body: { review, action: 'delete', noteId } });
+
+export const updateComment = (review: string, noteId: string, body: string) =>
+    api<{ ok: true }>('/api/comments', { body: { review, action: 'update', noteId, body } });
+
+export const deleteComment = (review: string, noteId: string) =>
+    api<{ ok: true }>('/api/comments', { body: { review, action: 'delete', noteId } });
 
 export interface UploadedAttachment {
     name: string;

@@ -15,6 +15,8 @@ export interface HttpOptions {
     uiDir: string;
     port?: number;
     host?: string;
+    /** Дополнительные значения Host, например host.docker.internal. */
+    allowedHosts?: string[];
     version?: string;
 }
 
@@ -99,6 +101,8 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
     const server = http.createServer(async (req, res) => {
         const port = (server.address() as { port: number } | null)?.port ?? 0;
         const expectedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]);
+        for (const name of options.allowedHosts ?? []) expectedHosts.add(`${name}:${port}`);
+        if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') expectedHosts.add(`host.docker.internal:${port}`);
         if (!expectedHosts.has(String(req.headers.host ?? ''))) {
             reply(res, 403, { ok: false, error: 'недопустимый Host' });
             return;
@@ -231,6 +235,12 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                 reply(res, 200, { ok: true, reactions: await service.reactions(review, noteIds) });
                 return;
             }
+            if (req.method === 'GET' && url.pathname === '/api/review-reactions') {
+                const review = url.searchParams.get('review') ?? '';
+                const view = service.getReview(review);
+                reply(res, 200, { ok: true, reactions: view.reactions });
+                return;
+            }
             if (req.method === 'POST') {
                 const body = await readBody(req);
                 const review = String(body.review ?? '');
@@ -253,6 +263,13 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                         reply(res, 200, { ok: true, review: service.getView(updated.id), reviews: service.listReviews() });
                         return;
                     }
+                    case '/api/comments': {
+                        const noteId = String(body.noteId ?? '');
+                        if (String(body.action ?? '') === 'delete') await service.deleteComment(review, noteId);
+                        else await service.updateComment(review, noteId, String(body.body ?? ''));
+                        reply(res, 200, { ok: true });
+                        return;
+                    }
                     case '/api/attachments': {
                         const attachment = await service.uploadAttachment(review, {
                             name: String(body.name ?? ''),
@@ -264,6 +281,11 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                     }
                     case '/api/reactions': {
                         const result = await service.react(review, String(body.noteId ?? ''), String(body.emoji ?? ''));
+                        reply(res, 200, { ok: true, ...result });
+                        return;
+                    }
+                    case '/api/review-reactions': {
+                        const result = await service.reactToReview(review, String(body.emoji ?? ''));
                         reply(res, 200, { ok: true, ...result });
                         return;
                     }

@@ -287,6 +287,7 @@ server.registerTool(
                         title: z.string().min(1),
                         body: z.string(),
                         comment: z.string().optional().describe('Ready-to-post comment text; defaults to body'),
+                        agentNote: z.string().optional().describe('Private note for the agent; never published'),
                     }),
                 )
                 .describe('The complete findings list, not only new ones'),

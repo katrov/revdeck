@@ -93,6 +93,7 @@ export function renderContext(review: ReviewView, rules: RulesPayload, options: 
     for (const finding of review.findings) {
         push(`- \`${finding.id}\` · ${finding.level} · ${finding.file}:${finding.line ?? '-'} · ${finding.status} · ${truncate(finding.title, 300)}`);
         if (finding.body) push(`  ${truncate(finding.body, 500)}`);
+        if (finding.agentNote) push(`  → ${t('агенту', 'to agent')}: ${truncate(finding.agentNote, 500)}`);
     }
     push('');
     if (review.notes.length) {

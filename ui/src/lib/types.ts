@@ -75,6 +75,7 @@ export interface Finding {
     publishedAt: string | null;
     decision: Decision | null;
     note: string;
+    agentNote?: string;
     publishError: string;
     snippet: SnippetLine[] | null;
 }
@@ -130,6 +131,7 @@ export interface ReviewView {
     id: string;
     info: ReviewInfo;
     threads: Thread[];
+    reactions: Reaction[];
     summary: ReviewSummary | null;
     findings: Finding[];
     drafts: ReplyDraft[];

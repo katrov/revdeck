@@ -1,6 +1,6 @@
 <script lang="ts">
     import { app, copyFocusLink, errorText, focusNote, notify } from '../lib/state.svelte';
-    import { addNote, getDiff } from '../lib/api';
+    import { addNote, deleteNote, getDiff, updateNote } from '../lib/api';
     import type { DiffPayload } from '../lib/types';
     import { truncate } from '../lib/format';
     import { t } from '../lib/i18n.svelte';
@@ -17,6 +17,9 @@
     let fileQuery = $state('');
     let hideViewed = $state(false);
     let viewed = $state<Record<string, boolean>>({});
+    let editingNote = $state<string | null>(null);
+    let editNoteText = $state('');
+    let noteBusy = $state<string | null>(null);
 
     const file = $derived(app.diffFile);
     const fileInfo = $derived(app.review?.files.find((item) => item.path === file) ?? null);
@@ -54,6 +57,43 @@
             } catch {
                 // localStorage может быть недоступен.
             }
+        }
+    }
+
+    function startNoteEdit(note: { id: string; text: string }): void {
+        editingNote = note.id;
+        editNoteText = note.text;
+    }
+
+    async function saveNoteEdit(note: { id: string; text: string }): Promise<void> {
+        const review = app.review;
+        if (!review) return;
+        noteBusy = note.id;
+        try {
+            await updateNote(review.id, note.id, { text: editNoteText });
+            note.text = editNoteText;
+            editingNote = null;
+            notify(t('Комментарий обновлён', 'Comment updated'), 'ok');
+        } catch (error) {
+            notify(errorText(error), 'error');
+        } finally {
+            noteBusy = null;
+        }
+    }
+
+    async function removeNote(note: { id: string }): Promise<void> {
+        const review = app.review;
+        if (!review) return;
+        if (!confirm(t('Удалить комментарий?', 'Delete the comment?'))) return;
+        noteBusy = note.id;
+        try {
+            await deleteNote(review.id, note.id);
+            review.notes = review.notes.filter((item) => item.id !== note.id);
+            notify(t('Комментарий удалён', 'Comment deleted'), 'ok');
+        } catch (error) {
+            notify(errorText(error), 'error');
+        } finally {
+            noteBusy = null;
         }
     }
 
@@ -271,10 +311,22 @@
                             <div class="card-head">
                                 <button class="path-link" type="button" onclick={() => focusNote(note)}>{note.file}:{note.line}</button>
                                 <button class="btn icon" type="button" title={t('Скопировать ссылку на комментарий', 'Copy comment link')} onclick={() => copyFocusLink({ kind: 'note', id: note.id }, 'diff')}>🔗</button>
+                                {#if !note.posted && editingNote !== note.id}
+                                    <button class="btn icon" type="button" title={t('Редактировать', 'Edit')} disabled={noteBusy !== null} onclick={() => startNoteEdit(note)}>✎</button>
+                                    <button class="btn icon" type="button" title={t('Удалить', 'Delete')} disabled={noteBusy !== null} onclick={() => void removeNote(note)}>🗑</button>
+                                {/if}
                                 {#if note.posted}<span class="badge ok">{t('опубликовано', 'published')}</span>{/if}
                                 {#if note.agentReply}<span class="badge">{t('ответ агента', 'agent reply')}</span>{/if}
                             </div>
-                            <div class="md"><Markdown source={note.text} /></div>
+                            {#if editingNote === note.id}
+                                <MarkdownEditor bind:value={editNoteText} rows={2} />
+                                <div class="row end" style="margin-top: 4px">
+                                    <button class="btn" type="button" onclick={() => (editingNote = null)}>{t('Отмена', 'Cancel')}</button>
+                                    <button class="btn primary" type="button" disabled={noteBusy !== null} onclick={() => void saveNoteEdit(note)}>{noteBusy ? t('Сохранение…', 'Saving…') : t('Сохранить', 'Save')}</button>
+                                </div>
+                            {:else}
+                                <div class="md"><Markdown source={note.text} /></div>
+                            {/if}
                             {#if note.agentReply}<div class="muted small">→ {note.agentReply}</div>{/if}
                             {#if note.error}<div class="alert error">{note.error}</div>{/if}
                         </section>

@@ -72,7 +72,13 @@ export interface Provider {
     resolve(threadId: string, resolved: boolean): Promise<void>;
     /** Текущие реакции комментария, сгруппированные по имени. */
     reactions(noteId: string): Promise<Reaction[]>;
+    /** Реакции на сам MR/PR. */
+    reviewReactions(): Promise<Reaction[]>;
+    reactToReview(emoji: string): Promise<{ active: boolean }>;
     react(noteId: string, emoji: string): Promise<{ active: boolean }>;
+    /** Редактировать свой комментарий платформы. */
+    updateNote(noteId: string, body: string): Promise<void>;
+    deleteNote(noteId: string): Promise<void>;
     /** Загружает вложение в платформу и возвращает абсолютную ссылку. */
     upload(input: UploadInput): Promise<UploadedAttachment>;
     createThread(input: CreateThreadInput): Promise<CreatedThread>;

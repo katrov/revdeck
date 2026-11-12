@@ -3,6 +3,7 @@
     import { plainText, truncate } from '../lib/format';
     import { plural, t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
+    import Reactions from './Reactions.svelte';
 
     const review = $derived(app.review!);
     const openThreads = $derived(review.threads.filter((thread) => !thread.resolved));
@@ -35,6 +36,7 @@
     {:else}
         <p class="muted" style="margin: 6px 0 0">{t('Описание пустое.', 'The description is empty.')}</p>
     {/if}
+    <Reactions reviewId={review.id} mode="review" />
 </section>
 
 <div class="stats">

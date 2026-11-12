@@ -6,11 +6,13 @@ import type {
     Decision,
     DiffFile,
     Finding,
+    Reaction,
     LineNote,
     ReplyDraft,
     ReviewInfo,
     ReviewSummary,
     Thread,
+    User,
 } from '../core/types.js';
 import { reviewId as makeReviewId } from '../core/refs.js';
 
@@ -32,6 +34,8 @@ export interface ReviewRow {
 export interface ReviewSnapshot {
     diff: DiffFile[];
     threads: Thread[];
+    reactions: Reaction[];
+    user: User | null;
     config: ReviewConfig;
     configPath: string | null;
     errors: string[];
@@ -118,6 +122,8 @@ export class Store {
                 review_id TEXT PRIMARY KEY REFERENCES reviews(id) ON DELETE CASCADE,
                 diff_json TEXT NOT NULL,
                 threads_json TEXT NOT NULL,
+                reactions_json TEXT NOT NULL DEFAULT '[]',
+                user_json TEXT NOT NULL DEFAULT 'null',
                 config_json TEXT NOT NULL,
                 config_path TEXT,
                 errors_json TEXT NOT NULL,
@@ -148,6 +154,7 @@ export class Store {
                 published_at TEXT,
                 decision TEXT,
                 note TEXT NOT NULL,
+                agent_note TEXT NOT NULL DEFAULT '',
                 publish_error TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (review_id, id)
@@ -211,6 +218,18 @@ export class Store {
             );
             CREATE INDEX IF NOT EXISTS audit_review ON audit(review_id, at);
         `);
+        // Мягкая миграция старых баз: CREATE TABLE IF NOT EXISTS не добавляет новые колонки.
+        const findingColumns = this.db.prepare('PRAGMA table_info(findings)').all() as Row[];
+        if (!findingColumns.some((column) => text(column, 'name') === 'agent_note')) {
+            this.db.exec("ALTER TABLE findings ADD COLUMN agent_note TEXT NOT NULL DEFAULT ''");
+        }
+        const dataColumns = this.db.prepare('PRAGMA table_info(review_data)').all() as Row[];
+        if (!dataColumns.some((column) => text(column, 'name') === 'reactions_json')) {
+            this.db.exec("ALTER TABLE review_data ADD COLUMN reactions_json TEXT NOT NULL DEFAULT '[]'");
+        }
+        if (!dataColumns.some((column) => text(column, 'name') === 'user_json')) {
+            this.db.exec("ALTER TABLE review_data ADD COLUMN user_json TEXT NOT NULL DEFAULT 'null'");
+        }
     }
 
     saveReview(info: ReviewInfo, root: string, syncedAt = new Date().toISOString()): string {
@@ -245,17 +264,19 @@ export class Store {
     saveSnapshot(id: string, snapshot: ReviewSnapshot): void {
         this.db
             .prepare(
-                `INSERT INTO review_data (review_id, diff_json, threads_json, config_json, config_path, errors_json, synced_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                `INSERT INTO review_data (review_id, diff_json, threads_json, reactions_json, user_json, config_json, config_path, errors_json, synced_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(review_id) DO UPDATE SET
                    diff_json = excluded.diff_json, threads_json = excluded.threads_json,
-                   config_json = excluded.config_json, config_path = excluded.config_path,
+                   reactions_json = excluded.reactions_json, user_json = excluded.user_json, config_json = excluded.config_json, config_path = excluded.config_path,
                    errors_json = excluded.errors_json, synced_at = excluded.synced_at`,
             )
             .run(
                 id,
                 JSON.stringify(snapshot.diff),
                 JSON.stringify(snapshot.threads),
+                JSON.stringify(snapshot.reactions ?? []),
+                JSON.stringify(snapshot.user ?? null),
                 JSON.stringify(snapshot.config),
                 snapshot.configPath,
                 JSON.stringify(snapshot.errors),
@@ -265,7 +286,7 @@ export class Store {
     }
 
     listReviews(): ReviewListItem[] {
-        const rows = this.db.prepare('SELECT * FROM reviews ORDER BY synced_at DESC').all() as Row[];
+        const rows = this.db.prepare('SELECT * FROM reviews ORDER BY updated_at DESC, number DESC').all() as Row[];
         return rows.map((row) => ({
             id: text(row, 'id'),
             platform: text(row, 'platform'),
@@ -305,6 +326,8 @@ export class Store {
             snapshot: {
                 diff: json<DiffFile[]>(data, 'diff_json', []),
                 threads: json<Thread[]>(data, 'threads_json', []),
+                reactions: json<Reaction[]>(data, 'reactions_json', []),
+                user: json<User | null>(data, 'user_json', null),
                 config: json<ReviewConfig>(data, 'config_json', {} as ReviewConfig),
                 configPath: data.config_path ? String(data.config_path) : null,
                 errors: json<string[]>(data, 'errors_json', []),
@@ -368,6 +391,7 @@ export class Store {
             publishedAt: row.published_at ? String(row.published_at) : null,
             decision: row.decision ? (String(row.decision) as Decision) : null,
             note: text(row, 'note'),
+            agentNote: text(row, 'agent_note'),
             publishError: text(row, 'publish_error'),
         }));
     }
@@ -376,8 +400,8 @@ export class Store {
         this.transaction(() => {
             this.db.prepare('DELETE FROM findings WHERE review_id = ?').run(id);
             const insert = this.db.prepare(
-                `INSERT INTO findings (review_id, id, fingerprint, level, file, line, end_line, title, body, comment, status, discussion_id, published_at, decision, note, publish_error, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO findings (review_id, id, fingerprint, level, file, line, end_line, title, body, comment, status, discussion_id, published_at, decision, note, agent_note, publish_error, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             );
             const now = new Date().toISOString();
             for (const finding of findings) {
@@ -397,6 +421,7 @@ export class Store {
                     finding.publishedAt,
                     finding.decision,
                     finding.note,
+                    finding.agentNote ?? '',
                     finding.publishError,
                     now,
                 );
@@ -408,7 +433,7 @@ export class Store {
         this.db
             .prepare(
                 `UPDATE findings SET level = ?, file = ?, line = ?, end_line = ?, title = ?, body = ?, comment = ?,
-                   status = ?, discussion_id = ?, published_at = ?, decision = ?, note = ?, publish_error = ?, updated_at = ?
+                   status = ?, discussion_id = ?, published_at = ?, decision = ?, note = ?, agent_note = ?, publish_error = ?, updated_at = ?
                  WHERE review_id = ? AND id = ?`,
             )
             .run(
@@ -424,6 +449,7 @@ export class Store {
                 finding.publishedAt,
                 finding.decision,
                 finding.note,
+                finding.agentNote ?? '',
                 finding.publishError,
                 new Date().toISOString(),
                 id,

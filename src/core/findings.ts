@@ -12,6 +12,7 @@ export interface FindingDraft {
     title: string;
     body: string;
     comment: string;
+    agentNote?: string;
 }
 
 export interface FindingValidation {
@@ -29,6 +30,7 @@ export function validateFinding(raw: unknown): FindingValidation {
     const title = typeof item.title === 'string' ? item.title.trim() : '';
     const body = typeof item.body === 'string' ? item.body.trim() : '';
     const comment = typeof item.comment === 'string' ? item.comment.trim() : body;
+    const agentNote = typeof item.agentNote === 'string' ? item.agentNote.trim().slice(0, 8000) : '';
     if (!file) return { value: null, error: tr('не указан file', 'file is required') };
     if (!title) return { value: null, error: tr('не указан title', 'title is required') };
     if (!comment) return { value: null, error: tr('пустой comment', 'comment is empty') };
@@ -52,6 +54,7 @@ export function validateFinding(raw: unknown): FindingValidation {
             title,
             body,
             comment,
+            agentNote,
         },
         error: '',
     };
@@ -103,6 +106,7 @@ export function mergeFindings(previous: Finding[], incoming: FindingDraft[], opt
                 body: draft.body,
                 // Опубликованный текст не переписываем: он уже виден автору MR.
                 comment: match.status === 'published' ? match.comment : draft.comment,
+                agentNote: draft.agentNote ?? match.agentNote ?? '',
                 status: match.status === 'stale' ? 'draft' : match.status,
                 fingerprint,
             });
@@ -126,6 +130,7 @@ export function mergeFindings(previous: Finding[], incoming: FindingDraft[], opt
             publishedAt: null,
             decision: null,
             note: '',
+            agentNote: draft.agentNote ?? '',
             publishError: '',
         });
     }

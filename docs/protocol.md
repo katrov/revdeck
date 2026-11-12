@@ -56,6 +56,9 @@ authorization is enforced by the socket file's permissions.
 | `notes.update` | `review`, `noteId`, `patch` | updated comment |
 | `reactions.list` | `review`, `noteIds[]` | reactions grouped by comment id |
 | `reactions.toggle` | `review`, `noteId`, `emoji` | `active`, fresh reactions |
+| `reactions.reviewToggle` | `review`, `emoji` | reactions on the MR/PR itself |
+| `comments.update` | `review`, `noteId`, `body` | edit an own platform comment |
+| `comments.delete` | `review`, `noteId` | delete an own platform comment |
 | `attachments.upload` | `review`, `name`, `contentType`, `data` (base64) | `name`, absolute `url`, `markdown` |
 | `notes.delete` | `review`, `noteId` | `{ok}` |
 | `publish.preview` | `review`, `kind`, `ids[]` | plan + warnings |
@@ -94,6 +97,9 @@ in the CLI with `--yes`.
 | POST | `/api/notes` | `action: add/update/delete` |
 | GET | `/api/reactions?review=&notes=` | reactions for comment ids |
 | POST | `/api/reactions` | toggle a reaction |
+| GET | `/api/review-reactions?review=` | reactions on the MR/PR |
+| POST | `/api/review-reactions` | toggle a reaction on the MR/PR |
+| POST | `/api/comments` | `action: update/delete` for own platform comments |
 | POST | `/api/attachments` | upload an image/video and return an absolute link |
 | POST | `/api/publish/preview`, `/approve`, `/commit` | publishing |
 | POST | `/api/checks` | checks |

@@ -1,10 +1,16 @@
 <script lang="ts">
-    import { toggleReaction } from '../lib/api';
-    import { errorText, notify } from '../lib/state.svelte';
+    import { toggleReaction, toggleReviewReaction } from '../lib/api';
+    import { app, errorText, notify } from '../lib/state.svelte';
     import type { Note } from '../lib/types';
     import { t } from '../lib/i18n.svelte';
 
-    let { reviewId, note }: { reviewId: string; note: Note } = $props();
+    let {
+        reviewId,
+        note = null,
+        mode = 'note',
+    }: { reviewId: string; note?: Note | null; mode?: 'note' | 'review' } = $props();
+
+    const reactions = $derived(mode === 'review' ? (app.review?.reactions ?? []) : (note?.reactions ?? []));
 
     const EMOJI: Record<string, string> = {
         thumbsup: '👍',
@@ -35,8 +41,13 @@
         if (busy) return;
         busy = name;
         try {
-            const result = await toggleReaction(reviewId, note.id, name);
-            note.reactions = result.reactions;
+            if (mode === 'review') {
+                const result = await toggleReviewReaction(reviewId, name);
+                if (app.review) app.review.reactions = result.reactions;
+            } else if (note) {
+                const result = await toggleReaction(reviewId, note.id, name);
+                note.reactions = result.reactions;
+            }
             picker = false;
         } catch (error) {
             notify(errorText(error), 'error');
@@ -47,7 +58,7 @@
 </script>
 
 <div class="reactions">
-    {#each note.reactions ?? [] as reaction (reaction.name)}
+    {#each reactions as reaction (reaction.name)}
         <button
             type="button"
             class="reaction"
@@ -76,7 +87,7 @@
                 <button
                     type="button"
                     class="reaction"
-                    class:mine={note.reactions?.some((reaction) => reaction.name === name && reaction.mine)}
+                    class:mine={reactions.some((reaction) => reaction.name === name && reaction.mine)}
                     title={t(LABELS[name]![0], LABELS[name]![1])}
                     aria-label={t(LABELS[name]![0], LABELS[name]![1])}
                     disabled={busy !== null}

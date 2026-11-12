@@ -54,7 +54,7 @@
 
     function openReview(id: string): void {
         if (app.review?.id === id) return;
-        app.tab = 'overview';
+        // Не сбрасываем вкладку: переключение ревью не должно выглядеть как перезагрузка UI.
         app.focus = null;
         app.diffFocus = null;
         void loadReview(id);

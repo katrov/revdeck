@@ -7,7 +7,7 @@ import { ReviewService } from '../src/daemon/service.js';
 import { Store } from '../src/daemon/store.js';
 import { parseUnifiedDiff } from '../src/core/diff.js';
 import type { CreateThreadInput, Provider, ReviewListItem, UploadInput } from '../src/providers/provider.js';
-import type { DiffFile, Note, ReviewInfo, ReviewRef, Thread } from '../src/core/types.js';
+import type { DiffFile, Note, Reaction, ReviewInfo, ReviewRef, Thread } from '../src/core/types.js';
 
 const PATCH = `diff --git a/src/app.ts b/src/app.ts
 --- a/src/app.ts
@@ -104,6 +104,21 @@ class FakeProvider implements Provider {
     }
 
     readonly reactionsValue: { noteId: string; name: string; mine: boolean }[] = [];
+    readonly reviewReactionsValue: Reaction[] = [];
+
+    async reviewReactions() {
+        return this.reviewReactionsValue;
+    }
+
+    async reactToReview(emoji: string) {
+        const index = this.reviewReactionsValue.findIndex((item) => item.name === emoji);
+        if (index >= 0) {
+            this.reviewReactionsValue.splice(index, 1);
+            return { active: false };
+        }
+        this.reviewReactionsValue.push({ name: emoji, count: 1, users: ['me'], mine: true });
+        return { active: true };
+    }
 
     async reactions(noteId: string) {
         return this.reactionsValue
@@ -122,6 +137,20 @@ class FakeProvider implements Provider {
     }
 
     readonly uploads: UploadInput[] = [];
+
+    async updateNote(noteId: string, body: string) {
+        for (const thread of this.threadsValue) {
+            const note = thread.notes.find((item) => item.id === noteId);
+            if (note) note.body = body;
+        }
+    }
+
+    async deleteNote(noteId: string) {
+        for (const thread of this.threadsValue) {
+            const index = thread.notes.findIndex((item) => item.id === noteId);
+            if (index >= 0) thread.notes.splice(index, 1);
+        }
+    }
 
     async upload(input: UploadInput) {
         this.uploads.push(input);
@@ -197,10 +226,19 @@ describe('ReviewService', () => {
 
         expect(() => service.setFindings(review.id, [{ file: 'src/app.ts', line: 99, title: 'x', body: 'y' }])).toThrow(/не входит в diff/);
         const saved = service.setFindings(review.id, [
-            { level: 'major', file: 'src/app.ts', line: 2, title: 'b не используется', body: 'b нигде не читается', comment: 'b не используется' },
+            {
+                level: 'major',
+                file: 'src/app.ts',
+                line: 2,
+                title: 'b не используется',
+                body: 'b нигде не читается',
+                comment: 'b не используется',
+                agentNote: 'проверь вызовы',
+            },
         ]);
         expect(saved).toHaveLength(1);
         expect(saved[0]!.status).toBe('draft');
+        expect(saved[0]!.agentNote).toBe('проверь вызовы');
         expect(saved[0]!.id).toMatch(/^f-/);
     });
 
@@ -265,6 +303,37 @@ describe('ReviewService', () => {
         const approval = service.approve(review.id, 'reply', ['d1'], preview.plan.hash);
         await service.publish(review.id, approval.id);
         expect(provider.resolutions).toEqual([{ threadId: 'd1', resolved: true }]);
+    });
+
+    it('edits and deletes only the current user comments', async () => {
+        const review = await open();
+        provider.threadsValue[0]!.notes.push({
+            id: 'mine',
+            author: 'me',
+            authorName: 'Me',
+            createdAt: '2026-01-01T00:00:00Z',
+            body: 'old',
+            system: false,
+        });
+        await service.refreshReview(review.id);
+        await expect(service.updateComment(review.id, 'n1', 'hacked')).rejects.toThrow(/свой/);
+        await service.updateComment(review.id, 'mine', 'new text');
+        expect(service.getReview(review.id).threads[0]!.notes.find((note) => note.id === 'mine')!.body).toBe('new text');
+        await service.deleteComment(review.id, 'mine');
+        expect(service.getReview(review.id).threads[0]!.notes.some((note) => note.id === 'mine')).toBe(false);
+    });
+
+    it('loads and toggles reactions on the MR/PR itself', async () => {
+        const review = await open();
+        provider.reviewReactionsValue.push({ name: 'heart', count: 1, users: ['reviewer'], mine: false });
+        await service.refreshReview(review.id);
+        expect(service.getReview(review.id).reactions).toEqual([{ name: 'heart', count: 1, users: ['reviewer'], mine: false }]);
+        const toggled = await service.reactToReview(review.id, 'rocket');
+        expect(toggled.active).toBe(true);
+        expect(toggled.reactions).toEqual([
+            { name: 'heart', count: 1, users: ['reviewer'], mine: false },
+            { name: 'rocket', count: 1, users: ['me'], mine: true },
+        ]);
     });
 
     it('toggles reactions on a platform note and returns the fresh list', async () => {

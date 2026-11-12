@@ -72,6 +72,14 @@ export async function dispatch(service: ReviewService, method: string, params: R
             };
         case 'reactions.toggle':
             return service.react(String(params.review ?? ''), String(params.noteId ?? ''), String(params.emoji ?? ''));
+        case 'reactions.reviewToggle':
+            return service.reactToReview(String(params.review ?? ''), String(params.emoji ?? ''));
+        case 'comments.update':
+            await service.updateComment(String(params.review ?? ''), String(params.noteId ?? ''), String(params.body ?? ''));
+            return { ok: true };
+        case 'comments.delete':
+            await service.deleteComment(String(params.review ?? ''), String(params.noteId ?? ''));
+            return { ok: true };
         case 'attachments.upload':
             return {
                 attachment: await service.uploadAttachment(String(params.review ?? ''), {

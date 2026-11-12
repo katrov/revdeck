@@ -175,6 +175,17 @@
             disabled={finding.status === 'published'}
         />
 
+        <div class="section-title">{t('Заметка агенту', 'Note for the agent')}</div>
+        <MarkdownEditor
+            value={finding.agentNote ?? ''}
+            onchange={(value) => {
+                finding.agentNote = value;
+                scheduleSave();
+            }}
+            rows={2}
+            placeholder={t('Что сделать с этим замечанием: исправить, объяснить, перепроверить…', 'What to do with this finding: fix, explain, re-check…')}
+        />
+
         <div class="row" style="margin-top: 8px">
             <button class="btn" class:primary={decision === 'accept'} onclick={() => void decide(finding, 'accept')}>{t('Принять', 'Accept')}</button>
             <button class="btn" onclick={() => void decide(finding, 'discuss')}>{t('Обсудить', 'Discuss')}</button>

@@ -108,6 +108,10 @@ describe('devcontainer', () => {
     it('writes a devcontainer.json and removes only its own parts on eject', async () => {
         await mkdir(path.join(root, '.devcontainer'), { recursive: true });
         await writeFile(
+            path.join(root, '.mcp.json'),
+            JSON.stringify({ mcpServers: { revdeck: { command: 'npx', args: ['-y', 'revdeck', 'mcp'], env: { REVDECK_LANG: 'en' } }, other: { command: 'x' } } }),
+        );
+        await writeFile(
             path.join(root, '.devcontainer', 'devcontainer.json'),
             `{
   // user setting
@@ -128,6 +132,16 @@ describe('devcontainer', () => {
         expect(data.image).toBe('custom');
         expect(data.containerEnv).toMatchObject({ KEEP: '1', REVDECK_DEV_CONTAINER: '1' });
         expect(data.mounts).toHaveLength(2);
+        const mcp = JSON.parse(await readFile(path.join(root, '.mcp.json'), 'utf8')) as {
+            mcpServers: { revdeck: { env: Record<string, string> }; other: unknown };
+        };
+        expect(mcp.mcpServers.revdeck.env).toMatchObject({
+            REVDECK_LANG: 'en',
+            REVDECK_RUNTIME_DIR: CONTAINER_RUNTIME_DIR,
+            REVDECK_STATE_DIR: CONTAINER_STATE_DIR,
+            REVDECK_DEV_CONTAINER: '1',
+        });
+        expect(mcp.mcpServers.other).toEqual({ command: 'x' });
 
         await runEject(root, { yes: true });
         const after = await readFile(file, 'utf8');

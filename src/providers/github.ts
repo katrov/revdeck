@@ -339,8 +339,7 @@ export class GitHubProvider implements Provider {
         await this.graphql<unknown>(mutation, { id: threadId });
     }
 
-    async reactions(noteId: string): Promise<Reaction[]> {
-        const base = `repos/${this.repo}/pulls/comments/${encodeURIComponent(noteId)}/reactions`;
+    private async fetchReactions(base: string): Promise<Reaction[]> {
         const items = await this.paged<{ id: number; content: string; user: GhUser | null }>(base);
         const me = await this.currentUser();
         const grouped = new Map<string, Reaction>();
@@ -359,10 +358,9 @@ export class GitHubProvider implements Provider {
         return [...grouped.values()].sort((left, right) => left.name.localeCompare(right.name));
     }
 
-    async react(noteId: string, emoji: string): Promise<{ active: boolean }> {
+    private async toggleReaction(base: string, emoji: string): Promise<{ active: boolean }> {
         const content = REACTIONS[emoji];
         if (!content) throw new ProviderError(tr(`GitHub не поддерживает реакцию ${emoji}`, `GitHub does not support reaction ${emoji}`));
-        const base = `repos/${this.repo}/pulls/comments/${noteId}/reactions`;
         const existing = await this.json<{ id: number; content: string; user: GhUser | null }[]>([query(base, { per_page: 100 })]);
         const me = await this.currentUser();
         const mine = existing.find((item) => item.content === content && item.user?.login === me.username);
@@ -374,6 +372,32 @@ export class GitHubProvider implements Provider {
             await this.call(['--method', 'POST', base, '--input', file]);
         });
         return { active: true };
+    }
+
+    async reactions(noteId: string): Promise<Reaction[]> {
+        return this.fetchReactions(`repos/${this.repo}/pulls/comments/${encodeURIComponent(noteId)}/reactions`);
+    }
+
+    async react(noteId: string, emoji: string): Promise<{ active: boolean }> {
+        return this.toggleReaction(`repos/${this.repo}/pulls/comments/${encodeURIComponent(noteId)}/reactions`, emoji);
+    }
+
+    async reviewReactions(): Promise<Reaction[]> {
+        return this.fetchReactions(`repos/${this.repo}/issues/${this.ref.number}/reactions`);
+    }
+
+    async reactToReview(emoji: string): Promise<{ active: boolean }> {
+        return this.toggleReaction(`repos/${this.repo}/issues/${this.ref.number}/reactions`, emoji);
+    }
+
+    async updateNote(noteId: string, body: string): Promise<void> {
+        await withTempJson({ body }, async (file) => {
+            await this.call(['--method', 'PATCH', `repos/${this.repo}/pulls/comments/${encodeURIComponent(noteId)}`, '--input', file]);
+        });
+    }
+
+    async deleteNote(noteId: string): Promise<void> {
+        await this.call(['--method', 'DELETE', `repos/${this.repo}/pulls/comments/${encodeURIComponent(noteId)}`]);
     }
 
     async upload(_input: UploadInput): Promise<UploadedAttachment> {

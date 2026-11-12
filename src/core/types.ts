@@ -146,6 +146,8 @@ export interface Finding {
     publishedAt: string | null;
     decision: Decision | null;
     note: string;
+    /** Инструкция агенту; не публикуется в платформу. */
+    agentNote?: string;
     publishError: string;
 }
 
@@ -195,6 +197,8 @@ export interface Review {
     info: ReviewInfo;
     diff: DiffFile[];
     threads: Thread[];
+    /** Реакции на сам MR/PR (описание), не на комментарий. */
+    reactions: Reaction[];
     summary: ReviewSummary | null;
     findings: Finding[];
     drafts: ReplyDraft[];

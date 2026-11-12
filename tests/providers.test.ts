@@ -142,6 +142,21 @@ describe('GitLabProvider', () => {
         ]);
     });
 
+    it('reads MR reactions and edits or deletes a note', async () => {
+        const { runner: impl, calls } = runner((call) => {
+            const endpoint = call.args.find((arg) => arg === 'user' || arg.startsWith('projects/')) ?? '';
+            if (endpoint === 'user') return { id: 1, username: 'me', name: 'Me' };
+            if (endpoint.includes('/award_emoji')) return [{ id: 1, name: 'heart', user: { username: 'me' } }];
+            return {};
+        });
+        const provider = new GitLabProvider(gitlabRef, { root: '/tmp', runImpl: impl });
+        expect(await provider.reviewReactions()).toEqual([{ name: 'heart', count: 1, users: ['me'], mine: true }]);
+        await provider.updateNote('11', 'new body');
+        await provider.deleteNote('11');
+        const methods = calls.filter((call) => call.args.includes('--method')).map((call) => call.args[call.args.indexOf('--method') + 1]);
+        expect(methods).toEqual(expect.arrayContaining(['PUT', 'DELETE']));
+    });
+
     it('uploads a file as multipart and returns an absolute URL', async () => {
         const { runner: impl, calls } = runner((call) => {
             if (call.args.includes('--form')) return { alt: 'shot', url: '/uploads/abc/shot.png', full_path: '/group/sub/proj/uploads/abc/shot.png' };
@@ -300,6 +315,21 @@ describe('GitHubProvider', () => {
             { name: 'heart', count: 1, users: ['reviewer'], mine: false },
             { name: 'thumbsup', count: 1, users: ['me'], mine: true },
         ]);
+    });
+
+    it('reads PR reactions and edits or deletes a review comment', async () => {
+        const { runner: impl, calls } = runner((call) => {
+            const endpoint = call.args.find((arg) => arg === 'user' || arg.startsWith('repos/')) ?? '';
+            if (endpoint === 'user') return { login: 'me', name: 'Me' };
+            if (endpoint.includes('/reactions')) return [{ id: 1, content: 'heart', user: { login: 'me' } }];
+            return {};
+        });
+        const provider = new GitHubProvider(githubRef, { root: '/tmp', runImpl: impl });
+        expect(await provider.reviewReactions()).toEqual([{ name: 'heart', count: 1, users: ['me'], mine: true }]);
+        await provider.updateNote('501', 'new body');
+        await provider.deleteNote('501');
+        const methods = calls.filter((call) => call.args.includes('--method')).map((call) => call.args[call.args.indexOf('--method') + 1]);
+        expect(methods).toEqual(expect.arrayContaining(['PATCH', 'DELETE']));
     });
 
     it('creates a line comment with commit and side', async () => {
