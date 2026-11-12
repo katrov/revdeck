@@ -54,6 +54,51 @@ skill directories created by an earlier `init` are replaced when they still carr
 requires an `approval_id`: a human issues it in the UI or in the CLI with `--yes`, and the agent
 cannot obtain it.
 
+## MCP tool permissions
+
+By default the client asks before every MCP tool call. Revdeck tools are read-only except the draft and
+publish helpers; publishing still requires a human `approval_id`, so allowing the tools does not bypass
+the publish gate.
+
+For Claude Code, add the tools to `.claude/settings.local.json` (personal) or `.claude/settings.json`
+(shared):
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__revdeck__revdeck_list",
+      "mcp__revdeck__revdeck_status",
+      "mcp__revdeck__revdeck_open",
+      "mcp__revdeck__revdeck_context",
+      "mcp__revdeck__revdeck_threads",
+      "mcp__revdeck__revdeck_diff",
+      "mcp__revdeck__revdeck_rules",
+      "mcp__revdeck__revdeck_notes",
+      "mcp__revdeck__revdeck_set_summary",
+      "mcp__revdeck__revdeck_draft_findings",
+      "mcp__revdeck__revdeck_draft_reply",
+      "mcp__revdeck__revdeck_publish_preview",
+      "mcp__revdeck__revdeck_publish"
+    ]
+  }
+}
+```
+
+A recent Claude Code also accepts `mcp__revdeck__*` as a glob, but the explicit list works across
+versions. If you use the CLI instead of MCP, allow `Bash(revdeck:*)` as well.
+
+For Cursor, create `.cursor/permissions.json` (or `~/.cursor/permissions.json`):
+
+```json
+{
+  "mcpAllowlist": ["revdeck:*"]
+}
+```
+
+Use `revdeck:revdeck_context`-style entries if you want to allow only individual tools. Restart or
+reload the editor/agent after changing the file.
+
 ## DSH
 
 The DSH MCP client is configured in the Cordis profile:

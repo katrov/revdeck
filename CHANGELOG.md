@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Documentation
+
+- Document why the rule-discovery warnings appear and how to remove them, plus MCP tool allowlists for
+  Claude Code and Cursor.
+
 ### Fixed
 
 - Long paths, URLs and headers no longer overflow cards: thread and line-comment paths truncate with a

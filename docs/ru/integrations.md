@@ -54,6 +54,52 @@ skill: агент вызывает команды через shell.
 `init` пишет `npx -y revdeck mcp` в MCP-конфиг. Публикация через MCP
 требует `approval_id`: его выдаёт человек в UI или CLI с `--yes`, агент получить не может.
 
+## Разрешения на MCP-инструменты
+
+По умолчанию клиент спрашивает подтверждение перед каждым вызовом MCP-инструмента. Инструменты
+revdeck в основном только читают; черновики и публикация не обходят защиту: для `revdeck_publish`
+всё равно нужен `approval_id`, который выдаёт человек, поэтому разрешение инструментов не отменяет
+подтверждение публикации.
+
+Для Claude Code добавьте инструменты в `.claude/settings.local.json` (личные настройки) или
+`.claude/settings.json` (общие для репозитория):
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__revdeck__revdeck_list",
+      "mcp__revdeck__revdeck_status",
+      "mcp__revdeck__revdeck_open",
+      "mcp__revdeck__revdeck_context",
+      "mcp__revdeck__revdeck_threads",
+      "mcp__revdeck__revdeck_diff",
+      "mcp__revdeck__revdeck_rules",
+      "mcp__revdeck__revdeck_notes",
+      "mcp__revdeck__revdeck_set_summary",
+      "mcp__revdeck__revdeck_draft_findings",
+      "mcp__revdeck__revdeck_draft_reply",
+      "mcp__revdeck__revdeck_publish_preview",
+      "mcp__revdeck__revdeck_publish"
+    ]
+  }
+}
+```
+
+Свежий Claude Code понимает и glob `mcp__revdeck__*`, но явный список работает в большем числе
+версий. Если используете CLI вместо MCP, разрешите ещё `Bash(revdeck:*)`.
+
+Для Cursor создайте `.cursor/permissions.json` (или `~/.cursor/permissions.json`):
+
+```json
+{
+  "mcpAllowlist": ["revdeck:*"]
+}
+```
+
+Если нужно разрешить только отдельные инструменты, используйте записи вида
+`revdeck:revdeck_context`. После изменения файла перезапустите или перезагрузите редактор/агента.
+
 ## DSH
 
 MCP-клиент DSH подключается в профиле Cordis:

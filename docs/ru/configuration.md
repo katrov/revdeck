@@ -72,6 +72,32 @@ publish:
 гайды очень большие, задайте меньший `maxTotalBytes` (например, `327680`) или привяжите только нужные
 секции.
 
+### Откуда берутся предупреждения
+
+Блок **Предупреждения** в UI появляется, когда в `review.errors` попадают сообщения загрузки конфига:
+
+- `.revdeck.yml not found: rules come from auto-discovered documents` — в корне репозитория нет
+  `.revdeck.yml`/`.revdeck.yaml`. `revdeck init` создаёт его; без конфига берутся значения по умолчанию,
+  а документы правил ищутся автоматически.
+- `no rule documents found: the review will rely on the code only` — после загрузки конфига
+  `rules.sources` и `rules.map` пусты, и ни одного автообнаруженного файла нет. Список:
+  `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/Architecture.md`,
+  `docs/STYLEGUIDE.md`, `docs/Styleguide.md`, `docs/CONTRIBUTING.md`.
+
+Чтобы убрать оба предупреждения, добавьте `.revdeck.yml` и перечислите существующие документы либо
+создайте один из автообнаруживаемых файлов:
+
+```yaml
+version: 1
+rules:
+  sources:
+    - AGENTS.md
+    - docs/Architecture.md
+```
+
+Если заданы `rules.sources`/`rules.map`, автообнаружение отключается; отсутствующий явный документ
+даст отдельное предупреждение. Пустой `sources: []` оставляет автообнаружение включённым.
+
 ### Селекторы документов
 
 | Селектор | Что берётся |

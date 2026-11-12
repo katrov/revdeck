@@ -74,6 +74,32 @@ hitting the model context window. The CLI/MCP `max_bytes` option can still cap t
 If a project has very large guides, set a smaller `maxTotalBytes` (for example `327680`) or map only the
 needed sections.
 
+### Why warnings appear
+
+The UI shows a **Warnings** block when `review.errors` contains messages from config loading:
+
+- `.revdeck.yml not found: rules come from auto-discovered documents` — there is no
+  `.revdeck.yml`/`.revdeck.yaml` at the repository root. `revdeck init` creates one; without a config,
+  the defaults are used and the rule documents are auto-discovered.
+- `no rule documents found: the review will rely on the code only` — after loading the config, both
+  `rules.sources` and `rules.map` are empty, and none of the auto-discovered files exist. The list is
+  `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/Architecture.md`,
+  `docs/STYLEGUIDE.md`, `docs/Styleguide.md`, `docs/CONTRIBUTING.md`.
+
+To remove both warnings, add `.revdeck.yml` and either list existing documents or add one of the
+auto-discovered files:
+
+```yaml
+version: 1
+rules:
+  sources:
+    - AGENTS.md
+    - docs/Architecture.md
+```
+
+If `rules.sources`/`rules.map` are set, auto-discovery is disabled; a missing explicit document then
+produces its own warning instead. Empty `sources: []` keeps auto-discovery enabled.
+
 ### Document selectors
 
 | Selector | What is included |
