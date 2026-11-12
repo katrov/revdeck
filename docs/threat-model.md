@@ -46,6 +46,8 @@
 ## Model checks
 
 - Comments go through `sanitizeBody`: control and bidi characters, HTML, GitLab quick actions,
-  `@all`/`@here`/`@everyone`, external images.
+  `@all`/`@here`/`@everyone`, external images. Images are allowed only from the platform host
+  (or GitLab project `/uploads/`); attachments are restricted to raster images and videos and are
+  checked by extension, MIME and file signature.
 - Publishing is impossible without an `approval_id`; the MCP publish tool does not create one.
 - `revdeck doctor` shows which permissions and adapters are active.

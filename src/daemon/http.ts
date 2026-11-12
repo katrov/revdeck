@@ -24,7 +24,8 @@ export interface HttpHandle {
     close(): Promise<void>;
 }
 
-const MAX_BODY = 4 * 1024 * 1024;
+// Вложения передаются base64: 25 МБ файла — это ~34 МБ JSON.
+const MAX_BODY = 40 * 1024 * 1024;
 
 const MIME: Record<string, string> = {
     '.html': 'text/html; charset=utf-8',
@@ -250,6 +251,15 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                     case '/api/reviews/refresh': {
                         const updated = await service.refreshReview(review);
                         reply(res, 200, { ok: true, review: service.getView(updated.id), reviews: service.listReviews() });
+                        return;
+                    }
+                    case '/api/attachments': {
+                        const attachment = await service.uploadAttachment(review, {
+                            name: String(body.name ?? ''),
+                            contentType: String(body.type ?? ''),
+                            data: String(body.data ?? ''),
+                        });
+                        reply(res, 200, { ok: true, attachment });
                         return;
                     }
                     case '/api/reactions': {

@@ -1,12 +1,12 @@
 import { tmpdir } from 'node:os';
-import { REACTIONS, type DiffFile, type Note, type Platform, type Reaction, type ReviewInfo, type ReviewRef, type Thread, type User } from '../core/types.js';
+import { REACTIONS, type DiffFile, type Note, type Platform, type Reaction, type ReviewInfo, type ReviewRef, type Thread, type UploadedAttachment, type User } from '../core/types.js';
 import { parseUnifiedDiff } from '../core/diff.js';
 import { ProviderError } from '../core/errors.js';
 import { redact } from '../core/redact.js';
 import { run as realRun, type Runner } from '../core/exec.js';
 import { parseJson, cliError, query, withTempJson } from './util.js';
 import { tr } from '../core/locale.js';
-import type { CreateThreadInput, CreatedThread, ListOptions, Provider, ProviderOptions, ReviewListItem } from './provider.js';
+import type { CreateThreadInput, CreatedThread, ListOptions, Provider, ProviderOptions, ReviewListItem, UploadInput } from './provider.js';
 
 interface GlUser {
     id: number;
@@ -68,7 +68,7 @@ const EMPTY_SHA = '0000000000000000000000000000000000000000';
 
 export class GitLabProvider implements Provider {
     readonly platform: Platform = 'gitlab';
-    readonly capabilities = { reactions: true, resolve: true, nativeDrafts: true };
+    readonly capabilities = { reactions: true, resolve: true, nativeDrafts: true, attachments: true };
     private readonly run: Runner;
     private me: User | null = null;
     private infoCache: ReviewInfo | null = null;
@@ -287,6 +287,27 @@ export class GitLabProvider implements Provider {
             await this.call(['--method', 'POST', base, '--input', file]);
         });
         return { active: true };
+    }
+
+    async upload(input: UploadInput): Promise<UploadedAttachment> {
+        interface GlUpload {
+            alt?: string;
+            url?: string;
+            full_path?: string;
+        }
+        const endpoint = `projects/${this.projectRef}/uploads`;
+        // --form требует glab с поддержкой multipart (см. docs/integrations.md).
+        const uploaded = await this.json<GlUpload>(['--method', 'POST', endpoint, '--form', `file=@${input.path}`]);
+        const raw = uploaded.full_path || uploaded.url || '';
+        if (!raw) throw new ProviderError(tr('GitLab не вернул ссылку на загруженный файл', 'GitLab did not return a link to the uploaded file'));
+        const absolute = raw.startsWith('http://') || raw.startsWith('https://')
+            ? raw
+            : `https://${this.ref.host}${raw.startsWith('/') ? '' : '/'}${raw}`;
+        const label = input.name.replace(/[[\]\r\n]/g, ' ').trim() || 'attachment';
+        const markdown = input.contentType.startsWith('image/') || input.contentType.startsWith('video/')
+            ? `![${label}](${absolute})`
+            : `[${label}](${absolute})`;
+        return { name: input.name, url: absolute, markdown };
     }
 
     async createThread(input: CreateThreadInput): Promise<CreatedThread> {

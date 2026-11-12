@@ -1,11 +1,11 @@
 import { tmpdir } from 'node:os';
-import type { DiffFile, Note, Platform, Reaction, ReviewInfo, ReviewRef, Thread, User } from '../core/types.js';
+import type { DiffFile, Note, Platform, Reaction, ReviewInfo, ReviewRef, Thread, UploadedAttachment, User } from '../core/types.js';
 import { parseUnifiedDiff } from '../core/diff.js';
 import { ProviderError } from '../core/errors.js';
 import { run as realRun, type Runner } from '../core/exec.js';
 import { parseJson, cliError, query, withTempJson } from './util.js';
 import { tr } from '../core/locale.js';
-import type { CreateThreadInput, CreatedThread, ListOptions, Provider, ProviderOptions, ReviewListItem } from './provider.js';
+import type { CreateThreadInput, CreatedThread, ListOptions, Provider, ProviderOptions, ReviewListItem, UploadInput } from './provider.js';
 
 interface GhUser {
     login: string;
@@ -106,7 +106,7 @@ const CONTENT_TO_NAME: Record<string, string> = Object.fromEntries(Object.entrie
 
 export class GitHubProvider implements Provider {
     readonly platform: Platform = 'github';
-    readonly capabilities = { reactions: true, resolve: true, nativeDrafts: false };
+    readonly capabilities = { reactions: true, resolve: true, nativeDrafts: false, attachments: false };
     private readonly run: Runner;
     private readonly owner: string;
     private readonly name: string;
@@ -374,6 +374,13 @@ export class GitHubProvider implements Provider {
             await this.call(['--method', 'POST', base, '--input', file]);
         });
         return { active: true };
+    }
+
+    async upload(_input: UploadInput): Promise<UploadedAttachment> {
+        throw new ProviderError(
+            tr('GitHub не даёт публичного API для загрузки вложений', 'GitHub has no public API for uploading attachments'),
+            tr('вставьте абсолютную ссылку на файл вручную; загрузка поддерживается только для GitLab', 'paste an absolute file URL manually; uploads are supported for GitLab only'),
+        );
     }
 
     async createThread(input: CreateThreadInput): Promise<CreatedThread> {

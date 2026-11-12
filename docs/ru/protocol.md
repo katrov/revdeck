@@ -53,6 +53,7 @@
 | `notes.update` | `review`, `noteId`, `patch` | обновлённый комментарий |
 | `reactions.list` | `review`, `noteIds[]` | реакции, сгруппированные по id комментария |
 | `reactions.toggle` | `review`, `noteId`, `emoji` | `active` и актуальный список реакций |
+| `attachments.upload` | `review`, `name`, `contentType`, `data` (base64) | `name`, абсолютный `url`, `markdown` |
 | `notes.delete` | `review`, `noteId` | `{ok}` |
 | `publish.preview` | `review`, `kind`, `ids[]` | план + предупреждения |
 | `publish.approve` | `review`, `kind`, `ids[]`, `hash` | `approvalId`, `expiresAt` |
@@ -90,6 +91,7 @@
 | POST | `/api/notes` | `action: add/update/delete` |
 | GET | `/api/reactions?review=&notes=` | реакции для id комментариев |
 | POST | `/api/reactions` | переключить реакцию |
+| POST | `/api/attachments` | загрузить картинку/видео и вернуть абсолютную ссылку |
 | POST | `/api/publish/preview`, `/approve`, `/commit` | публикация |
 | POST | `/api/checks` | проверки |
 | POST | `/api/rpc` | RPC-прокси для HTTP-транспорта |

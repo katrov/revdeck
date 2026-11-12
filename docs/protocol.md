@@ -53,6 +53,7 @@ authorization is enforced by the socket file's permissions.
 | `notes.update` | `review`, `noteId`, `patch` | updated comment |
 | `reactions.list` | `review`, `noteIds[]` | reactions grouped by comment id |
 | `reactions.toggle` | `review`, `noteId`, `emoji` | `active`, fresh reactions |
+| `attachments.upload` | `review`, `name`, `contentType`, `data` (base64) | `name`, absolute `url`, `markdown` |
 | `notes.delete` | `review`, `noteId` | `{ok}` |
 | `publish.preview` | `review`, `kind`, `ids[]` | plan + warnings |
 | `publish.approve` | `review`, `kind`, `ids[]`, `hash` | `approvalId`, `expiresAt` |
@@ -90,6 +91,7 @@ in the CLI with `--yes`.
 | POST | `/api/notes` | `action: add/update/delete` |
 | GET | `/api/reactions?review=&notes=` | reactions for comment ids |
 | POST | `/api/reactions` | toggle a reaction |
+| POST | `/api/attachments` | upload an image/video and return an absolute link |
 | POST | `/api/publish/preview`, `/approve`, `/commit` | publishing |
 | POST | `/api/checks` | checks |
 | POST | `/api/rpc` | RPC proxy for the HTTP transport |

@@ -4,6 +4,7 @@
     import type { DiffPayload } from '../lib/types';
     import { truncate } from '../lib/format';
     import { t } from '../lib/i18n.svelte';
+    import AttachmentButton from './AttachmentButton.svelte';
 
     let diff = $state<DiffPayload | null>(null);
     let loading = $state(false);
@@ -173,6 +174,7 @@
                     <textarea value={noteText} oninput={(event) => (noteText = event.currentTarget.value)} rows="2" placeholder={t('Комментарий уйдёт агенту', 'The comment goes to the agent')}></textarea>
                     <div class="row end" style="margin-top: 6px">
                         <span class="muted small">{t('Агент увидит комментарий в контексте ревью.', 'The agent sees this comment in the review context.')}</span>
+                        <AttachmentButton oninsert={(markdown) => (noteText += markdown)} />
                         <button class="btn primary" onclick={() => void submitNote()} disabled={savingNote || !noteText.trim()}>{t('Сохранить', 'Save')}</button>
                     </div>
                 </div>

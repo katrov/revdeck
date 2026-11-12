@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseConfig, reviewConfigSchema } from '../src/core/config.js';
 import { fingerprintOf, mergeFindings, validateFinding } from '../src/core/findings.js';
-import { sanitizeBody } from '../src/core/sanitize.js';
+import { normalizeMediaLinks, sanitizeBody } from '../src/core/sanitize.js';
+import { attachmentSpec, matchesSignature } from '../src/core/attachments.js';
 import { canonicalJson } from '../src/core/canonical.js';
 import { globToRegExp, classifyFile } from '../src/core/glob.js';
 import { parseRemote } from '../src/core/git.js';
@@ -54,12 +55,30 @@ describe('sanitize', () => {
         expect(sanitizeBody('  /merge', 'gitlab').ok).toBe(false);
     });
 
-    it('blocks hidden content, mass mentions and images', () => {
+    it('blocks hidden content and mass mentions', () => {
         expect(sanitizeBody('hi\u202eтам', 'gitlab').ok).toBe(false);
         expect(sanitizeBody('<!-- hidden -->', 'gitlab').ok).toBe(false);
         expect(sanitizeBody('@all посмотрите', 'github').ok).toBe(false);
-        expect(sanitizeBody('![x](https://evil/x.png)', 'github').ok).toBe(false);
         expect(sanitizeBody('<img src=x>', 'github').ok).toBe(false);
+    });
+
+    it('allows images only from the platform host and GitLab uploads', () => {
+        expect(sanitizeBody('![x](https://evil/x.png)', 'github', { host: 'github.com' }).ok).toBe(false);
+        expect(sanitizeBody('![x](https://github.com/user-attachments/x.png)', 'github', { host: 'github.com' }).ok).toBe(true);
+        expect(sanitizeBody('![x](https://gitlab.example.com/uploads/abc/x.png)', 'gitlab', { host: 'gitlab.example.com' }).ok).toBe(true);
+        expect(sanitizeBody('![x](/uploads/abc/x.png)', 'gitlab', { host: 'gitlab.example.com' }).ok).toBe(true);
+        expect(sanitizeBody('![x](https://evil/x.png)', 'gitlab', { host: 'gitlab.example.com' }).ok).toBe(false);
+        expect(sanitizeBody('![x](https://gitlab.example.com/uploads/abc/x.png)', 'gitlab').ok).toBe(false);
+    });
+
+    it('adds the platform host to relative upload links', () => {
+        expect(normalizeMediaLinks('![x](/uploads/abc/x.png)', 'gitlab', 'gitlab.example.com')).toBe(
+            '![x](https://gitlab.example.com/uploads/abc/x.png)',
+        );
+        expect(normalizeMediaLinks('[x](uploads/abc/x.png)', 'gitlab', 'gitlab.example.com')).toBe(
+            '[x](https://gitlab.example.com/uploads/abc/x.png)',
+        );
+        expect(normalizeMediaLinks('![x](/uploads/abc/x.png)', 'github', 'github.com')).toBe('![x](/uploads/abc/x.png)');
     });
 });
 
@@ -153,5 +172,23 @@ describe('helpers', () => {
         expect(extractExcerpt(md, ['L1-L3'], 'd.md', warnings)).toBe('# Top\n\ntext');
         expect(extractExcerpt(md, ['nope'], 'd.md', warnings)).toBe('');
         expect(warnings[0]).toMatch(/не найдена/);
+    });
+});
+
+describe('attachments', () => {
+    it('accepts only known raster images and videos', () => {
+        expect(attachmentSpec('shot.png', 'image/png')).toMatchObject({ name: 'shot.png', kind: 'image' });
+        expect(attachmentSpec('clip.mp4', 'video/mp4')).toMatchObject({ name: 'clip.mp4', kind: 'video' });
+        expect(attachmentSpec('../../evil.png')).toBeNull();
+        expect(attachmentSpec('icon.svg', 'image/svg+xml')).toBeNull();
+        expect(attachmentSpec('shot.png', 'image/jpeg')).toBeNull();
+        expect(attachmentSpec('script.js', 'text/javascript')).toBeNull();
+    });
+
+    it('checks file signatures', () => {
+        const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        expect(matchesSignature(png, 'image/png')).toBe(true);
+        expect(matchesSignature(Buffer.from('not a png'), 'image/png')).toBe(false);
+        expect(matchesSignature(Buffer.from('OggS'), 'video/ogg')).toBe(true);
     });
 });

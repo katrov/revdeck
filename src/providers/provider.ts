@@ -1,5 +1,5 @@
 import type { ReviewConfig } from '../core/config.js';
-import type { DiffFile, Platform, Reaction, ReviewInfo, ReviewRef, Thread, User, Note } from '../core/types.js';
+import type { DiffFile, Platform, Reaction, ReviewInfo, ReviewRef, Thread, UploadedAttachment, User, Note } from '../core/types.js';
 import type { Runner } from '../core/exec.js';
 import { currentBranch, gitRemote } from '../core/git.js';
 import { ProviderError } from '../core/errors.js';
@@ -44,6 +44,14 @@ export interface ProviderCapabilities {
     reactions: boolean;
     resolve: boolean;
     nativeDrafts: boolean;
+    attachments: boolean;
+}
+
+export interface UploadInput {
+    /** Локальный временный файл; удаляется вызывающим. */
+    path: string;
+    name: string;
+    contentType: string;
 }
 
 /**
@@ -65,6 +73,8 @@ export interface Provider {
     /** Текущие реакции комментария, сгруппированные по имени. */
     reactions(noteId: string): Promise<Reaction[]>;
     react(noteId: string, emoji: string): Promise<{ active: boolean }>;
+    /** Загружает вложение в платформу и возвращает абсолютную ссылку. */
+    upload(input: UploadInput): Promise<UploadedAttachment>;
     createThread(input: CreateThreadInput): Promise<CreatedThread>;
 }
 

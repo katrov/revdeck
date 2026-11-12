@@ -140,6 +140,19 @@ describe('GitLabProvider', () => {
         ]);
     });
 
+    it('uploads a file as multipart and returns an absolute URL', async () => {
+        const { runner: impl, calls } = runner((call) => {
+            if (call.args.includes('--form')) return { alt: 'shot', url: '/uploads/abc/shot.png', full_path: '/group/sub/proj/uploads/abc/shot.png' };
+            return {};
+        });
+        const provider = new GitLabProvider(gitlabRef, { root: '/tmp', runImpl: impl });
+        const attachment = await provider.upload({ path: '/tmp/shot.png', name: 'shot.png', contentType: 'image/png' });
+        expect(attachment.url).toBe('https://gitlab.example.com/group/sub/proj/uploads/abc/shot.png');
+        expect(attachment.markdown).toBe('![shot.png](https://gitlab.example.com/group/sub/proj/uploads/abc/shot.png)');
+        expect(calls[0]!.args).toContain('--form');
+        expect(calls[0]!.args).toContain('file=@/tmp/shot.png');
+    });
+
     it('creates a positioned discussion and a general one without line', async () => {
         const { runner: impl, calls } = runner((call) => {
             if (call.args.includes('projects/group%2Fsub%2Fproj/merge_requests/7')) return GL_MR;

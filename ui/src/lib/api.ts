@@ -81,6 +81,33 @@ export const updateNote = (review: string, noteId: string, patch: Record<string,
 
 export const deleteNote = (review: string, noteId: string) => api<{ ok: true }>('/api/notes', { body: { review, action: 'delete', noteId } });
 
+export interface UploadedAttachment {
+    name: string;
+    url: string;
+    markdown: string;
+}
+
+export async function uploadAttachment(review: string, file: File): Promise<UploadedAttachment> {
+    const data = await fileToBase64(file);
+    const result = await api<{ attachment: UploadedAttachment }>('/api/attachments', {
+        body: { review, name: file.name, type: file.type, data },
+    });
+    return result.attachment;
+}
+
+function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error ?? new Error('не удалось прочитать файл'));
+        reader.onload = () => {
+            const result = String(reader.result ?? '');
+            const comma = result.indexOf(',');
+            resolve(comma >= 0 ? result.slice(comma + 1) : result);
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
 export const previewPublish = (review: string, kind: 'reply' | 'finding' | 'note', ids: string[]) =>
     api<{ preview: import('./types').PublishPreview }>('/api/publish/preview', { body: { review, kind, ids } });
 

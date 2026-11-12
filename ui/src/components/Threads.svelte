@@ -5,6 +5,7 @@
     import { plural, t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
     import Reactions from './Reactions.svelte';
+    import AttachmentButton from './AttachmentButton.svelte';
 
     let filter = $state<'open' | 'all'>('open');
     let selected = $state<string[]>([]);
@@ -166,6 +167,12 @@
                 </label>
                 <div style="flex: 1"></div>
                 {#if busy}<span class="muted small">{t('сохранение…', 'saving…')}</span>{:else}<span class="muted small">{t('сохранено', 'saved')}</span>{/if}
+                <AttachmentButton
+                    oninsert={(markdown) => {
+                        draft.body += markdown;
+                        scheduleSave(thread.id);
+                    }}
+                />
                 <button class="btn" onclick={() => void save(thread.id)}>{t('Сохранить', 'Save')}</button>
             </div>
             <details

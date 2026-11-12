@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import path from 'node:path';
@@ -18,6 +18,7 @@ import { fail, parseList, printJson, reviewLine, truncate, usage, when, writers 
 import { installService, runInit } from './init.js';
 import { runEject } from './eject.js';
 import { exportReview, importReview } from './export.js';
+import { attachmentSpec, MAX_ATTACHMENT_BYTES } from '../core/attachments.js';
 import { contextPayload, renderContext } from '../context.js';
 
 const OPTIONS = {
@@ -90,6 +91,7 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
   revdeck reply <N> --thread <id> (--body <текст> | --body-file <файл> | -) [--resolve] [--publish --yes]
   revdeck notes <N> <list|add|update|delete|reply>
   revdeck react <N> --note <id> --emoji <name>   поставить или снять реакцию
+  revdeck attach <N> --file <путь>               загрузить картинку/видео в платформу
   revdeck publish <N> [--kind reply|finding|note] [--ids a,b] [--yes]
   revdeck rules [<N>] [--explain <путь>]
   revdeck checks <N> [--run --yes]
@@ -117,6 +119,7 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
   revdeck reply <N> --thread <id> (--body <text> | --body-file <file> | -) [--resolve] [--publish --yes]
   revdeck notes <N> <list|add|update|delete|reply>
   revdeck react <N> --note <id> --emoji <name>   add or remove a reaction
+  revdeck attach <N> --file <path>               upload an image/video to the platform
   revdeck publish <N> [--kind reply|finding|note] [--ids a,b] [--yes]
   revdeck rules [<N>] [--explain <path>]
   revdeck checks <N> [--run --yes]
@@ -185,6 +188,8 @@ async function main(): Promise<void> {
             return notes(positionals[0], positionals[1] ?? 'list', values);
         case 'react':
             return react(positionals[0], values);
+        case 'attach':
+            return attach(positionals[0], values);
         case 'publish':
             return publish(positionals[0], values);
         case 'rules':
@@ -575,6 +580,32 @@ async function react(arg: string | undefined, values: Values): Promise<void> {
         if (values.json) return printJson(result);
         writers.out(`${result.active ? '✔' : '○'} ${values.emoji}${result.active ? ` · ${tr('поставлена', 'added')}` : ` · ${tr('снята', 'removed')}`}`);
         for (const reaction of result.reactions) writers.out(`  ${reaction.name}${reaction.mine ? ' ·' : ''} ${reaction.count}`);
+    });
+}
+
+async function attach(arg: string | undefined, values: Values): Promise<void> {
+    if (!values.file) fail(tr('укажите --file с картинкой или видео', 'pass --file with an image or video'));
+    const name = path.basename(String(values.file));
+    const spec = attachmentSpec(name);
+    if (!spec) fail(tr('разрешены PNG, JPEG, GIF, WebP, AVIF, MP4, WebM, OGV и MOV', 'PNG, JPEG, GIF, WebP, AVIF, MP4, WebM, OGV and MOV are allowed'));
+    const file = String(values.file);
+    const info = await stat(file).catch(() => null);
+    if (!info?.isFile()) fail(tr(`нет файла ${file}`, `file ${file} does not exist`));
+    if (info.size > MAX_ATTACHMENT_BYTES) {
+        fail(tr(`файл больше ${Math.floor(MAX_ATTACHMENT_BYTES / (1024 * 1024))} МБ`, `file is larger than ${Math.floor(MAX_ATTACHMENT_BYTES / (1024 * 1024))} MB`));
+    }
+    const data = await readFile(file);
+    await withClient(async ({ client }) => {
+        const { review } = await resolveReview(client, findRepoRoot(), reviewArg(values, arg), values);
+        const result = await client.request<{ attachment: { name: string; url: string; markdown: string } }>('attachments.upload', {
+            review: review.id,
+            name,
+            contentType: spec.contentType,
+            data: data.toString('base64'),
+        });
+        if (values.json) return printJson(result.attachment);
+        writers.out(`${tr('загружено', 'uploaded')}: ${result.attachment.url}`);
+        writers.out(result.attachment.markdown);
     });
 }
 

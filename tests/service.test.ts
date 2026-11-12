@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ReviewService } from '../src/daemon/service.js';
 import { Store } from '../src/daemon/store.js';
 import { parseUnifiedDiff } from '../src/core/diff.js';
-import type { CreateThreadInput, Provider, ReviewListItem } from '../src/providers/provider.js';
+import type { CreateThreadInput, Provider, ReviewListItem, UploadInput } from '../src/providers/provider.js';
 import type { DiffFile, Note, ReviewInfo, ReviewRef, Thread } from '../src/core/types.js';
 
 const PATCH = `diff --git a/src/app.ts b/src/app.ts
@@ -27,7 +27,7 @@ new file mode 100644
 
 class FakeProvider implements Provider {
     readonly platform = 'gitlab' as const;
-    readonly capabilities = { reactions: true, resolve: true, nativeDrafts: true };
+    readonly capabilities = { reactions: true, resolve: true, nativeDrafts: true, attachments: true };
     readonly replies: { threadId: string; body: string }[] = [];
     readonly resolutions: { threadId: string; resolved: boolean }[] = [];
     readonly created: CreateThreadInput[] = [];
@@ -119,6 +119,14 @@ class FakeProvider implements Provider {
         }
         this.reactionsValue.push({ noteId, name: emoji, mine: true });
         return { active: true };
+    }
+
+    readonly uploads: UploadInput[] = [];
+
+    async upload(input: UploadInput) {
+        this.uploads.push(input);
+        const url = `https://gitlab.example.com/uploads/abc/${input.name}`;
+        return { name: input.name, url, markdown: `![${input.name}](${url})` };
     }
 
     async createThread(input: CreateThreadInput) {
@@ -271,6 +279,26 @@ describe('ReviewService', () => {
         expect(removed.active).toBe(false);
         expect(removed.reactions).toEqual([]);
         await expect(service.react(review.id, 'n1', 'nope')).rejects.toThrow(/неизвестная реакция/);
+    });
+
+    it('uploads a validated attachment and returns an absolute link', async () => {
+        const review = await open();
+        const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+        const attachment = await service.uploadAttachment(review.id, {
+            name: 'shot.png',
+            contentType: 'image/png',
+            data: png.toString('base64'),
+        });
+        expect(attachment.url).toBe('https://gitlab.example.com/uploads/abc/shot.png');
+        expect(attachment.markdown).toBe('![shot.png](https://gitlab.example.com/uploads/abc/shot.png)');
+        expect(provider.uploads[0]).toMatchObject({ name: 'shot.png', contentType: 'image/png' });
+
+        await expect(
+            service.uploadAttachment(review.id, { name: 'evil.svg', contentType: 'image/svg+xml', data: png.toString('base64') }),
+        ).rejects.toThrow(/разрешены/);
+        await expect(
+            service.uploadAttachment(review.id, { name: 'fake.png', contentType: 'image/png', data: Buffer.from('not a png').toString('base64') }),
+        ).rejects.toThrow(/не совпадает/);
     });
 
     it('builds effective rules for changed paths', async () => {

@@ -121,6 +121,13 @@ export interface User {
     name: string;
 }
 
+/** Вложение, уже загруженное в платформу. URL всегда абсолютный. */
+export interface UploadedAttachment {
+    name: string;
+    url: string;
+    markdown: string;
+}
+
 /** Человеческое предложение/замечание ревью. Публикуется только после подтверждения. */
 export interface Finding {
     id: string;

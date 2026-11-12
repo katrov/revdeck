@@ -1,12 +1,16 @@
 import { EventEmitter } from 'node:events';
 import { createHash, randomBytes } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { redact } from '../core/redact.js';
 import { messageOf } from '../core/errors.js';
 import { findRepoRoot, findConfigFile } from '../core/paths.js';
 import { loadConfig } from '../core/config.js';
 import { buildEffectiveRules, renderRules } from '../core/rules.js';
 import { diffStats, changedPaths, findNewLine, linePosition, snippetAround } from '../core/diff.js';
-import { sanitizeBody } from '../core/sanitize.js';
+import { sanitizeBody, normalizeMediaLinks } from '../core/sanitize.js';
+import { attachmentSpec, decodeAttachment, matchesSignature } from '../core/attachments.js';
 import { mergeFindings, validateFinding, applyDecisions, fingerprintOf, levelOrder } from '../core/findings.js';
 import { canonicalJson } from '../core/canonical.js';
 import { resolveOutputLanguage, tr } from '../core/locale.js';
@@ -36,6 +40,7 @@ import type {
     ReviewSummary,
     Side,
     Thread,
+    UploadedAttachment,
 } from '../core/types.js';
 import type { Provider } from '../providers/provider.js';
 import { createProvider, projectContext, resolveReviewRef } from '../providers/provider.js';
@@ -465,6 +470,43 @@ export class ReviewService {
         return { active: result.active, reactions };
     }
 
+    async uploadAttachment(id: string, input: { name: string; contentType: string; data: string }): Promise<UploadedAttachment> {
+        const stored = this.store.getReview(id);
+        if (!stored) throw new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`));
+        const spec = attachmentSpec(String(input.name ?? ''), String(input.contentType ?? ''));
+        if (!spec) {
+            throw new Error(
+                tr(
+                    'вложение: разрешены PNG, JPEG, GIF, WebP, AVIF, MP4, WebM, OGV и MOV',
+                    'attachment: PNG, JPEG, GIF, WebP, AVIF, MP4, WebM, OGV and MOV are allowed',
+                ),
+            );
+        }
+        const provider = await this.providerFor(id);
+        if (!provider.capabilities.attachments) {
+            throw new Error(
+                tr(
+                    'платформа не поддерживает загрузку вложений из revdeck: вставьте абсолютную ссылку вручную',
+                    'the platform does not support attachments from revdeck: paste an absolute URL manually',
+                ),
+            );
+        }
+        const buffer = decodeAttachment(input.data);
+        if (!matchesSignature(buffer, spec.contentType)) {
+            throw new Error(tr('вложение: содержимое не совпадает с расширением', 'attachment: content does not match the extension'));
+        }
+        const dir = await mkdtemp(path.join(tmpdir(), 'revdeck-attachment-'));
+        const file = path.join(dir, spec.name);
+        try {
+            await writeFile(file, buffer, { mode: 0o600, flag: 'wx' });
+            const uploaded = await provider.upload({ path: file, name: spec.name, contentType: spec.contentType });
+            this.store.audit(id, 'attachment.upload', { name: spec.name, contentType: spec.contentType, bytes: buffer.length, url: uploaded.url });
+            return uploaded;
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
+    }
+
     // ---------------------------------------------------------------- notes
 
     addNote(id: string, input: { file: string; line: number; side?: Side; text: string; toAgent?: boolean }): LineNote {
@@ -547,8 +589,10 @@ export class ReviewService {
                     warnings.push(tr(`тред ${itemId} не найден`, `thread ${itemId} not found`));
                     continue;
                 }
-                const body = draft.body.trim();
-                const alreadyPosted = body !== '' && draft.posted.trim() === body;
+                const rawBody = draft.body.trim();
+                const body = normalizeMediaLinks(rawBody, review.info.ref.platform, review.info.ref.host);
+                const posted = normalizeMediaLinks(draft.posted.trim(), review.info.ref.platform, review.info.ref.host);
+                const alreadyPosted = rawBody !== '' && posted === body;
                 const resolveChanged = draft.resolve !== thread.resolved;
                 if (!body && !resolveChanged) {
                     warnings.push(tr(`тред ${thread.id.substring(0, 8)}: нечего публиковать`, `thread ${thread.id.substring(0, 8)}: nothing to publish`));
@@ -559,7 +603,7 @@ export class ReviewService {
                     continue;
                 }
                 if (body) {
-                    const check = sanitizeBody(body, review.info.ref.platform);
+                    const check = sanitizeBody(body, review.info.ref.platform, { host: review.info.ref.host });
                     if (!check.ok) {
                         warnings.push(tr(`тред ${thread.id.substring(0, 8)}: ${check.reason}`, `thread ${thread.id.substring(0, 8)}: ${check.reason}`));
                         continue;
@@ -578,8 +622,8 @@ export class ReviewService {
                     warnings.push(tr(`замечание ${finding.id} уже опубликовано`, `finding ${finding.id} is already published`));
                     continue;
                 }
-                const body = finding.comment.trim();
-                const check = sanitizeBody(body, review.info.ref.platform);
+                const body = normalizeMediaLinks(finding.comment.trim(), review.info.ref.platform, review.info.ref.host);
+                const check = sanitizeBody(body, review.info.ref.platform, { host: review.info.ref.host });
                 if (!check.ok) {
                     warnings.push(tr(`замечание ${finding.id}: ${check.reason}`, `finding ${finding.id}: ${check.reason}`));
                     continue;
@@ -604,12 +648,13 @@ export class ReviewService {
                 warnings.push(tr(`комментарий ${note.id} уже опубликован`, `comment ${note.id} is already published`));
                 continue;
             }
-            const check = sanitizeBody(note.text, review.info.ref.platform);
+            const body = normalizeMediaLinks(note.text, review.info.ref.platform, review.info.ref.host);
+            const check = sanitizeBody(body, review.info.ref.platform, { host: review.info.ref.host });
             if (!check.ok) {
                 warnings.push(tr(`комментарий ${note.id}: ${check.reason}`, `comment ${note.id}: ${check.reason}`));
                 continue;
             }
-            items.push({ kind, id: note.id, body: note.text, file: note.file, line: note.line, side: note.side });
+            items.push({ kind, id: note.id, body, file: note.file, line: note.line, side: note.side });
         }
         return { plan: this.makePlan(id, kind, items), warnings };
     }
@@ -677,7 +722,7 @@ export class ReviewService {
                     if (!thread) throw new Error(tr('тред больше не существует', 'the thread no longer exists'));
                     const body = String(item.body ?? '').trim();
                     if (body && draft.posted.trim() !== body) {
-                        const check = sanitizeBody(body, platform);
+                        const check = sanitizeBody(body, platform, { host: review.info.ref.host });
                         if (!check.ok) throw new Error(check.reason);
                         await provider.reply(thread, body);
                         draft.posted = body;

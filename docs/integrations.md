@@ -24,6 +24,9 @@ skill remain: the agent calls commands through the shell.
 | DSH | plugin (see below) | `.agents/skills/revdeck/*` (including `agents/openai.yaml`) + YAML snippet in the output |
 | Universal | — | `.agents/skills/revdeck/*` (including `agents/openai.yaml`) + MCP |
 
+Comment attachments are uploaded by the host daemon. GitLab uses project uploads and returns an
+absolute URL; GitHub has no public attachment API, so the editor asks for a URL instead.
+
 `revdeck init --adapters dsh,claude` explicitly enables the adapters you need. A repeated `init`
 does not overwrite existing command files and does not clobber other keys in `.mcp.json`.
 

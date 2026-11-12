@@ -24,7 +24,7 @@ and a web UI. Platform tokens stay on the host.
   bound to a hash of the plan and is idempotent. There is no “agent approved its own comment” path.
 - **Tokens never reach the agent.** The daemon calls `glab`/`gh` on the host and scrubs platform tokens
   from child environments. A sandboxed agent only gets an RPC.
-- **GitLab and GitHub.** One model: MR/PR, threads, diff, resolve, reactions, line comments.
+- **GitLab and GitHub.** One model: MR/PR, threads, diff, resolve, reactions, line comments, attachments.
 - **Many reviews.** The daemon keeps them in SQLite; the UI is a triage queue with keyboard shortcuts.
 - **Any harness.** MCP tools for MCP clients, the same capabilities over CLI, and a skill that carries
   the review procedure.
@@ -106,6 +106,7 @@ Russian READMEs live in this repository; translation fixes are welcome.
 | `revdeck publish <N> [--yes]` | preview or publish after confirmation |
 | `revdeck notes <N> …` | line comments from the human |
 | `revdeck react <N> --note <id> --emoji <name>` | toggle a reaction on a platform comment |
+| `revdeck attach <N> --file <image-or-video>` | upload an attachment and print its markdown link |
 | `revdeck rules [--explain <path>]` | effective rules |
 | `revdeck checks <N> [--run --yes]` | project checks |
 | `revdeck export/import <N>` | legacy file exchange |
@@ -114,6 +115,19 @@ Russian READMEs live in this repository; translation fixes are welcome.
 | `revdeck mcp` | MCP server over stdio |
 
 Common flags: `--json`, `--root`, `--review`, `--platform`, `--project`, `--host`, `--lang ru|en`.
+
+## Attachments
+
+The UI has an **Attach** button next to reply, finding and line-comment editors; the CLI equivalent is
+`revdeck attach <N> --file shot.png`. The file is uploaded by the daemon on the host, and the editor
+receives a markdown link with an absolute platform URL, so GitLab renders images and videos in the
+original MR. Relative GitLab `/uploads/...` links in existing drafts are rewritten to
+`https://<host>/uploads/...` during the publish preview.
+
+GitLab is supported through project uploads (requires a `glab` with `--form` support). GitHub has no
+public attachment API, so the button is disabled there and a link must be pasted manually. Only raster
+images and videos (PNG, JPEG, GIF, WebP, AVIF, MP4, WebM, OGV, MOV) are accepted; SVG and arbitrary
+files are rejected.
 
 ## MCP
 
@@ -180,7 +194,7 @@ found. Full schema: [docs/configuration.md](docs/configuration.md).
 - `glab`/`gh` run without a shell, with `cwd` outside the working copy and a scrubbed environment;
   secrets are redacted from logs and errors.
 - Comments are checked for GitLab quick actions, HTML, hidden/bidi characters, mass mentions and
-  external images.
+  external images (only uploads from the platform host are allowed).
 - Review text is untrusted data; agent instructions say so explicitly.
 
 Details: [docs/threat-model.md](docs/threat-model.md). The guarantee is: the token does not cross the
@@ -223,6 +237,7 @@ Provider tests use recorded CLI responses and need no network. See [CONTRIBUTING
 - The UI does not open a new review by number; use the CLI and the review appears in the list.
 - Thread resolution is in the thread card; reactions are available on thread notes in the UI and through
   `revdeck react`.
+- GitHub has no public attachment API: the Attach button is disabled there; uploads work in GitLab.
 - Auto-start is supported on Linux and macOS; on Windows run the daemon manually.
 
 ## License

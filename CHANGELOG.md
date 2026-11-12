@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format is based on
 - `revdeck eject`: removes the config, installed skills and command files, the `revdeck` MCP entry and
   the local cache from a repository. It is preview-only without `--yes` and leaves foreign files and
   other MCP servers intact.
+- Attachments for comments: the UI **Attach** button and `revdeck attach` upload images and videos
+  through the host daemon. GitLab project uploads return absolute URLs, relative `/uploads/` links are
+  normalized to the platform host during publish, and the sanitizer allows images only from that host.
+  Only raster images and videos with matching extension, MIME and file signature are accepted.
 
 ### Fixed
 

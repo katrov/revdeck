@@ -15,7 +15,8 @@ const CONTROL_OR_HIDDEN =
 
 const QUICK_ACTION = /^[\s\p{Z}\p{Cf}]*\/[a-z_]+(?=[\s\p{Z}\p{Cf}]|$)/imu;
 const MASS_MENTION = /(^|[^\w@./-])@(all|here|everyone)(?![\w-])/i;
-const MD_IMAGE = /!\[[^\]]*\]\s*\(|!\[[^\]]*\]\s*\[/;
+const MD_IMAGE_REF = /!\[[^\]]*\]\s*\[/;
+const MD_IMAGE_LINK = /!\[[^\]]*\]\s*\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)/g;
 const HTML_TAG = /<(?:img|script|iframe|style|video|audio|object|embed|svg|math)\b/i;
 const HTML_COMMENT = /<!--/;
 const MAX_LENGTH = 64 * 1024;
@@ -31,6 +32,8 @@ export interface SanitizeOptions {
     maxLength?: number;
     /** Проверять быстрые команды GitLab (по умолчанию — только для GitLab). */
     quickActions?: boolean;
+    /** Хост платформы: картинки разрешены только с него и из /uploads/. */
+    host?: string;
 }
 
 export function sanitizeBody(body: string, platform: Platform, options: SanitizeOptions = {}): SanitizeResult {
@@ -43,7 +46,8 @@ export function sanitizeBody(body: string, platform: Platform, options: Sanitize
     if (CONTROL_OR_HIDDEN.test(text)) return { ok: false, reason: tr('в тексте есть управляющие или невидимые символы', 'the text contains control or invisible characters'), text };
     if (HTML_COMMENT.test(text)) return { ok: false, reason: tr('в тексте есть HTML-комментарий', 'the text contains an HTML comment'), text };
     if (HTML_TAG.test(text)) return { ok: false, reason: tr('в тексте есть HTML-тег', 'the text contains an HTML tag'), text };
-    if (MD_IMAGE.test(text)) return { ok: false, reason: tr('в тексте есть картинка: замените ссылкой', 'the text contains an image: replace it with a link'), text };
+    const imageProblem = imageIssue(text, options.host);
+    if (imageProblem) return { ok: false, reason: imageProblem, text };
     if (MASS_MENTION.test(text)) return { ok: false, reason: tr('массовое упоминание: укажите конкретных людей', 'mass mention: name specific people'), text };
     if (checkQuickActions && QUICK_ACTION.test(text)) {
         return { ok: false, reason: tr('строка-команда GitLab (/approve, /merge …): перефразируйте', 'GitLab quick action line (/approve, /merge …): rephrase it'), text };
@@ -51,11 +55,48 @@ export function sanitizeBody(body: string, platform: Platform, options: Sanitize
     return { ok: true, reason: '', text };
 }
 
-/** Текст, который отправляется в GitHub: быстрые действия не исполняются, но остальное актуально. */
-export function sanitizeGithubBody(body: string): SanitizeResult {
-    return sanitizeBody(body, 'github', { quickActions: false });
+/**
+ * Картинки и видео разрешены только с хоста платформы или из её `/uploads/`.
+ * Внешняя картинка — это запрос к чужому серверу из ленты MR и утечка факта просмотра.
+ */
+function imageIssue(text: string, host: string | undefined): string | null {
+    if (MD_IMAGE_REF.test(text)) {
+        return tr('в тексте есть картинка со ссылочной сноской: вставьте абсолютную ссылку', 'the text contains a reference-style image: use an absolute link');
+    }
+    for (const match of text.matchAll(MD_IMAGE_LINK)) {
+        const url = match[1]!;
+        if (!host) {
+            return tr('картинки разрешены только с хоста платформы', 'images are allowed only from the platform host');
+        }
+        if (url.startsWith('/uploads/')) continue;
+        try {
+            const parsed = new URL(url);
+            if ((parsed.protocol === 'https:' || parsed.protocol === 'http:') && parsed.host === host) continue;
+        } catch {
+            // ниже — общая ошибка
+        }
+        return tr(`внешняя картинка ${url}: разрешены только загрузки с ${host}`, `external image ${url}: only uploads from ${host} are allowed`);
+    }
+    return null;
 }
 
-export function isSafeBody(body: string, platform: Platform): boolean {
-    return sanitizeBody(body, platform).ok;
+/**
+ * Приводит относительные ссылки на загруженные файлы GitLab к абсолютному URL.
+ * Без хоста платформа не показывает картинку в тексте комментария.
+ */
+export function normalizeMediaLinks(body: string, platform: Platform, host: string): string {
+    if (platform !== 'gitlab' || !host) return body;
+    const base = `https://${host}`;
+    return body.replace(/(!?\[[^\]]*\]\(\s*)(\/?uploads\/[^)\s]+)/g, (_match, prefix: string, path: string) => {
+        return `${prefix}${path.startsWith('/') ? base : `${base}/`}${path}`;
+    });
+}
+
+/** Текст, который отправляется в GitHub: быстрые действия не исполняются, но остальное актуально. */
+export function sanitizeGithubBody(body: string, options: SanitizeOptions = {}): SanitizeResult {
+    return sanitizeBody(body, 'github', { ...options, quickActions: false });
+}
+
+export function isSafeBody(body: string, platform: Platform, options: SanitizeOptions = {}): boolean {
+    return sanitizeBody(body, platform, options).ok;
 }

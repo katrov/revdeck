@@ -18,7 +18,8 @@ interface RpcRequest {
     params?: Record<string, unknown>;
 }
 
-const MAX_LINE = 4 * 1024 * 1024;
+// Вложения передаются base64: 25 МБ файла — это ~34 МБ строки.
+const MAX_LINE = 40 * 1024 * 1024;
 
 export async function dispatch(service: ReviewService, method: string, params: Record<string, unknown>): Promise<unknown> {
     switch (method) {
@@ -68,6 +69,14 @@ export async function dispatch(service: ReviewService, method: string, params: R
             };
         case 'reactions.toggle':
             return service.react(String(params.review ?? ''), String(params.noteId ?? ''), String(params.emoji ?? ''));
+        case 'attachments.upload':
+            return {
+                attachment: await service.uploadAttachment(String(params.review ?? ''), {
+                    name: String(params.name ?? ''),
+                    contentType: String(params.contentType ?? ''),
+                    data: String(params.data ?? ''),
+                }),
+            };
         case 'drafts.put':
             return { draft: service.setDraft(String(params.review ?? ''), String(params.threadId ?? ''), (params.patch ?? {}) as Record<string, never>) };
         case 'findings.put':
