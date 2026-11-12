@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-12
+
 ### Fixed
 
 - Text editing is no longer reset by background refreshes: SSE/polling updates are deferred while a
