@@ -286,13 +286,17 @@ describe('ReviewService', () => {
         const ids = service.getReview(review.id).findings.map((finding) => finding.id);
         const plan = service.previewPublish(review.id, 'finding', ids);
         expect(plan.plan.items).toHaveLength(2);
+        expect(plan.plan.items[0]!.body).toContain('🟨 **minor**');
+        expect(plan.plan.items[1]!.body).toContain('🟦 **question**');
         expect(plan.plan.items[1]!.body).toContain('общий комментарий');
         expect(plan.plan.items[1]!.body).toContain('src/util.ts');
         const approval = service.approve(review.id, 'finding', ids, plan.plan.hash);
         const result = await service.publish(review.id, approval.id);
         expect(result.results.every((item) => item.ok)).toBe(true);
         expect(provider.created[0]).toMatchObject({ file: 'src/app.ts', line: 2, oldLine: null });
+        expect(provider.created[0]!.body).toContain('🟨 **minor**');
         expect(provider.created[1]).toMatchObject({ file: 'src/util.ts', line: null });
+        expect(provider.created[1]!.body).toContain('🟦 **question**');
         expect(service.getReview(review.id).findings.every((finding) => finding.status === 'published')).toBe(true);
     });
 

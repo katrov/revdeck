@@ -94,6 +94,20 @@ const EMPTY_DRAFT = (threadId: string): ReplyDraft => ({
 
 const APPROVAL_TTL_MS = 10 * 60 * 1000;
 
+const LEVEL_MARKERS: Record<Level, string> = {
+    blocker: '🟥 **blocker**',
+    major: '🟧 **major**',
+    minor: '🟨 **minor**',
+    question: '🟦 **question**',
+};
+
+/** Уровень должен быть виден в самой публикуемой платформе, а не только в UI. */
+function markedFindingBody(finding: Finding, body: string): string {
+    const marker = LEVEL_MARKERS[finding.level];
+    if (body.trimStart().startsWith(marker)) return body;
+    return finding.file && finding.line === null ? `${marker} \`${finding.file}\`\n\n${body}` : `${marker}\n\n${body}`;
+}
+
 /**
  * Оркестратор: единая точка между провайдерами, хранилищем и интерфейсами.
  *
@@ -713,17 +727,17 @@ export class ReviewService {
                     warnings.push(tr(`замечание ${finding.id} уже опубликовано`, `finding ${finding.id} is already published`));
                     continue;
                 }
-                const body = normalizeMediaLinks(finding.comment.trim(), review.info.ref.platform, review.info.ref.host, review.info.projectId);
+                const rawBody = normalizeMediaLinks(finding.comment.trim(), review.info.ref.platform, review.info.ref.host, review.info.projectId);
+                const body = markedFindingBody(finding, rawBody);
                 const check = sanitizeBody(body, review.info.ref.platform, { host: review.info.ref.host });
                 if (!check.ok) {
                     warnings.push(tr(`замечание ${finding.id}: ${check.reason}`, `finding ${finding.id}: ${check.reason}`));
                     continue;
                 }
-                const finalBody = finding.file && finding.line === null ? `\`${finding.file}\`: ${body}` : body;
                 items.push({
                     kind,
                     id: finding.id,
-                    body: finalBody,
+                    body,
                     file: finding.file,
                     line: finding.line,
                     ...(finding.line === null ? {} : { side: 'new' as const }),

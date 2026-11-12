@@ -134,6 +134,7 @@ Record via `revdeck_draft_findings` (CLI: `revdeck findings <N> set --file findi
 `id` is unique and stable; `level` is one of `blocker`, `major`, `minor`, `question`; `line` is the
 line number in the new file or `null`. A reference to a rule or precedent goes into `body` as the
 last sentence, and into `comment` in wording the author can understand without access to the skill.
+Do not prefix `comment` with the level: revdeck adds the severity marker to the published message.
 The text passes the publication check: no platform command lines, HTML comments, invisible
 characters, `@all`, or external images.
 

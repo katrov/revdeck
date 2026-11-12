@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Published findings start with a severity marker (🟥 blocker, 🟧 major, 🟨 minor, 🟦 question); the UI
+  badges show the matching icon and color.
+
 ## [0.4.3] - 2026-11-12
 
 ### Fixed

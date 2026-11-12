@@ -12,6 +12,7 @@
     let selected = $state<string[]>([]);
     let saving = $state(false);
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const LEVEL_ICON: Record<Level, string> = { blocker: '🟥', major: '🟧', minor: '🟨', question: '🟦' };
 
     const findings = $derived(
         (app.review?.findings ?? []).filter((finding) => {
@@ -149,7 +150,7 @@
                 aria-label={t('Выбрать замечание', 'Select finding')}
                 style="width: auto"
             />
-            <span class="badge {finding.level}">{finding.level}</span>
+            <span class="badge {finding.level}" title={finding.level}>{LEVEL_ICON[finding.level]} {finding.level}</span>
             <span class="badge">{statusLabel(finding.status)}</span>
             {#if finding.publishedAt}<span class="muted small">{t('опубликовано', 'published')} {relativeTime(finding.publishedAt)}</span>{/if}
             <div class="grow"></div>
