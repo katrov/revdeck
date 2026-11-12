@@ -90,6 +90,9 @@ Available roles:
 | `ux` | UI states, accessibility, errors, narrow screens | §9, §10 |
 | `general` | full review across all sections | §1–§12 |
 
+Several MRs can be opened at once with `revdeck open 345 344 556` (or an array in `revdeck_open`); run
+a separate group per review and do not merge findings across MRs.
+
 `revdeck context <N> --role <role> --shard i/N` renders a worker context with only its files (and threads
 for those files), plus a reminder not to write findings. The MCP tool accepts the same `role` and `shard`
 arguments. The lead agent should collect the workers' JSON, deduplicate by `file:line:title`, and only

@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Batch review opening: `revdeck open 345 344 556` and an array input for `revdeck_open`; each review
+  keeps its own agent group.
 - Multi-agent review plan in `.revdeck.yml` (`review.agents`, `review.roles`) with role catalog, role/shard
   context via `revdeck context --role --shard` and MCP `role`/`shard`, plus lead/worker instructions in
   the skill.

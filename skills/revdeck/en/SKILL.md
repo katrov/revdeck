@@ -56,6 +56,10 @@ Act as the lead:
 4. Deduplicate by `file:line:title` (prefer the higher level), then write the final summary and findings
    **once** as the lead. The UI shows that single merged result.
 
+Several reviews can be opened in one call (`revdeck_open` accepts an array; CLI: `revdeck open 345 344
+556`). Run a separate multi-agent group per review and keep findings namespaced by review; never merge
+findings from different MRs. The UI still shows one review at a time.
+
 Fallback: with one agent or no multi-agent section, just do the normal review.
 
 ## Chat answer

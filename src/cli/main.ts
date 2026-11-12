@@ -87,7 +87,7 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
   revdeck doctor          проверить окружение и доступы
   revdeck daemon <start|stop|restart|status|logs|install|uninstall>
   revdeck list            открытые ревью (локальный кеш), --remote — с платформы
-  revdeck open <url|N>    открыть ревью и получить контекст
+  revdeck open <url|N...>  открыть одно или несколько ревью
   revdeck ui [N]          ссылка на локальный интерфейс
   revdeck context <N>     контекст для агента: правила, diff, треды [--role <роль>] [--shard i/N]
   revdeck threads <N>     обсуждения
@@ -116,7 +116,7 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
   revdeck doctor          check the environment and access
   revdeck daemon <start|stop|restart|status|logs|install|uninstall>
   revdeck list            open reviews (local cache), --remote — from the platform
-  revdeck open <url|N>    open a review and get the context
+  revdeck open <url|N...>  open one or more reviews
   revdeck ui [N]          link to the local UI
   revdeck context <N>     agent context: rules, diff, threads [--role <role>] [--shard i/N]
   revdeck threads <N>     discussions
@@ -175,7 +175,7 @@ async function main(): Promise<void> {
         case 'list':
             return list(root, values);
         case 'open':
-            return openReview(root, positionals[0], values);
+            return openReview(root, positionals, values);
         case 'ui':
             return ui(positionals[0], values);
         case 'status':
@@ -300,22 +300,35 @@ async function list(root: string, values: Values): Promise<void> {
     });
 }
 
-async function openReview(root: string, arg: string | undefined, values: Values): Promise<void> {
-    if (!arg) fail(tr('укажите номер или ссылку на ревью', 'pass a review number or URL'));
+async function openReview(root: string, args: string[], values: Values): Promise<void> {
+    if (!args.length) fail(tr('укажите номер или ссылку на ревью', 'pass a review number or URL'));
     await withClient(async ({ client }) => {
-        const result = await client.request<{ review: ReviewView }>('reviews.open', {
-            root,
-            input: arg,
-            ...(values.platform ? { platform: values.platform as 'gitlab' | 'github' } : {}),
-            ...(values.project ? { project: values.project } : {}),
-            ...(values.host ? { host: values.host } : {}),
-            ...(values.branch ? { branch: values.branch } : {}),
+        const requests = args.map(async (input) => {
+            const result = await client.request<{ review: ReviewView }>('reviews.open', {
+                root,
+                input,
+                ...(values.platform ? { platform: values.platform as 'gitlab' | 'github' } : {}),
+                ...(values.project ? { project: values.project } : {}),
+                ...(values.host ? { host: values.host } : {}),
+                ...(values.branch ? { branch: values.branch } : {}),
+            });
+            return result.review;
         });
-        const review = result.review;
-        if (values.json) return printJson(review);
-        writers.out(formatInfo(review).join('\n'));
-        if (review.errors.length) writers.err(`${tr('предупреждения', 'warnings')}:\n${review.errors.map((item) => `  ${item}`).join('\n')}`);
-        if (values.ui) printUi(review.id, values);
+        const settled = await Promise.allSettled(requests);
+        const reviews = settled.flatMap((item) => (item.status === 'fulfilled' ? [item.value] : []));
+        const failures = settled.flatMap((item) => (item.status === 'rejected' ? [item.reason as Error] : []));
+        if (values.json) {
+            if (args.length === 1 && reviews[0]) return printJson(reviews[0]);
+            if (!reviews.length) fail(failures[0]?.message ?? tr('ревью не открыто', 'no review was opened'));
+            return printJson(reviews);
+        }
+        for (const review of reviews) {
+            writers.out(formatInfo(review).join('\n'));
+            if (review.errors.length) writers.err(`${tr('предупреждения', 'warnings')}:\n${review.errors.map((item) => `  ${item}`).join('\n')}`);
+        }
+        for (const failure of failures) writers.err(tr(`не удалось открыть: ${failure.message}`, `could not open: ${failure.message}`));
+        if (values.ui && reviews.length) printUi(reviews[reviews.length - 1]!.id, values);
+        if (!reviews.length) fail(failures[0]?.message ?? tr('ревью не открыто', 'no review was opened'));
     });
 }
 

@@ -179,6 +179,9 @@ Built-in roles: `correctness`, `architecture`, `tests`, `security`, `performance
 `docs`, `concurrency`, `ux`, `general`. Default is three agents with correctness, architecture and tests.
 A role list shorter than `agents` is repeated.
 
+Several reviews can be opened together: `revdeck open 345 344 556` or `revdeck_open` with an array of
+inputs. Each review gets its own group of agents; findings from different MRs are never merged.
+
 ## Devcontainer
 
 The daemon, `glab` and `gh` stay on the host. From the repository root:

@@ -116,9 +116,12 @@ server.registerTool(
     'revdeck_open',
     {
         title: 'Open review',
-        description: 'Load an MR/PR by number or URL: description, diff, threads. Returns the id used by other tools.',
+        description:
+            'Load one or more MR/PR by number or URL: description, diff, threads. Returns the id used by other tools.',
         inputSchema: {
-            input: z.string().min(1).describe('Number, URL, project!N or owner/repo#N'),
+            input: z
+                .union([z.string().min(1), z.array(z.string().min(1)).min(1).max(8)])
+                .describe('Number, URL, project!N, owner/repo#N, or an array of them'),
             root: rootSchema,
             platform: z.enum(['gitlab', 'github']).optional(),
             project: z.string().optional(),
@@ -128,15 +131,24 @@ server.registerTool(
     },
     async ({ input, root, platform, project, host, branch }) => {
         try {
-            const result = await call<{ review: ReviewView }>('reviews.open', {
-                root: root ?? defaultRoot,
-                input,
-                ...(platform ? { platform } : {}),
-                ...(project ? { project } : {}),
-                ...(host ? { host } : {}),
-                ...(branch ? { branch } : {}),
-            });
-            return ok(`${summarize(result.review)}\n\nNext: revdeck_context(review="${result.review.id}").`, { reviewId: result.review.id });
+            const inputs = Array.isArray(input) ? input : [input];
+            const reviews: ReviewView[] = [];
+            for (const value of inputs) {
+                const result = await call<{ review: ReviewView }>('reviews.open', {
+                    root: root ?? defaultRoot,
+                    input: value,
+                    ...(platform ? { platform } : {}),
+                    ...(project ? { project } : {}),
+                    ...(host ? { host } : {}),
+                    ...(branch ? { branch } : {}),
+                });
+                reviews.push(result.review);
+            }
+            const text = reviews
+                .map((review) => `${summarize(review)}\nNext: revdeck_context(review="${review.id}").`)
+                .join('\n\n');
+            if (reviews.length === 1) return ok(text, { reviewId: reviews[0]!.id });
+            return ok(text, { reviewIds: reviews.map((review) => review.id) });
         } catch (error) {
             return failure(error);
         }
