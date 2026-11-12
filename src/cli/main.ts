@@ -16,6 +16,7 @@ import { VERSION } from '../version.js';
 import { detectLocale, locale, plural, setLocale, tr } from '../core/locale.js';
 import { fail, parseList, printJson, reviewLine, truncate, usage, when, writers } from './format.js';
 import { installService, runInit } from './init.js';
+import { runEject } from './eject.js';
 import { exportReview, importReview } from './export.js';
 import { contextPayload, renderContext } from '../context.js';
 
@@ -47,6 +48,7 @@ const OPTIONS = {
     force: { type: 'boolean', default: false },
     adapters: { type: 'string' },
     'no-service': { type: 'boolean', default: false },
+    'keep-config': { type: 'boolean', default: false },
     explain: { type: 'string' },
     limit: { type: 'string' },
     decision: { type: 'string' },
@@ -74,6 +76,7 @@ function parse(argv: string[]): { values: Values; positionals: string[] } {
 const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для людей и агентов
 
   revdeck init            настроить проект: .revdeck.yml, адаптеры, MCP
+  revdeck eject           удалить revdeck из проекта (--yes; --keep-config)
   revdeck doctor          проверить окружение и доступы
   revdeck daemon <start|stop|status|logs|restart>
   revdeck list            открытые ревью (локальный кеш), --remote — с платформы
@@ -100,6 +103,7 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
 const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for humans and agents
 
   revdeck init            set up a project: .revdeck.yml, adapters, MCP
+  revdeck eject           remove revdeck from the project (--yes; --keep-config)
   revdeck doctor          check the environment and access
   revdeck daemon <start|stop|status|logs|restart>
   revdeck list            open reviews (local cache), --remote — from the platform
@@ -150,6 +154,8 @@ async function main(): Promise<void> {
     switch (command) {
         case 'init':
             return runInit(root, { force: values.force === true, adapters: parseList(values.adapters as string), noService: values['no-service'] === true, locale: values.lang === 'ru' || values.lang === 'en' ? values.lang : detectLocale(), outputLanguage: values.lang === 'ru' || values.lang === 'en' ? values.lang : 'auto' });
+        case 'eject':
+            return runEject(root, { yes: values.yes === true && values['dry-run'] !== true, keepConfig: values['keep-config'] === true });
         case 'doctor':
             return doctor(root);
         case 'daemon':

@@ -62,8 +62,11 @@ revdeck ui            # open the local UI
 ```
 
 `init` never overwrites an existing config without `--force`, and it merges `.mcp.json` instead of
-replacing it. Auto-start on login: `revdeck daemon install` (systemd user unit on Linux, launchd plist
-on macOS). Use a global install for this — an `npx` cache path can be evicted.
+replacing it. `revdeck eject` is the inverse: it removes the config, installed skills and command files,
+the `revdeck` MCP entry and the local `.revdeck/` cache, leaving foreign files and other MCP servers
+untouched. It only shows the plan by default; add `--yes` to apply (`--keep-config` keeps
+`.revdeck.yml`). Auto-start on login: `revdeck daemon install` (systemd user unit on Linux, launchd
+plist on macOS). Use a global install for this — an `npx` cache path can be evicted.
 
 ## Languages
 
@@ -91,6 +94,7 @@ Russian READMEs live in this repository; translation fixes are welcome.
 | Command | What it does |
 |---|---|
 | `revdeck init` | config, harness adapters, MCP |
+| `revdeck eject [--yes]` | remove revdeck-owned config, adapters and MCP entry |
 | `revdeck doctor` | environment, `glab`/`gh` auth, daemon, adapters |
 | `revdeck list [--remote]` | tracked reviews or open ones from the platform |
 | `revdeck open <N\|URL>` | load a review |

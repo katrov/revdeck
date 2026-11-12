@@ -11,6 +11,9 @@ All notable changes to this project are documented here. The format is based on
 - Reactions on platform comments: thread cards in the UI, `revdeck react --note <id> --emoji <name>`,
   and the `reactions.list` / `reactions.toggle` RPC methods. Existing reactions and the current user's
   choice are shown for GitLab and GitHub.
+- `revdeck eject`: removes the config, installed skills and command files, the `revdeck` MCP entry and
+  the local cache from a repository. It is preview-only without `--yes` and leaves foreign files and
+  other MCP servers intact.
 
 ## [0.1.0] - 2026-11-11
 
