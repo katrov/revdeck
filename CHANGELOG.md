@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-11-12
+
 ### Fixed
 
 - Thread and thread-comment reactions now appear immediately after the review loads or refreshes; the
