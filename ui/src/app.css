@@ -1260,3 +1260,53 @@ mark {
     color: var(--danger);
     background: var(--danger-soft);
 }
+
+/* Длинные пути, URL и имена не должны вылезать за карточку. */
+.card,
+.card-head,
+.card-head .grow,
+.spread,
+.stack {
+    min-width: 0;
+}
+
+.header h1,
+.header .meta span,
+.md,
+.md a,
+.mono {
+    overflow-wrap: anywhere;
+}
+
+.thread-location,
+.note-location {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    max-width: 100%;
+    vertical-align: bottom;
+}
+
+.note-location {
+    max-width: 60%;
+}
+
+.thread-location .path-link,
+.note-location .path-link {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.card table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.card td,
+.card th {
+    overflow-wrap: anywhere;
+    vertical-align: top;
+}

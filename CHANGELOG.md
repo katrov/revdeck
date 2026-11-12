@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- Long paths, URLs and headers no longer overflow cards: thread and line-comment paths truncate with a
+  copy button, Markdown text wraps anywhere, and tables use fixed layout.
+
 ## [0.4.4] - 2026-11-12
 
 ### Fixed

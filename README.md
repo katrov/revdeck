@@ -131,7 +131,8 @@ sidebar, `p` opens publishing, `?` opens the command palette. The sidebar choice
 The UI shows the MR/PR description, supports deep links to threads, findings and diff lines (with
 working browser Back/Forward), and keeps a per-review "viewed" state and file filter in the diff.
 A review can be removed from the local sidebar with **×**; this never deletes the MR/PR on the platform.
-A thin progress bar shows review loading, and finding paths can be copied from the card. While a text
+A thin progress bar shows review loading. Long paths and URLs wrap or truncate inside cards, and thread,
+finding and line-comment paths have a copy button. While a text
 field is focused, background updates are deferred so typing is never overwritten; the agent reply on a
 line comment can also be edited.
 

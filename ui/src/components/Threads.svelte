@@ -90,6 +90,14 @@
         selected = changedDrafts.map((draft) => draft.threadId);
     }
 
+    function copyPath(path: string, line: number | null): void {
+        const value = `${path}${line ? `:${line}` : ''}`;
+        void navigator.clipboard?.writeText(value).then(
+            () => notify(t('Путь скопирован', 'Path copied'), 'ok'),
+            () => notify(t('Не удалось скопировать', 'Could not copy'), 'error'),
+        );
+    }
+
     function canEdit(note: { author: string }): boolean {
         return Boolean(app.review?.user && note.author === app.review.user.username);
     }
@@ -168,7 +176,10 @@
                 <div class="card-title">
                     {thread.resolved ? t('Закрыт', 'Resolved') : t('Открыт', 'Open')}
                     {#if thread.path}
-                        · <button class="path-link" onclick={() => focusLine(thread.path!, thread.line)}>{thread.path}:{thread.line ?? '?'}</button>
+                        · <span class="thread-location">
+                            <button class="path-link" title={`${thread.path}:${thread.line ?? '?'}`} onclick={() => focusLine(thread.path!, thread.line)}>{thread.path}:{thread.line ?? '?'}</button>
+                            <button class="btn icon" type="button" title={t('Скопировать путь', 'Copy path')} aria-label={t('Скопировать путь', 'Copy path')} onclick={() => copyPath(thread.path!, thread.line)}>⧉</button>
+                        </span>
                     {/if}
                 </div>
                 <div class="muted small">

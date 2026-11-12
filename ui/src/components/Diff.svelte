@@ -62,6 +62,13 @@
         }
     }
 
+    function copyPath(file: string, line: number): void {
+        void navigator.clipboard?.writeText(`${file}:${line}`).then(
+            () => notify(t('Путь скопирован', 'Path copied'), 'ok'),
+            () => notify(t('Не удалось скопировать', 'Could not copy'), 'error'),
+        );
+    }
+
     function startNoteEdit(note: { id: string; text: string }): void {
         editingNote = note.id;
         editNoteText = note.text;
@@ -334,7 +341,10 @@
                     {#each fileNotes as note (note.id)}
                         <section class="card flat" id={`note-${note.id}`} class:highlight={app.focus?.kind === 'note' && app.focus.id === note.id}>
                             <div class="card-head">
-                                <button class="path-link" type="button" onclick={() => focusNote(note)}>{note.file}:{note.line}</button>
+                                <span class="note-location">
+                                    <button class="path-link" type="button" title={`${note.file}:${note.line}`} onclick={() => focusNote(note)}>{note.file}:{note.line}</button>
+                                    <button class="btn icon" type="button" title={t('Скопировать путь', 'Copy path')} aria-label={t('Скопировать путь', 'Copy path')} onclick={() => copyPath(note.file, note.line)}>⧉</button>
+                                </span>
                                 <button class="btn icon" type="button" title={t('Скопировать ссылку на комментарий', 'Copy comment link')} onclick={() => copyFocusLink({ kind: 'note', id: note.id }, 'diff')}>🔗</button>
                                 {#if !note.posted && editingNote !== note.id}
                                     <button class="btn icon" type="button" title={t('Редактировать', 'Edit')} disabled={noteBusy !== null} onclick={() => startNoteEdit(note)}>✎</button>
