@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- Sidebar review switches no longer lose the click to a background refresh: SSE/polling reloads are
+  skipped while a review is loading, so the newly selected review always wins over the old one.
+
 ### Added
 
 - Published findings start with a severity marker (🟥 blocker, 🟧 major, 🟨 minor, 🟦 question); the UI

@@ -106,6 +106,9 @@ export function scheduleReload(): void {
         reloadPending = true;
         return;
     }
+    // Пока пользователь открывает другое ревью, фоновый reload старого id
+    // мог бы выиграть гонку и вернуть старый сайдбар/контент.
+    if (app.loading) return;
     if (reloadTimer) clearTimeout(reloadTimer);
     reloadTimer = setTimeout(() => {
         reloadTimer = null;
@@ -113,6 +116,7 @@ export function scheduleReload(): void {
             reloadPending = true;
             return;
         }
+        if (app.loading) return;
         const id = app.review?.id;
         if (id) void loadReview(id, { silent: true });
         void loadReviews();
