@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-11-12
+
+### Added
+
+- A **Close thread** button in the thread card records the resolve intent and opens the publish
+  confirmation, so a thread can be closed without hunting for the checkbox.
+
+### Fixed
+
+- Overview thread and line-comment paths truncate inside the card and have a copy button.
+
+### Documentation
+
+- Clarify that `rules.sources` takes exact document paths, not glob patterns.
+
 ## [0.4.5] - 2026-11-12
 
 ### Documentation
