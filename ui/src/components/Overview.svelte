@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { app, focusLine, focusNote, focusThread, relativeTime, setTab } from '../lib/state.svelte';
+    import { app, focusLine, focusNote, focusThread, notify, relativeTime, setTab } from '../lib/state.svelte';
     import { plainText, truncate } from '../lib/format';
     import { plural, t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
@@ -14,6 +14,14 @@
         question: review.findings.filter((finding) => finding.level === 'question' && finding.status !== 'stale').length,
     });
     const pendingNotes = $derived(review.notes.filter((note) => note.toAgent && !note.agentReply));
+
+    function copyPath(path: string, line: number | null): void {
+        const value = `${path}${line ? `:${line}` : ''}`;
+        void navigator.clipboard?.writeText(value).then(
+            () => notify(t('Путь скопирован', 'Path copied'), 'ok'),
+            () => notify(t('Не удалось скопировать', 'Could not copy'), 'error'),
+        );
+    }
 </script>
 
 {#if review.errors.length}
@@ -97,7 +105,10 @@
                     <div class="muted small">
                         {thread.notes[0]?.author ?? '?'} · {relativeTime(thread.notes[0]?.createdAt ?? '')}
                         {#if thread.path}
-                            · <button class="path-link" onclick={() => focusLine(thread.path!, thread.line)}>{thread.path}:{thread.line ?? '?'}</button>
+                            · <span class="thread-location">
+                                <button class="path-link" title={`${thread.path}:${thread.line ?? '?'}`} onclick={() => focusLine(thread.path!, thread.line)}>{thread.path}:{thread.line ?? '?'}</button>
+                                <button class="btn icon" type="button" title={t('Скопировать путь', 'Copy path')} aria-label={t('Скопировать путь', 'Copy path')} onclick={() => copyPath(thread.path!, thread.line)}>⧉</button>
+                            </span>
                         {/if}
                     </div>
                 </div>
@@ -122,7 +133,10 @@
                 <div class="grow">
                     <div class="card-title">{truncate(plainText(note.text), 200)}</div>
                     <div class="muted small">
-                        <button class="path-link" onclick={() => focusNote(note)}>{note.file}:{note.line}</button>
+                        <span class="note-location">
+                            <button class="path-link" title={`${note.file}:${note.line}`} onclick={() => focusNote(note)}>{note.file}:{note.line}</button>
+                            <button class="btn icon" type="button" title={t('Скопировать путь', 'Copy path')} aria-label={t('Скопировать путь', 'Copy path')} onclick={() => copyPath(note.file, note.line)}>⧉</button>
+                        </span>
                         · {relativeTime(note.createdAt)}
                     </div>
                 </div>

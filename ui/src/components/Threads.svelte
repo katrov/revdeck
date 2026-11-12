@@ -37,10 +37,10 @@
         );
     }
 
-    async function save(threadId: string): Promise<void> {
+    async function save(threadId: string): Promise<boolean> {
         const review = app.review;
         const draft = draftFor(threadId);
-        if (!review || !draft) return;
+        if (!review || !draft) return false;
         if (!saving.includes(threadId)) saving = [...saving, threadId];
         try {
             const sent = {
@@ -59,8 +59,10 @@
             draft.replied = result.draft.replied;
             draft.resolved = result.draft.resolved;
             draft.error = result.draft.error;
+            return true;
         } catch (error) {
             notify(errorText(error), 'error');
+            return false;
         } finally {
             saving = saving.filter((item) => item !== threadId);
         }
@@ -75,6 +77,14 @@
         if (!draft) return;
         draft.resolve = value;
         void save(threadId);
+    }
+
+    async function closeThread(threadId: string): Promise<void> {
+        const draft = draftFor(threadId);
+        if (!draft) return;
+        draft.resolve = true;
+        if (!(await save(threadId))) return;
+        app.publishing = { kind: 'reply', ids: [threadId] };
     }
 
     function publishSelected(): void {
@@ -188,6 +198,9 @@
                     {t('обновлён', 'updated')} {relativeTime(thread.updatedAt)}
                 </div>
             </div>
+            {#if !thread.resolved}
+                <button class="btn" type="button" title={t('Закрыть тред: откроется подтверждение публикации', 'Close thread: a publish confirmation opens')} onclick={() => void closeThread(thread.id)}>{t('Закрыть тред', 'Close thread')}</button>
+            {/if}
             <button class="btn icon" type="button" title={t('Скопировать ссылку на тред', 'Copy thread link')} onclick={() => copyFocusLink({ kind: 'thread', id: thread.id }, 'threads')}>🔗</button>
             {#if draft.replied}<span class="badge ok">{t('ответ опубликован', 'reply published')}</span>{/if}
             {#if draft.error}<span class="badge err" title={draft.error}>{t('ошибка', 'error')}</span>{/if}

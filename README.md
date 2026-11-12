@@ -301,8 +301,10 @@ Provider tests use recorded CLI responses and need no network. See [CONTRIBUTING
 - Project checks are planned by the agent; running them requires `revdeck checks --run --yes`.
 - The UI opens a review from the **Open review** dialog; the working-copy root is required so the daemon
   can read `.revdeck.yml`.
-- Thread resolution is in the thread card; reactions are available on thread notes and on the MR/PR
-  description. Own platform comments can be edited or deleted from the thread card.
+- Thread resolution is in the thread card; the **Close thread** button records the resolve intent and
+  opens the publish confirmation, so closing is still a human-approved action. Reactions are available
+  on thread notes and on the MR/PR description. Own platform comments can be edited or deleted from the
+  thread card.
 - Reactions are loaded for every thread note after the review snapshot and refresh, so they are visible
   without an extra click.
 - Published findings start with a severity marker (🟥 blocker, 🟧 major, 🟨 minor, 🟦 question), so the
