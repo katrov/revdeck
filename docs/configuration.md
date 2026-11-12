@@ -58,7 +58,8 @@ review to a different project.
 
 ## rules
 
-- `sources` — the default documents when none of the `map` rows match. Empty — auto-discovery
+- `sources` — exact document paths (optional `#section`), not glob patterns. Use `map.match` to select
+  documents by changed path. The default documents when none of the `map` rows match. Empty — auto-discovery
   (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/Architecture.md`,
   `docs/STYLEGUIDE.md`, `docs/Styleguide.md`, `docs/CONTRIBUTING.md`).
 - `map` — a list of rules: `match` (a glob or an array of globs) and `docs` (an array of selectors).

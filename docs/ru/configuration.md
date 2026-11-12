@@ -56,7 +56,9 @@ publish:
 
 ## rules
 
-- `sources` — документы по умолчанию, если ни одна строка `map` не подошла. Пусто — автообнаружение
+- `sources` — точные пути к документам (можно с `#секцией`), не glob-шаблоны. Для выбора документов по
+  изменённым путям используйте `map.match`. Документы по умолчанию, если ни одна строка `map` не
+  подошла. Пусто — автообнаружение
   (`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/Architecture.md`,
   `docs/STYLEGUIDE.md`, `docs/Styleguide.md`, `docs/CONTRIBUTING.md`).
 - `map` — список правил: `match` (glob или массив glob) и `docs` (массив селекторов). Несколько
