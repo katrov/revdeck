@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-11-12
+
 ### Documentation
 
 - Document why the rule-discovery warnings appear and how to remove them, plus MCP tool allowlists for
