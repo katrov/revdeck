@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { app, applyRoute, bootstrap, loadReview, loadReviews, notify, setTab, subscribe } from './lib/state.svelte';
+    import { app, applyRoute, bootstrap, flushPendingReload, loadReview, loadReviews, notify, setTab, subscribe } from './lib/state.svelte';
     import { removeReview as removeReviewApi } from './lib/api';
     import type { ReviewListItem } from './lib/types';
     import type { Tab } from './lib/types';
@@ -149,11 +149,16 @@
         window.addEventListener('keydown', onKeydown);
         window.addEventListener('popstate', applyRoute);
         window.addEventListener('hashchange', applyRoute);
+        const onFocusOut = (): void => {
+            window.setTimeout(flushPendingReload, 900);
+        };
+        document.addEventListener('focusout', onFocusOut);
         return () => {
             unsubscribe();
             window.removeEventListener('keydown', onKeydown);
             window.removeEventListener('popstate', applyRoute);
             window.removeEventListener('hashchange', applyRoute);
+            document.removeEventListener('focusout', onFocusOut);
         };
     });
 </script>

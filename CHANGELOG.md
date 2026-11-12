@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- Text editing is no longer reset by background refreshes: SSE/polling updates are deferred while a
+  text field has focus, thread draft responses do not overwrite newer input, and the agent reply on a
+  line comment is now editable.
+
 ## [0.4.2] - 2026-11-12
 
 ### Added

@@ -19,6 +19,8 @@
     let viewed = $state<Record<string, boolean>>({});
     let editingNote = $state<string | null>(null);
     let editNoteText = $state('');
+    let editingAgent = $state<string | null>(null);
+    let editAgentText = $state('');
     let noteBusy = $state<string | null>(null);
 
     const file = $derived(app.diffFile);
@@ -63,6 +65,27 @@
     function startNoteEdit(note: { id: string; text: string }): void {
         editingNote = note.id;
         editNoteText = note.text;
+    }
+
+    function startAgentEdit(note: { id: string; agentReply: string }): void {
+        editingAgent = note.id;
+        editAgentText = note.agentReply;
+    }
+
+    async function saveAgentEdit(note: { id: string; agentReply: string }): Promise<void> {
+        const review = app.review;
+        if (!review) return;
+        noteBusy = note.id;
+        try {
+            await updateNote(review.id, note.id, { agentReply: editAgentText });
+            note.agentReply = editAgentText;
+            editingAgent = null;
+            notify(t('Ответ агента обновлён', 'Agent reply updated'), 'ok');
+        } catch (error) {
+            notify(errorText(error), 'error');
+        } finally {
+            noteBusy = null;
+        }
     }
 
     async function saveNoteEdit(note: { id: string; text: string }): Promise<void> {
@@ -319,6 +342,9 @@
                                 {/if}
                                 {#if note.posted}<span class="badge ok">{t('опубликовано', 'published')}</span>{/if}
                                 {#if note.agentReply}<span class="badge">{t('ответ агента', 'agent reply')}</span>{/if}
+                                {#if note.agentReply && editingAgent !== note.id}
+                                    <button class="btn icon" type="button" title={t('Редактировать ответ агента', 'Edit agent reply')} disabled={noteBusy !== null} onclick={() => startAgentEdit(note)}>✎</button>
+                                {/if}
                             </div>
                             {#if editingNote === note.id}
                                 <MarkdownEditor bind:value={editNoteText} rows={2} />
@@ -329,7 +355,15 @@
                             {:else}
                                 <div class="md"><Markdown source={note.text} /></div>
                             {/if}
-                            {#if note.agentReply}<div class="muted small">→ {note.agentReply}</div>{/if}
+                            {#if editingAgent === note.id}
+                                <MarkdownEditor bind:value={editAgentText} rows={2} />
+                                <div class="row end" style="margin-top: 4px">
+                                    <button class="btn" type="button" onclick={() => (editingAgent = null)}>{t('Отмена', 'Cancel')}</button>
+                                    <button class="btn primary" type="button" disabled={noteBusy !== null} onclick={() => void saveAgentEdit(note)}>{noteBusy ? t('Сохранение…', 'Saving…') : t('Сохранить', 'Save')}</button>
+                                </div>
+                            {:else if note.agentReply}
+                                <div class="muted small">→ {note.agentReply}</div>
+                            {/if}
                             {#if note.error}<div class="alert error">{note.error}</div>{/if}
                         </section>
                     {/each}

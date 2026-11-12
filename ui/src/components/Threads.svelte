@@ -43,13 +43,22 @@
         if (!review || !draft) return;
         if (!saving.includes(threadId)) saving = [...saving, threadId];
         try {
-            const result = await saveDraft(review.id, threadId, {
+            const sent = {
                 body: draft.body,
                 resolve: draft.resolve,
                 noteForAgent: draft.noteForAgent,
                 agentAction: draft.agentAction,
-            });
-            Object.assign(draft, result.draft);
+            };
+            const result = await saveDraft(review.id, threadId, sent);
+            // Не затираем то, что пользователь успел напечатать, пока шёл запрос.
+            if (draft.body === sent.body) draft.body = result.draft.body;
+            if (draft.resolve === sent.resolve) draft.resolve = result.draft.resolve;
+            if (draft.noteForAgent === sent.noteForAgent) draft.noteForAgent = result.draft.noteForAgent;
+            if (draft.agentAction === sent.agentAction) draft.agentAction = result.draft.agentAction;
+            draft.posted = result.draft.posted;
+            draft.replied = result.draft.replied;
+            draft.resolved = result.draft.resolved;
+            draft.error = result.draft.error;
         } catch (error) {
             notify(errorText(error), 'error');
         } finally {

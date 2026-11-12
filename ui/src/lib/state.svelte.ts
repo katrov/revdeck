@@ -31,7 +31,26 @@ export const app = $state({
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+let reloadPending = false;
 let loadRequest = 0;
+
+/** Не перезагружаем ревью, пока пользователь печатает: SSE/поллинг не должны затирать текст. */
+export function isEditingText(): boolean {
+    if (typeof document === 'undefined') return false;
+    const element = document.activeElement;
+    if (!element) return false;
+    if (element instanceof HTMLTextAreaElement) return true;
+    if (element instanceof HTMLInputElement) {
+        return !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file'].includes(element.type);
+    }
+    return (element as HTMLElement).isContentEditable;
+}
+
+export function flushPendingReload(): void {
+    if (!reloadPending || isEditingText()) return;
+    reloadPending = false;
+    scheduleReload();
+}
 
 export function notify(text: string, kind: Toast['kind'] = 'info'): void {
     app.toast = { text, kind, id: Date.now() };
@@ -83,8 +102,17 @@ export async function loadReview(id: string, options: { refresh?: boolean; silen
 }
 
 export function scheduleReload(): void {
+    if (isEditingText()) {
+        reloadPending = true;
+        return;
+    }
     if (reloadTimer) clearTimeout(reloadTimer);
     reloadTimer = setTimeout(() => {
+        reloadTimer = null;
+        if (isEditingText()) {
+            reloadPending = true;
+            return;
+        }
         const id = app.review?.id;
         if (id) void loadReview(id, { silent: true });
         void loadReviews();
