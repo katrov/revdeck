@@ -90,7 +90,9 @@ export async function loadReview(id: string, options: { refresh?: boolean; silen
         if (!app.diffFile || !data.review.files.some((file) => file.path === app.diffFile)) {
             app.diffFile = data.review.files[0]?.path ?? null;
         }
-        void loadReactions(data.review);
+        // Передаём proxied app.review, иначе запись note.reactions в сырой объект
+        // не уведомит Svelte и реакции не появятся до ручного переключения.
+        if (app.review) void loadReactions(app.review);
         writeHash(false);
     } catch (error) {
         if (request !== loadRequest) return;

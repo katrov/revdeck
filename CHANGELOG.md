@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Thread and thread-comment reactions now appear immediately after the review loads or refreshes; the
+  reaction list is written through Svelte's proxied review state instead of the raw snapshot.
 - Sidebar review switches no longer lose the click to a background refresh: SSE/polling reloads are
   skipped while a review is loading, so the newly selected review always wins over the old one.
 

@@ -302,6 +302,8 @@ Provider tests use recorded CLI responses and need no network. See [CONTRIBUTING
   can read `.revdeck.yml`.
 - Thread resolution is in the thread card; reactions are available on thread notes and on the MR/PR
   description. Own platform comments can be edited or deleted from the thread card.
+- Reactions are loaded for every thread note after the review snapshot and refresh, so they are visible
+  without an extra click.
 - Published findings start with a severity marker (🟥 blocker, 🟧 major, 🟨 minor, 🟦 question), so the
   level is visible directly in GitLab/GitHub; the UI badges use the same colors and icons.
 - GitHub has no public attachment API: the Attach button is disabled there; uploads work in GitLab.
