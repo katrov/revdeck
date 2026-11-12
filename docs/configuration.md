@@ -112,6 +112,8 @@ Running: `revdeck checks <N> --run --yes`. The MCP tool only shows the plan.
 | `REVDECK_STATE_DIR` | state directory (default `~/.local/state/revdeck`) |
 | `REVDECK_RUNTIME_DIR` | socket directory (default `$XDG_RUNTIME_DIR/revdeck`) |
 | `REVDECK_URL` + `REVDECK_TOKEN` | connect to the daemon over HTTP (container/port forwarding) |
+| `REVDECK_DEV_CONTAINER=1` | do not start a local daemon; fail with a host-daemon hint instead |
+| `REVDECK_UI_HOST` | host used by `revdeck ui` from a container (for example `host.docker.internal`) |
 | `REVDECK_ROOT` | project root for the MCP server |
 | `REVDECK_LANG` | CLI/MCP/daemon language: `ru` or `en` (default: system locale) |
 

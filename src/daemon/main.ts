@@ -30,6 +30,7 @@ async function main(): Promise<void> {
     const { values } = parseArgs({
         options: {
             port: { type: 'string' },
+            host: { type: 'string' },
             'state-dir': { type: 'string' },
             'runtime-dir': { type: 'string' },
             'ui-dir': { type: 'string' },
@@ -80,6 +81,7 @@ async function main(): Promise<void> {
         token,
         uiDir,
         ...(values.port ? { port: Number(values.port) } : {}),
+        ...(values.host ? { host: String(values.host) } : {}),
         version: VERSION,
     });
     const info: DaemonInfo = {

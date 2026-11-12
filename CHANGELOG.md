@@ -18,6 +18,10 @@ All notable changes to this project are documented here. The format is based on
   through the host daemon. GitLab project uploads return absolute URLs, relative `/uploads/` links are
   normalized to the platform host during publish, and the sanitizer allows images only from that host.
   Only raster images and videos with matching extension, MIME and file signature are accepted.
+- Devcontainer support: `revdeck devcontainer --write` mounts the host runtime and state directories,
+  sets `REVDECK_*` variables and marks the container, so revdeck reuses the host daemon and never runs
+  `gh`/`glab` inside. `revdeck doctor` checks the host daemon in this mode; `revdeck daemon start
+  --host` exposes the HTTP UI, and `revdeck eject` removes the generated mounts/env.
 
 ### Fixed
 

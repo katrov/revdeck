@@ -81,6 +81,7 @@ revdeck ui            # ссылка на локальный интерфейс
 |---|---|
 | `revdeck init` | конфиг, адаптеры, MCP |
 | `revdeck eject [--yes]` | удалить конфиг, адаптеры и MCP-запись revdeck |
+| `revdeck devcontainer [--write]` | смонтировать сокет/state демона хоста в devcontainer |
 | `revdeck doctor` | окружение, `glab`/`gh`, демон, адаптеры |
 | `revdeck list [--remote]` | локальные или открытые на платформе ревью |
 | `revdeck open <N│URL>` | загрузить ревью |
@@ -114,6 +115,22 @@ GitLab поддержан через project uploads (нужен `glab` с по�
 API загрузки вложений, поэтому кнопка там отключена, а ссылку нужно вставить вручную. Принимаются
 только растровые картинки и видео (PNG, JPEG, GIF, WebP, AVIF, MP4, WebM, OGV, MOV); SVG и
 произвольные файлы отклоняются.
+
+## Devcontainer
+
+Демон, `glab` и `gh` остаются на хосте. Из корня репозитория:
+
+```bash
+revdeck devcontainer          # показать mounts и окружение
+revdeck devcontainer --write  # добавить их в .devcontainer/devcontainer.json
+```
+
+Команда монтирует runtime-каталог хоста в `/run/revdeck` (сокет) и state-каталог в `/var/lib/revdeck`
+(только чтение, `daemon.json`) и выставляет `REVDECK_RUNTIME_DIR`, `REVDECK_STATE_DIR`,
+`REVDECK_DEV_CONTAINER=1` и `REVDECK_UI_HOST`. После пересборки контейнера запустите демон на хосте.
+В контейнере revdeck никогда не запускает свой демон, поэтому `gh`/`glab` там не вызываются; если
+сокет хоста недоступен, команда падает с понятной ошибкой `DEVCONTAINER`. `revdeck doctor` знает об
+этом режиме. Для UI из контейнера запустите демон на хосте с `revdeck daemon start --host 0.0.0.0`.
 
 ## MCP
 

@@ -73,14 +73,44 @@ MCP-клиент DSH подключается в профиле Cordis:
 `/revdeck` требует host-команды (`ctx.commands.register`) или client action — это отдельный
 плагин-обёртка. До него используйте skill + MCP-инструменты: `/`-слэш не обязателен для работы.
 
-## Контейнер
+## Контейнер и devcontainer
 
-Демон работает на хосте, агент — в контейнере. Варианты по убыванию удобства:
+Демон, `glab` и `gh` остаются на хосте; контейнеру нужен только CLI или MCP-сервер revdeck.
+Настройки devcontainer генерируются из корня репозитория:
 
-1. Смонтировать `$XDG_RUNTIME_DIR/revdeck` в контейнер тем же путём — сокет заработает как есть.
-2. `REVDECK_URL=http://host.docker.internal:<port>` и `REVDECK_TOKEN=<token>` — HTTP-транспорт.
-   Порт и токен печатает `revdeck daemon start` (или `daemon.json` в state-каталоге).
-3. `revdeck export <N>` на хосте и `revdeck import <N>` в контейнере — файловый мост.
+```bash
+revdeck devcontainer          # показать mounts и окружение
+revdeck devcontainer --write  # добавить их в .devcontainer/devcontainer.json
+```
+
+`--write` монтирует runtime- и state-каталоги хоста по фиксированным путям и выставляет:
+
+```json
+{
+  "REVDECK_RUNTIME_DIR": "/run/revdeck",
+  "REVDECK_STATE_DIR": "/var/lib/revdeck",
+  "REVDECK_DEV_CONTAINER": "1",
+  "REVDECK_UI_HOST": "host.docker.internal"
+}
+```
+
+Runtime-каталог монтируется на запись (там сокет), state-каталог — только на чтение (клиент читает
+`daemon.json` с токеном). Чужие mounts, переменные окружения и `runArgs` сохраняются; revdeck
+управляет только двумя своими mounts и ключами `REVDECK_*`.
+
+После пересборки контейнера запустите демон на хосте (`revdeck daemon start`). В контейнере revdeck
+никогда не запускает свой демон: если сокет недоступен, команда падает с ошибкой `DEVCONTAINER` и
+подсказкой. `revdeck doctor` не ищет `glab`/`gh` в контейнере.
+
+Пользователь контейнера должен иметь доступ к сокету хоста (обычно совпадает UID; сокет 0600). Чтобы
+открыть UI из контейнера, запустите демон на хосте с `revdeck daemon start --host 0.0.0.0` и
+используйте `host.docker.internal`; иначе открывайте UI на хосте.
+
+Запасные варианты:
+
+1. `REVDECK_URL=http://host.docker.internal:<port>` и `REVDECK_TOKEN=<token>` — HTTP-транспорт,
+   демон на хосте запущен с `--host 0.0.0.0`.
+2. `revdeck export <N>` на хосте и `revdeck import <N>` в контейнере — файловый мост.
 
 ## Проверка
 
@@ -88,4 +118,5 @@ MCP-клиент DSH подключается в профиле Cordis:
 revdeck doctor
 ```
 
-Показывает найденные бинарники, авторизацию `glab`/`gh`, состояние демона и установленный адаптер.
+Показывает найденные бинарники, авторизацию `glab`/`gh`, состояние демона и установленный адаптер. В
+devcontainer проверяет демон хоста, а не ищет `glab`/`gh` внутри.

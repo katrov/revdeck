@@ -145,7 +145,23 @@ export async function daemonInfo(): Promise<DaemonInfo | null> {
     }
 }
 
-export async function ensureDaemon(options: { autoStart?: boolean } = {}): Promise<{ client: DaemonClient; started: boolean }> {
+/** Запущены ли мы внутри devcontainer, где демон и gh/glab остаются на хосте. */
+export function isDevContainer(): boolean {
+    return process.env.REVDECK_DEV_CONTAINER === '1';
+}
+
+export function devcontainerHint(): string {
+    const runtime = process.env.REVDECK_RUNTIME_DIR ?? '(REVDECK_RUNTIME_DIR)';
+    const state = process.env.REVDECK_STATE_DIR ?? '(REVDECK_STATE_DIR)';
+    return [
+        'демон revdeck не найден на хосте',
+        'на хосте: revdeck daemon start',
+        `проверьте mounts из revdeck devcontainer --write: ${runtime} и ${state}`,
+        'gh/glab должны оставаться на хосте: внутри контейнера их запускать не нужно',
+    ].join('; ');
+}
+
+export async function ensureDaemon(options: { autoStart?: boolean; daemonArgs?: string[] } = {}): Promise<{ client: DaemonClient; started: boolean }> {
     const url = process.env.REVDECK_URL;
     if (url) {
         const token = process.env.REVDECK_TOKEN;
@@ -155,9 +171,12 @@ export async function ensureDaemon(options: { autoStart?: boolean } = {}): Promi
     try {
         return { client: await connectSocket(), started: false };
     } catch (error) {
+        if (isDevContainer()) {
+            throw new RpcError(`devcontainer: ${devcontainerHint()}`, 'DEVCONTAINER', 'revdeck devcontainer --write и пересоберите контейнер');
+        }
         if (options.autoStart === false) throw error;
     }
-    await spawnDaemon();
+    await spawnDaemon(options.daemonArgs ?? []);
     const deadline = Date.now() + 15_000;
     let lastError: unknown = null;
     while (Date.now() < deadline) {
@@ -175,9 +194,9 @@ export async function ensureDaemon(options: { autoStart?: boolean } = {}): Promi
     );
 }
 
-async function spawnDaemon(): Promise<void> {
+async function spawnDaemon(extraArgs: string[] = []): Promise<void> {
     const entry = daemonEntry();
-    const child = spawn(entry.command, entry.args, {
+    const child = spawn(entry.command, [...entry.args, ...extraArgs], {
         detached: true,
         stdio: 'ignore',
         cwd: process.cwd(),
@@ -200,6 +219,13 @@ function daemonEntry(): { command: string; args: string[] } {
     const sibling = path.join(here, '..', 'dist', 'daemon.js');
     if (existsSync(sibling)) return { command: process.execPath, args: [sibling] };
     throw new RpcError('не найден вход демона (dist/daemon.js)', 'DAEMON');
+}
+
+/** URL интерфейса с учётом devcontainer: host.docker.internal вместо 127.0.0.1. */
+export function uiBaseUrl(info: { url: string; port: number }): string {
+    const host = process.env.REVDECK_UI_HOST;
+    if (!isDevContainer() || !host) return info.url;
+    return `http://${host}:${info.port}`;
 }
 
 export async function isDaemonRunning(): Promise<boolean> {

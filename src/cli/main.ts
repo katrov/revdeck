@@ -8,7 +8,7 @@ import { loadConfig } from '../core/config.js';
 import { buildEffectiveRules, renderRules } from '../core/rules.js';
 import { changedPaths } from '../core/diff.js';
 import type { ReviewView } from '../daemon/view.js';
-import { isDaemonRunning, ensureDaemon, daemonInfo, type DaemonClient } from '../client.js';
+import { isDaemonRunning, ensureDaemon, daemonInfo, uiBaseUrl, isDevContainer, type DaemonClient } from '../client.js';
 import { run, which } from '../core/exec.js';
 import { redactLine } from '../core/redact.js';
 import { gitRemote } from '../core/git.js';
@@ -17,6 +17,7 @@ import { detectLocale, locale, plural, setLocale, tr } from '../core/locale.js';
 import { fail, parseList, printJson, reviewLine, truncate, usage, when, writers } from './format.js';
 import { installService, runInit } from './init.js';
 import { runEject } from './eject.js';
+import { runDevcontainer } from './devcontainer.js';
 import { exportReview, importReview } from './export.js';
 import { attachmentSpec, MAX_ATTACHMENT_BYTES } from '../core/attachments.js';
 import { contextPayload, renderContext } from '../context.js';
@@ -50,6 +51,7 @@ const OPTIONS = {
     adapters: { type: 'string' },
     'no-service': { type: 'boolean', default: false },
     'keep-config': { type: 'boolean', default: false },
+    write: { type: 'boolean', default: false },
     explain: { type: 'string' },
     limit: { type: 'string' },
     decision: { type: 'string' },
@@ -78,6 +80,7 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
 
   revdeck init            настроить проект: .revdeck.yml, адаптеры, MCP
   revdeck eject           удалить revdeck из проекта (--yes; --keep-config)
+  revdeck devcontainer    подключить devcontainer к демону хоста (--write)
   revdeck doctor          проверить окружение и доступы
   revdeck daemon <start|stop|status|logs|restart>
   revdeck list            открытые ревью (локальный кеш), --remote — с платформы
@@ -106,6 +109,7 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
 
   revdeck init            set up a project: .revdeck.yml, adapters, MCP
   revdeck eject           remove revdeck from the project (--yes; --keep-config)
+  revdeck devcontainer    connect a devcontainer to the host daemon (--write)
   revdeck doctor          check the environment and access
   revdeck daemon <start|stop|status|logs|restart>
   revdeck list            open reviews (local cache), --remote — from the platform
@@ -159,10 +163,12 @@ async function main(): Promise<void> {
             return runInit(root, { force: values.force === true, adapters: parseList(values.adapters as string), noService: values['no-service'] === true, locale: values.lang === 'ru' || values.lang === 'en' ? values.lang : detectLocale(), outputLanguage: values.lang === 'ru' || values.lang === 'en' ? values.lang : 'auto' });
         case 'eject':
             return runEject(root, { yes: values.yes === true && values['dry-run'] !== true, keepConfig: values['keep-config'] === true });
+        case 'devcontainer':
+            return runDevcontainer(root, { write: values.write === true });
         case 'doctor':
             return doctor(root);
         case 'daemon':
-            return daemon(positionals[0] ?? 'status');
+            return daemon(positionals[0] ?? 'status', values);
         case 'list':
             return list(root, values);
         case 'open':
@@ -316,21 +322,22 @@ async function ui(arg: string | undefined, values: Values): Promise<void> {
     });
     const info = await daemonInfo();
     if (!info) fail(tr('демон не запущен', 'the daemon is not running'), 'revdeck daemon start');
-    writers.out(`${info.url}/?t=${info.token}`);
-    if (values.open) openBrowser(`${info.url}/?t=${info.token}`);
+    const url = `${uiBaseUrl(info)}/?t=${info.token}`;
+    writers.out(url);
+    if (values.open) openBrowser(url);
 }
 
 function printUi(reviewId: string | undefined, values: Values): void {
     const info = daemonInfoSync();
     if (!info) return writers.err(tr('демон не запущен: revdeck daemon start', 'the daemon is not running: revdeck daemon start'));
-    const url = `${info.url}/?t=${info.token}${reviewId ? `&review=${encodeURIComponent(reviewId)}` : ''}`;
+    const url = `${uiBaseUrl(info)}/?t=${info.token}${reviewId ? `&review=${encodeURIComponent(reviewId)}` : ''}`;
     writers.out(`UI: ${url}`);
     if (values.open) openBrowser(url);
 }
 
-function daemonInfoSync(): { url: string; token: string } | null {
+function daemonInfoSync(): { url: string; token: string; port: number } | null {
     try {
-        return JSON.parse(readFileSync(daemonInfoPath(), 'utf8')) as { url: string; token: string };
+        return JSON.parse(readFileSync(daemonInfoPath(), 'utf8')) as { url: string; token: string; port: number };
     } catch {
         return null;
     }
@@ -344,14 +351,16 @@ function openBrowser(url: string): void {
     });
 }
 
-async function daemon(action: string): Promise<void> {
+async function daemon(action: string, values: Values = {}): Promise<void> {
     if (action === 'start') {
-        const { client, started } = await ensureDaemon();
+        const { client, started } = await ensureDaemon({
+            ...(values.host ? { daemonArgs: ['--host', String(values.host)] } : {}),
+        });
         const ping = await client.request<{ pid: number; version: string }>('ping');
         client.close();
         const info = await daemonInfo();
         writers.out(`${started ? tr('запущен', 'started') : tr('уже работает', 'already running')} ${tr('демон', 'daemon')} pid ${ping.pid}, ${tr('версия', 'version')} ${ping.version}`);
-        if (info) writers.out(`${info.url}/?t=${info.token}`);
+        if (info) writers.out(`${uiBaseUrl(info)}/?t=${info.token}`);
         return;
     }
     if (action === 'status') {
@@ -392,7 +401,7 @@ async function daemon(action: string): Promise<void> {
     }
     if (action === 'restart') {
         await daemon('stop');
-        return daemon('start');
+        return daemon('start', values);
     }
     if (action === 'logs') {
         try {
@@ -739,12 +748,20 @@ async function readStdin(): Promise<string> {
 
 async function doctor(root: string): Promise<void> {
     const rows: [string, 'ok' | 'warn' | 'fail', string][] = [];
+    const container = isDevContainer();
     const major = Number(process.version.slice(1).split('.')[0]);
     rows.push(['node', major >= 22 ? 'ok' : 'fail', process.version]);
+    if (container) {
+        rows.push(['mode', 'ok', tr('devcontainer: revdeck и gh/glab работают на хосте', 'devcontainer: revdeck and gh/glab run on the host')]);
+    }
     const binaries: Record<string, boolean> = {};
     for (const bin of ['glab', 'gh', 'git']) {
         const present = await which(bin);
         binaries[bin] = present;
+        if (container && (bin === 'glab' || bin === 'gh')) {
+            rows.push([bin, 'ok', present ? tr('есть в контейнере, но не используется', 'present in the container but unused') : tr('не нужен в контейнере: работает на хосте', 'not needed in the container: the host runs it')]);
+            continue;
+        }
         rows.push([bin, present ? 'ok' : 'warn', present ? tr('найден', 'found') : tr('не найден', 'not found')]);
     }
 
@@ -758,27 +775,38 @@ async function doctor(root: string): Promise<void> {
         rows.push(['config', 'fail', redactLine(error)]);
     }
 
-    if (host && binaries.glab) {
-        try {
-            await run('glab', ['auth', 'status', '--hostname', host], { timeoutMs: 15_000 });
-            rows.push(['glab auth', 'ok', host]);
-        } catch (error) {
-            rows.push(['glab auth', 'warn', `${tr('нет доступа к', 'no access to')} ${host}: ${redactLine(error).slice(0, 120)}`]);
+    if (!container) {
+        if (host && binaries.glab) {
+            try {
+                await run('glab', ['auth', 'status', '--hostname', host], { timeoutMs: 15_000 });
+                rows.push(['glab auth', 'ok', host]);
+            } catch (error) {
+                rows.push(['glab auth', 'warn', `${tr('нет доступа к', 'no access to')} ${host}: ${redactLine(error).slice(0, 120)}`]);
+            }
         }
-    }
-    if (host && binaries.gh) {
-        try {
-            await run('gh', ['auth', 'status'], { timeoutMs: 15_000, env: { GH_HOST: host } });
-            rows.push(['gh auth', 'ok', host]);
-        } catch (error) {
-            rows.push(['gh auth', 'warn', `${tr('нет доступа к', 'no access to')} ${host}: ${redactLine(error).slice(0, 120)}`]);
+        if (host && binaries.gh) {
+            try {
+                await run('gh', ['auth', 'status'], { timeoutMs: 15_000, env: { GH_HOST: host } });
+                rows.push(['gh auth', 'ok', host]);
+            } catch (error) {
+                rows.push(['gh auth', 'warn', `${tr('нет доступа к', 'no access to')} ${host}: ${redactLine(error).slice(0, 120)}`]);
+            }
         }
     }
 
     const running = await isDaemonRunning();
     const info = await daemonInfo();
-    rows.push(['daemon', running ? 'ok' : 'warn', running && info ? `${info.url} (pid ${info.pid})` : tr('не запущен (запустится сам)', 'not running (starts on demand)')]);
-    rows.push(['ui', 'ok', info?.url ?? tr('будет доступен после запуска', 'available after the daemon starts')]);
+    const daemonStatus: 'ok' | 'warn' | 'fail' = running ? 'ok' : container ? 'fail' : 'warn';
+    rows.push([
+        'daemon',
+        daemonStatus,
+        running && info
+            ? `${uiBaseUrl(info)} (pid ${info.pid})`
+            : container
+              ? tr('не найден: на хосте выполните revdeck daemon start', 'not found: run revdeck daemon start on the host')
+              : tr('не запущен (запустится сам)', 'not running (starts on demand)'),
+    ]);
+    rows.push(['ui', running ? 'ok' : 'warn', info ? uiBaseUrl(info) : tr('будет доступен после запуска', 'available after the daemon starts')]);
 
     const { existsSync } = await import('node:fs');
     const skill =

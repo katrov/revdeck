@@ -74,15 +74,44 @@ The tools will appear as `mcp__revdeck__*`. DSH does not support MCP prompt temp
 requires a host command (`ctx.commands.register`) or a client action — that is a separate wrapper
 plugin. Until then, use the skill + MCP tools: the `/` slash is not required for things to work.
 
-## Container
+## Container and devcontainer
 
-The daemon runs on the host, the agent in a container. Options in decreasing order of convenience:
+The daemon, `glab` and `gh` stay on the host; the container only needs the revdeck CLI or MCP server.
+Generate the devcontainer settings from the repository root:
 
-1. Mount `$XDG_RUNTIME_DIR/revdeck` into the container at the same path — the socket works as is.
-2. `REVDECK_URL=http://host.docker.internal:<port>` and `REVDECK_TOKEN=<token>` — the HTTP transport.
-   The port and token are printed by `revdeck daemon start` (or in `daemon.json` in the state
-   directory).
-3. `revdeck export <N>` on the host and `revdeck import <N>` in the container — a file bridge.
+```bash
+revdeck devcontainer          # print the mounts and environment
+revdeck devcontainer --write  # merge them into .devcontainer/devcontainer.json
+```
+
+`--write` mounts the host runtime and state directories at fixed paths and sets:
+
+```json
+{
+  "REVDECK_RUNTIME_DIR": "/run/revdeck",
+  "REVDECK_STATE_DIR": "/var/lib/revdeck",
+  "REVDECK_DEV_CONTAINER": "1",
+  "REVDECK_UI_HOST": "host.docker.internal"
+}
+```
+
+The runtime directory is mounted read-write (the socket lives there), the state directory is
+read-only (the client reads `daemon.json` with the token). Existing mounts, environment variables and
+`runArgs` are preserved; only the two revdeck mounts and the `REVDECK_*` keys are managed.
+
+After rebuilding the container, start the daemon on the host (`revdeck daemon start`). Inside the
+container `revdeck` never starts its own daemon: if the socket is unreachable it fails with a
+`DEVCONTAINER` error and a hint. `revdeck doctor` does not look for `glab`/`gh` in the container.
+
+The container user must be able to connect to the host socket (normally the same UID; the socket is
+0600). To open the UI from the container, start the host daemon with `revdeck daemon start --host
+0.0.0.0` and use `host.docker.internal`; otherwise open the UI on the host.
+
+Fallbacks:
+
+1. `REVDECK_URL=http://host.docker.internal:<port>` and `REVDECK_TOKEN=<token>` — the HTTP transport,
+   with the daemon started on the host with `--host 0.0.0.0`.
+2. `revdeck export <N>` on the host and `revdeck import <N>` in the container — a file bridge.
 
 ## Verification
 
@@ -90,4 +119,5 @@ The daemon runs on the host, the agent in a container. Options in decreasing ord
 revdeck doctor
 ```
 
-Shows the binaries found, `glab`/`gh` authorization, daemon status and the installed adapter.
+Shows the binaries found, `glab`/`gh` authorization, daemon status and the installed adapter. In a
+devcontainer it checks the host daemon instead of looking for `glab`/`gh` inside.

@@ -110,6 +110,8 @@ publish:
 | `REVDECK_STATE_DIR` | каталог состояния (по умолчанию `~/.local/state/revdeck`) |
 | `REVDECK_RUNTIME_DIR` | каталог сокета (по умолчанию `$XDG_RUNTIME_DIR/revdeck`) |
 | `REVDECK_URL` + `REVDECK_TOKEN` | подключение к демону по HTTP (контейнер/проброс порта) |
+| `REVDECK_DEV_CONTAINER=1` | не запускать локальный демон, а подсказать про демон хоста |
+| `REVDECK_UI_HOST` | хост для `revdeck ui` из контейнера (например, `host.docker.internal`) |
 | `REVDECK_ROOT` | корень проекта для MCP-сервера |
 | `REVDECK_LANG` | язык CLI/MCP/демона: `ru` или `en` (по умолчанию системная локаль) |
 

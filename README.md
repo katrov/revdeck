@@ -95,6 +95,7 @@ Russian READMEs live in this repository; translation fixes are welcome.
 |---|---|
 | `revdeck init` | config, harness adapters, MCP |
 | `revdeck eject [--yes]` | remove revdeck-owned config, adapters and MCP entry |
+| `revdeck devcontainer [--write]` | mount the host daemon socket/state into a devcontainer |
 | `revdeck doctor` | environment, `glab`/`gh` auth, daemon, adapters |
 | `revdeck list [--remote]` | tracked reviews or open ones from the platform |
 | `revdeck open <N\|URL>` | load a review |
@@ -128,6 +129,23 @@ GitLab is supported through project uploads (requires a `glab` with `--form` sup
 public attachment API, so the button is disabled there and a link must be pasted manually. Only raster
 images and videos (PNG, JPEG, GIF, WebP, AVIF, MP4, WebM, OGV, MOV) are accepted; SVG and arbitrary
 files are rejected.
+
+## Devcontainer
+
+The daemon, `glab` and `gh` stay on the host. From the repository root:
+
+```bash
+revdeck devcontainer          # print the mounts and environment
+revdeck devcontainer --write  # merge them into .devcontainer/devcontainer.json
+```
+
+The command mounts the host runtime directory at `/run/revdeck` (socket) and the state directory at
+`/var/lib/revdeck` (read-only `daemon.json`), and sets `REVDECK_RUNTIME_DIR`, `REVDECK_STATE_DIR`,
+`REVDECK_DEV_CONTAINER=1` and `REVDECK_UI_HOST`. After rebuilding the container, start the daemon on
+the host. Inside the container revdeck never starts a local daemon, so `gh`/`glab` are never invoked
+there; if the host socket is missing it fails with a clear `DEVCONTAINER` error. `revdeck doctor` is
+aware of this mode. For the UI from the container, start the host daemon with
+`revdeck daemon start --host 0.0.0.0`.
 
 ## MCP
 

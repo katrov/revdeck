@@ -2,6 +2,8 @@ import { existsSync } from 'node:fs';
 import { lstat, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { findRepoRoot } from '../core/paths.js';
+import { isRecord, parseJsonc } from '../core/jsonc.js';
+import { CONTAINER_RUNTIME_DIR, CONTAINER_STATE_DIR } from './devcontainer.js';
 import { tr } from '../core/locale.js';
 import { writers } from './format.js';
 
@@ -93,6 +95,50 @@ export async function runEject(rootInput: string, options: EjectOptions): Promis
                 await writeFile(file, `${JSON.stringify(data, null, 2)}\n`);
             },
         });
+    }
+
+    const devcontainer = path.join(root, '.devcontainer', 'devcontainer.json');
+    if (existsSync(devcontainer)) {
+        const text = await readFile(devcontainer, 'utf8');
+        try {
+            const parsed = parseJsonc(text);
+            if (isRecord(parsed)) {
+                const next = { ...parsed };
+                let changed = false;
+                if (Array.isArray(next.mounts)) {
+                    const mounts = next.mounts.filter((item) => !(isRecord(item) && (item.target === CONTAINER_RUNTIME_DIR || item.target === CONTAINER_STATE_DIR)));
+                    if (mounts.length !== next.mounts.length) {
+                        next.mounts = mounts;
+                        changed = true;
+                    }
+                }
+                for (const key of ['containerEnv', 'remoteEnv'] as const) {
+                    if (!isRecord(next[key])) continue;
+                    const env = { ...(next[key] as Record<string, unknown>) };
+                    for (const name of ['REVDECK_RUNTIME_DIR', 'REVDECK_STATE_DIR', 'REVDECK_DEV_CONTAINER', 'REVDECK_UI_HOST']) delete env[name];
+                    if (Object.keys(env).length !== Object.keys(next[key] as Record<string, unknown>).length) {
+                        next[key] = env;
+                        changed = true;
+                    }
+                }
+                if (Array.isArray(next.runArgs)) {
+                    const args = next.runArgs.filter((item) => item !== '--add-host=host.docker.internal:host-gateway');
+                    if (args.length !== next.runArgs.length) {
+                        next.runArgs = args;
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    changes.push({
+                        path: '.devcontainer/devcontainer.json',
+                        action: tr('убрать подключение к демону хоста', 'remove the host daemon connection'),
+                        remove: () => writeFile(devcontainer, `${JSON.stringify(next, null, 2)}\n`),
+                    });
+                }
+            }
+        } catch {
+            warnings.push(`.devcontainer/devcontainer.json: ${tr('не JSONC — не трогаю', 'not JSONC — leaving it untouched')}`);
+        }
     }
 
     const cache = path.join(root, '.revdeck');
