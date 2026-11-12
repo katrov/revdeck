@@ -5,7 +5,7 @@
     import { truncate } from '../lib/format';
     import { t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
-    import AttachmentButton from './AttachmentButton.svelte';
+    import MarkdownEditor from './MarkdownEditor.svelte';
 
     let levelFilter = $state<'all' | Level>('all');
     let statusFilter = $state<'all' | 'open' | 'published'>('all');
@@ -155,25 +155,15 @@
         {#if finding.publishError}<div class="alert error" style="margin-top: 8px">{finding.publishError}</div>{/if}
 
         <label class="muted small" for={`comment-${finding.id}`}>{t('Текст комментария для платформы', 'Comment text for the platform')}</label>
-        <textarea
+        <MarkdownEditor
             id={`comment-${finding.id}`}
-            value={finding.comment}
-            oninput={(event) => {
-                finding.comment = event.currentTarget.value;
-                scheduleSave();
-            }}
-            rows="3"
+            bind:value={finding.comment}
+            onchange={scheduleSave}
+            rows={3}
             disabled={finding.status === 'published'}
-        ></textarea>
+        />
 
         <div class="row" style="margin-top: 8px">
-            <AttachmentButton
-                disabled={finding.status === 'published'}
-                oninsert={(markdown) => {
-                    finding.comment += markdown;
-                    scheduleSave();
-                }}
-            />
             <button class="btn" class:primary={decision === 'accept'} onclick={() => void decide(finding, 'accept')}>{t('Принять', 'Accept')}</button>
             <button class="btn" onclick={() => void decide(finding, 'discuss')}>{t('Обсудить', 'Discuss')}</button>
             <button class="btn danger" class:primary={decision === 'reject'} onclick={() => void decide(finding, 'reject')}>{t('Отклонить', 'Reject')}</button>

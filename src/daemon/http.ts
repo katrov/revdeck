@@ -47,7 +47,7 @@ const SECURITY_HEADERS: Record<string, string> = {
     'x-frame-options': 'DENY',
     'referrer-policy': 'no-referrer',
     'content-security-policy':
-        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; media-src 'self' http: https:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
 };
 
 const COOKIE = 'revdeck_session';

@@ -1,16 +1,27 @@
 /**
  * Минимальный безопасный markdown: сначала экранируется весь HTML, затем
- * добавляется разметка. Картинки не поддерживаются (внешние URL не грузятся).
+ * добавляется разметка. Картинки и видео разрешены только с хоста платформы
+ * или из её /uploads/: внешние URL не загружаются, чтобы комментарий не
+ * превращался в трекер.
  */
 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+const IMAGE = /!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+["']([^"']*)["'])?\s*\)\s*(?:\{([^}]*)\})?/g;
+const VIDEO = /\.(?:mp4|m4v|webm|ogv|mov)(?:[?#]|$)/i;
+
+export interface MarkdownOptions {
+    /** База платформы, например https://gitlab.example.com. */
+    baseUrl?: string;
+}
 
 export function escapeHtml(value: string): string {
     return value.replace(/[&<>"']/g, (char) => ESCAPES[char] ?? char);
 }
 
-function inline(value: string): string {
+function inline(value: string, options: MarkdownOptions): string {
     return value
+        .replace(IMAGE, (_match, alt: string, url: string, _title: string, attributes: string | undefined) => renderMedia(alt, url, attributes, options))
         .replace(/`([^`\n]+)`/g, '<code>$1</code>')
         .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
         .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<em>$2</em>')
@@ -18,7 +29,50 @@ function inline(value: string): string {
         .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noreferrer noopener">$2</a>');
 }
 
-export function renderMarkdown(source: string): string {
+function renderMedia(alt: string, rawUrl: string, attributes: string | undefined, options: MarkdownOptions): string {
+    const url = resolveMediaUrl(rawUrl, options.baseUrl);
+    if (!url) {
+        const href = /^https?:\/\//i.test(rawUrl) ? rawUrl : '';
+        return href ? `<a href="${href}" target="_blank" rel="noreferrer noopener">${alt || href}</a>` : alt;
+    }
+    const dimensions = parseDimensions(attributes);
+    if (VIDEO.test(url)) {
+        return `<video class="md-media" src="${url}" controls preload="metadata"${dimensions}></video>`;
+    }
+    return `<img class="md-media" src="${url}" alt="${alt}" loading="lazy" referrerpolicy="no-referrer"${dimensions}>`;
+}
+
+function resolveMediaUrl(rawUrl: string, baseUrl: string | undefined): string | null {
+    const url = rawUrl.replace(/&amp;/g, '&');
+    if (url.startsWith('/uploads/') || url.startsWith('uploads/')) {
+        if (!baseUrl) return null;
+        return `${baseUrl.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`;
+    }
+    if (!/^https?:\/\//i.test(url)) return null;
+    if (!baseUrl) return null;
+    try {
+        const parsed = new URL(url);
+        const base = new URL(baseUrl);
+        if (parsed.host === base.host) return rawUrl;
+        // GitHub хранит вложения приватных репозиториев на отдельном хосте.
+        if (base.host.toLowerCase() === 'github.com' && /\.githubusercontent\.com$/i.test(parsed.host)) return rawUrl;
+    } catch {
+        return null;
+    }
+    return null;
+}
+
+function parseDimensions(attributes: string | undefined): string {
+    if (!attributes) return '';
+    const dimensions: string[] = [];
+    for (const part of attributes.split(/\s+/)) {
+        const match = /^(width|height)=(\d{1,5})(?:px)?$/i.exec(part);
+        if (match) dimensions.push(`${match[1]!.toLowerCase()}="${match[2]}"`);
+    }
+    return dimensions.length ? ` ${dimensions.join(' ')}` : '';
+}
+
+export function renderMarkdown(source: string, options: MarkdownOptions = {}): string {
     const lines = escapeHtml(source.replace(/\r\n/g, '\n')).split('\n');
     const out: string[] = [];
     let inCode = false;
@@ -27,7 +81,7 @@ export function renderMarkdown(source: string): string {
 
     const flushParagraph = (): void => {
         if (paragraph.length) {
-            out.push(`<p>${inline(paragraph.join(' '))}</p>`);
+            out.push(`<p>${inline(paragraph.join(' '), options)}</p>`);
             paragraph = [];
         }
     };
@@ -65,13 +119,13 @@ export function renderMarkdown(source: string): string {
             flushParagraph();
             closeList();
             const level = Math.min(4, heading[1]!.length);
-            out.push(`<h${level}>${inline(heading[2]!)}</h${level}>`);
+            out.push(`<h${level}>${inline(heading[2]!, options)}</h${level}>`);
             continue;
         }
         if (/^>\s?/.test(line)) {
             flushParagraph();
             closeList();
-            out.push(`<blockquote>${inline(line.replace(/^>\s?/, ''))}</blockquote>`);
+            out.push(`<blockquote>${inline(line.replace(/^>\s?/, ''), options)}</blockquote>`);
             continue;
         }
         const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
@@ -82,7 +136,7 @@ export function renderMarkdown(source: string): string {
                 out.push('<ul>');
                 list = 'ul';
             }
-            out.push(`<li>${inline(bullet[1]!)}</li>`);
+            out.push(`<li>${inline(bullet[1]!, options)}</li>`);
             continue;
         }
         const ordered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
@@ -93,7 +147,7 @@ export function renderMarkdown(source: string): string {
                 out.push('<ol>');
                 list = 'ol';
             }
-            out.push(`<li>${inline(ordered[1]!)}</li>`);
+            out.push(`<li>${inline(ordered[1]!, options)}</li>`);
             continue;
         }
         paragraph.push(line);

@@ -5,7 +5,7 @@
     import { plural, t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
     import Reactions from './Reactions.svelte';
-    import AttachmentButton from './AttachmentButton.svelte';
+    import MarkdownEditor from './MarkdownEditor.svelte';
 
     let filter = $state<'open' | 'all'>('open');
     let selected = $state<string[]>([]);
@@ -146,15 +146,12 @@
         {/if}
 
         <div class="stack" style="margin-top: 12px">
-            <textarea
-                value={draft.body}
-                oninput={(event) => {
-                    draft.body = event.currentTarget.value;
-                    scheduleSave(thread.id);
-                }}
+            <MarkdownEditor
+                bind:value={draft.body}
+                onchange={() => scheduleSave(thread.id)}
                 placeholder={t('Черновик ответа. Публикуется только после подтверждения.', 'Draft reply. Published only after confirmation.')}
-                rows="3"
-            ></textarea>
+                rows={3}
+            />
             <div class="row">
                 <label class="switch">
                     <input
@@ -167,12 +164,6 @@
                 </label>
                 <div style="flex: 1"></div>
                 {#if busy}<span class="muted small">{t('сохранение…', 'saving…')}</span>{:else}<span class="muted small">{t('сохранено', 'saved')}</span>{/if}
-                <AttachmentButton
-                    oninsert={(markdown) => {
-                        draft.body += markdown;
-                        scheduleSave(thread.id);
-                    }}
-                />
                 <button class="btn" onclick={() => void save(thread.id)}>{t('Сохранить', 'Save')}</button>
             </div>
             <details

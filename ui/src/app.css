@@ -914,3 +914,105 @@ mark {
     font-size: 14px;
     background: transparent;
 }
+
+.md img.md-media,
+.md video.md-media {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 8px 0;
+    border-radius: 8px;
+}
+
+.md video.md-media {
+    max-height: 70vh;
+}
+
+.md-editor {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    overflow: hidden;
+}
+
+.md-editor:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.md-editor-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+}
+
+.md-editor-tabs {
+    display: flex;
+    gap: 2px;
+}
+
+.md-editor-tabs button,
+.md-editor-tools button {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 3px 7px;
+    font-size: 12px;
+    line-height: 20px;
+}
+
+.md-editor-tabs button:hover,
+.md-editor-tools button:hover {
+    background: var(--panel);
+    color: var(--text);
+}
+
+.md-editor-tabs button.active {
+    background: var(--panel);
+    color: var(--text);
+    font-weight: 650;
+    box-shadow: var(--shadow);
+}
+
+.md-editor-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1px;
+    margin-left: auto;
+}
+
+.md-editor-tools .btn {
+    min-height: 26px;
+    padding: 2px 8px;
+    font-size: 12px;
+}
+
+.md-editor textarea {
+    display: block;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    min-height: 64px;
+    resize: vertical;
+}
+
+.md-editor textarea:focus {
+    outline: none;
+    border: 0;
+}
+
+.md-editor-preview {
+    min-height: 64px;
+    max-height: 420px;
+    overflow: auto;
+    padding: 8px 10px;
+}
+
+.md-editor.disabled {
+    opacity: 0.85;
+}

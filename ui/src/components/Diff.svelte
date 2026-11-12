@@ -4,7 +4,7 @@
     import type { DiffPayload } from '../lib/types';
     import { truncate } from '../lib/format';
     import { t } from '../lib/i18n.svelte';
-    import AttachmentButton from './AttachmentButton.svelte';
+    import MarkdownEditor from './MarkdownEditor.svelte';
 
     let diff = $state<DiffPayload | null>(null);
     let loading = $state(false);
@@ -171,10 +171,13 @@
                         <strong>{t('Комментарий к строке', 'Comment on line')} {noteTarget.line}</strong>
                         <button class="btn" onclick={() => (noteTarget = null)}>{t('Отмена', 'Cancel')}</button>
                     </div>
-                    <textarea value={noteText} oninput={(event) => (noteText = event.currentTarget.value)} rows="2" placeholder={t('Комментарий уйдёт агенту', 'The comment goes to the agent')}></textarea>
+                    <MarkdownEditor
+                        bind:value={noteText}
+                        rows={2}
+                        placeholder={t('Комментарий уйдёт агенту', 'The comment goes to the agent')}
+                    />
                     <div class="row end" style="margin-top: 6px">
                         <span class="muted small">{t('Агент увидит комментарий в контексте ревью.', 'The agent sees this comment in the review context.')}</span>
-                        <AttachmentButton oninsert={(markdown) => (noteText += markdown)} />
                         <button class="btn primary" onclick={() => void submitNote()} disabled={savingNote || !noteText.trim()}>{t('Сохранить', 'Save')}</button>
                     </div>
                 </div>

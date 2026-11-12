@@ -130,6 +130,10 @@ public attachment API, so the button is disabled there and a link must be pasted
 images and videos (PNG, JPEG, GIF, WebP, AVIF, MP4, WebM, OGV, MOV) are accepted; SVG and arbitrary
 files are rejected.
 
+Comment editors have GitLab/GitHub-style **Write / Preview** tabs and a Markdown toolbar. Images and
+videos from the platform host (including GitLab `/uploads/...` links and `{width=... height=...}`)
+render in the preview and in thread comments; external images are shown as links and are never loaded.
+
 ## Devcontainer
 
 The daemon, `glab` and `gh` stay on the host. From the repository root:

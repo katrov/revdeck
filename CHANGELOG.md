@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-12
+
+### Added
+
+- Markdown editor for thread replies, findings and line comments: Write/Preview tabs, a formatting
+  toolbar, attachment upload, and rendered images/videos. GitLab `/uploads/...` links and
+  `{width=... height=...}` attributes are supported; external images stay links and are not loaded.
+
 ## [0.2.1] - 2026-11-12
 
 ### Fixed
