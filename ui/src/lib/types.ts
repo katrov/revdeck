@@ -17,6 +17,7 @@ export interface ReviewInfo {
     sourceBranch: string;
     targetBranch: string;
     webUrl: string;
+    projectId?: number;
     commit: { base: string; start: string; head: string };
     updatedAt: string;
     stats: { files: number; additions: number; deletions: number };

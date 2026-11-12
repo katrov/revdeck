@@ -73,12 +73,13 @@ describe('sanitize', () => {
         expect(sanitizeBody('![x](https://gitlab.example.com/uploads/abc/x.png)', 'gitlab').ok).toBe(false);
     });
 
-    it('adds the platform host to relative upload links', () => {
-        expect(normalizeMediaLinks('![x](/uploads/abc/x.png)', 'gitlab', 'gitlab.example.com')).toBe(
-            '![x](https://gitlab.example.com/uploads/abc/x.png)',
+    it('leaves relative GitLab upload links to GitLab and repairs host-only absolute links', () => {
+        expect(normalizeMediaLinks('![x](/uploads/abc/x.png)', 'gitlab', 'gitlab.example.com', 36)).toBe('![x](/uploads/abc/x.png)');
+        expect(normalizeMediaLinks('![x](https://gitlab.example.com/uploads/abc/x.png)', 'gitlab', 'gitlab.example.com', 36)).toBe(
+            '![x](https://gitlab.example.com/-/project/36/uploads/abc/x.png)',
         );
-        expect(normalizeMediaLinks('[x](uploads/abc/x.png)', 'gitlab', 'gitlab.example.com')).toBe(
-            '[x](https://gitlab.example.com/uploads/abc/x.png)',
+        expect(normalizeMediaLinks('![x](https://gitlab.example.com/-/project/35/uploads/abc/x.png)', 'gitlab', 'gitlab.example.com', 36)).toBe(
+            '![x](https://gitlab.example.com/-/project/36/uploads/abc/x.png)',
         );
         expect(normalizeMediaLinks('![x](/uploads/abc/x.png)', 'github', 'github.com')).toBe('![x](/uploads/abc/x.png)');
     });

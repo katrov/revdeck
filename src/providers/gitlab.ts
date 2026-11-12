@@ -38,6 +38,7 @@ interface GlDiscussion {
 
 interface GlMergeRequest {
     iid: number;
+    project_id?: number;
     title: string;
     description: string | null;
     author?: GlUser;
@@ -140,6 +141,7 @@ export class GitLabProvider implements Provider {
             sourceBranch: String(mr.source_branch ?? ''),
             targetBranch: String(mr.target_branch ?? ''),
             webUrl: String(mr.web_url ?? ''),
+            ...(typeof mr.project_id === 'number' ? { projectId: mr.project_id } : {}),
             commit: { base, start, head },
             updatedAt: String(mr.updated_at ?? ''),
             stats: { files: Number.isFinite(files) ? files : 0, additions: 0, deletions: 0 },
@@ -300,9 +302,12 @@ export class GitLabProvider implements Provider {
         const uploaded = await this.json<GlUpload>(['--method', 'POST', endpoint, '--form', `file=@${input.path}`]);
         const raw = uploaded.full_path || uploaded.url || '';
         if (!raw) throw new ProviderError(tr('GitLab не вернул ссылку на загруженный файл', 'GitLab did not return a link to the uploaded file'));
+        const projectId = (await this.info().catch(() => null))?.projectId;
         const absolute = raw.startsWith('http://') || raw.startsWith('https://')
             ? raw
-            : `https://${this.ref.host}${raw.startsWith('/') ? '' : '/'}${raw}`;
+            : raw.startsWith('/uploads/') && projectId
+              ? `https://${this.ref.host}/-/project/${projectId}${raw}`
+              : `https://${this.ref.host}${raw.startsWith('/') ? '' : '/'}${raw}`;
         const label = input.name.replace(/[[\]\r\n]/g, ' ').trim() || 'attachment';
         const markdown = input.contentType.startsWith('image/') || input.contentType.startsWith('video/')
             ? `![${label}](${absolute})`

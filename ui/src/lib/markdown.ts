@@ -13,6 +13,8 @@ const VIDEO = /\.(?:mp4|m4v|webm|ogv|mov)(?:[?#]|$)/i;
 export interface MarkdownOptions {
     /** База платформы, например https://gitlab.example.com. */
     baseUrl?: string;
+    /** База для /uploads: у GitLab это https://host/-/project/<id>. */
+    uploadsBaseUrl?: string;
 }
 
 export function escapeHtml(value: string): string {
@@ -30,7 +32,7 @@ function inline(value: string, options: MarkdownOptions): string {
 }
 
 function renderMedia(alt: string, rawUrl: string, attributes: string | undefined, options: MarkdownOptions): string {
-    const url = resolveMediaUrl(rawUrl, options.baseUrl);
+    const url = resolveMediaUrl(rawUrl, options);
     if (!url) {
         const href = /^https?:\/\//i.test(rawUrl) ? rawUrl : '';
         return href ? `<a href="${href}" target="_blank" rel="noreferrer noopener">${alt || href}</a>` : alt;
@@ -42,24 +44,32 @@ function renderMedia(alt: string, rawUrl: string, attributes: string | undefined
     return `<img class="md-media" src="${url}" alt="${alt}" loading="lazy" referrerpolicy="no-referrer"${dimensions}>`;
 }
 
-function resolveMediaUrl(rawUrl: string, baseUrl: string | undefined): string | null {
+function resolveMediaUrl(rawUrl: string, options: MarkdownOptions): string | null {
     const url = rawUrl.replace(/&amp;/g, '&');
-    if (url.startsWith('/uploads/') || url.startsWith('uploads/')) {
-        if (!baseUrl) return null;
-        return `${baseUrl.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`;
-    }
-    if (!/^https?:\/\//i.test(url)) return null;
+    const baseUrl = options.baseUrl;
     if (!baseUrl) return null;
+    const base = baseUrl.replace(/\/$/, '');
+    if (url.startsWith('/uploads/') || url.startsWith('uploads/')) {
+        const uploads = (options.uploadsBaseUrl ?? base).replace(/\/$/, '');
+        return `${uploads}${url.startsWith('/') ? '' : '/'}${url}`;
+    }
+    if (url.startsWith('/-/')) return `${base}${url}`;
+    if (!/^https?:\/\//i.test(url)) return null;
     try {
         const parsed = new URL(url);
-        const base = new URL(baseUrl);
-        if (parsed.host === base.host) return rawUrl;
-        // GitHub хранит вложения приватных репозиториев на отдельном хосте.
-        if (base.host.toLowerCase() === 'github.com' && /\.githubusercontent\.com$/i.test(parsed.host)) return rawUrl;
+        const host = new URL(baseUrl);
+        if (parsed.host !== host.host) {
+            // GitHub хранит вложения приватных репозиториев на отдельном хосте.
+            if (!(host.host.toLowerCase() === 'github.com' && /\.githubusercontent\.com$/i.test(parsed.host))) return null;
+        }
+        // Старые ссылки без project id: https://host/uploads/...
+        if (options.uploadsBaseUrl && parsed.pathname.startsWith('/uploads/')) {
+            return `${options.uploadsBaseUrl.replace(/\/$/, '')}${parsed.pathname}${parsed.search}${parsed.hash}`;
+        }
+        return rawUrl;
     } catch {
         return null;
     }
-    return null;
 }
 
 function parseDimensions(attributes: string | undefined): string {

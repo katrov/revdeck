@@ -50,6 +50,8 @@ export interface ReviewInfo {
     sourceBranch: string;
     targetBranch: string;
     webUrl: string;
+    /** GitLab project ID; нужен для абсолютных ссылок на /uploads. */
+    projectId?: number;
     commit: { base: string; start: string; head: string };
     updatedAt: string;
     stats: ReviewStats;

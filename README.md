@@ -129,8 +129,9 @@ working browser Back/Forward), and keeps a per-review "viewed" state and file fi
 The UI has an **Attach** button next to reply, finding and line-comment editors; the CLI equivalent is
 `revdeck attach <N> --file shot.png`. The file is uploaded by the daemon on the host, and the editor
 receives a markdown link with an absolute platform URL, so GitLab renders images and videos in the
-original MR. Relative GitLab `/uploads/...` links in existing drafts are rewritten to
-`https://<host>/uploads/...` during the publish preview.
+original MR. Relative GitLab `/uploads/...` links are left for GitLab to expand in the project
+context; absolute host-only links are repaired to `https://<host>/-/project/<id>/uploads/...` when the
+GitLab project id is known.
 
 GitLab is supported through project uploads (requires a `glab` with `--form` support). GitHub has no
 public attachment API, so the button is disabled there and a link must be pasted manually. Only raster

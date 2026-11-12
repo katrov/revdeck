@@ -590,8 +590,8 @@ export class ReviewService {
                     continue;
                 }
                 const rawBody = draft.body.trim();
-                const body = normalizeMediaLinks(rawBody, review.info.ref.platform, review.info.ref.host);
-                const posted = normalizeMediaLinks(draft.posted.trim(), review.info.ref.platform, review.info.ref.host);
+                const body = normalizeMediaLinks(rawBody, review.info.ref.platform, review.info.ref.host, review.info.projectId);
+                const posted = normalizeMediaLinks(draft.posted.trim(), review.info.ref.platform, review.info.ref.host, review.info.projectId);
                 const alreadyPosted = rawBody !== '' && posted === body;
                 const resolveChanged = draft.resolve !== thread.resolved;
                 if (!body && !resolveChanged) {
@@ -622,7 +622,7 @@ export class ReviewService {
                     warnings.push(tr(`замечание ${finding.id} уже опубликовано`, `finding ${finding.id} is already published`));
                     continue;
                 }
-                const body = normalizeMediaLinks(finding.comment.trim(), review.info.ref.platform, review.info.ref.host);
+                const body = normalizeMediaLinks(finding.comment.trim(), review.info.ref.platform, review.info.ref.host, review.info.projectId);
                 const check = sanitizeBody(body, review.info.ref.platform, { host: review.info.ref.host });
                 if (!check.ok) {
                     warnings.push(tr(`замечание ${finding.id}: ${check.reason}`, `finding ${finding.id}: ${check.reason}`));
@@ -648,7 +648,7 @@ export class ReviewService {
                 warnings.push(tr(`комментарий ${note.id} уже опубликован`, `comment ${note.id} is already published`));
                 continue;
             }
-            const body = normalizeMediaLinks(note.text, review.info.ref.platform, review.info.ref.host);
+            const body = normalizeMediaLinks(note.text, review.info.ref.platform, review.info.ref.host, review.info.projectId);
             const check = sanitizeBody(body, review.info.ref.platform, { host: review.info.ref.host });
             if (!check.ok) {
                 warnings.push(tr(`комментарий ${note.id}: ${check.reason}`, `comment ${note.id}: ${check.reason}`));

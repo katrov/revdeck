@@ -16,7 +16,12 @@
         }
         return app.review ? `https://${app.review.info.ref.host}` : '';
     });
-    const html = $derived(renderMarkdown(source, { baseUrl }));
+    const uploadsBaseUrl = $derived.by(() => {
+        const review = app.review;
+        if (!review || review.info.ref.platform !== 'gitlab' || !review.info.projectId) return baseUrl;
+        return `${baseUrl}/-/project/${review.info.projectId}`;
+    });
+    const html = $derived(renderMarkdown(source, { baseUrl, uploadsBaseUrl }));
 </script>
 
 <div class="md">{@html html}</div>

@@ -81,15 +81,17 @@ function imageIssue(text: string, host: string | undefined): string | null {
 }
 
 /**
- * Приводит относительные ссылки на загруженные файлы GitLab к абсолютному URL.
- * Без хоста платформа не показывает картинку в тексте комментария.
+ * Исправляет абсолютные ссылки GitLab, потерявшие project id:
+ * https://host/uploads/... → https://host/-/project/<id>/uploads/...
+ * Относительные `/uploads/...` не трогаем: GitLab сам разворачивает их в контексте проекта.
  */
-export function normalizeMediaLinks(body: string, platform: Platform, host: string): string {
-    if (platform !== 'gitlab' || !host) return body;
-    const base = `https://${host}`;
-    return body.replace(/(!?\[[^\]]*\]\(\s*)(\/?uploads\/[^)\s]+)/g, (_match, prefix: string, path: string) => {
-        return `${prefix}${path.startsWith('/') ? base : `${base}/`}${path}`;
-    });
+export function normalizeMediaLinks(body: string, platform: Platform, host: string, projectId?: number): string {
+    if (platform !== 'gitlab' || !host || !projectId) return body;
+    const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const correct = `https://${host}/-/project/${projectId}/uploads/`;
+    return body
+        .replace(new RegExp(`https?://${escaped}/uploads/`, 'g'), correct)
+        .replace(new RegExp(`https?://${escaped}/-/project/\\d+/uploads/`, 'g'), correct);
 }
 
 /** Текст, который отправляется в GitHub: быстрые действия не исполняются, но остальное актуально. */

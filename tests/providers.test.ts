@@ -27,6 +27,7 @@ function runner(handler: (call: Call) => unknown): { runner: Runner; calls: Call
 
 const GL_MR = {
     iid: 7,
+    project_id: 36,
     title: 'Add b',
     description: 'desc',
     author: { username: 'author', name: 'Author' },
@@ -92,6 +93,7 @@ describe('GitLabProvider', () => {
         const provider = new GitLabProvider(gitlabRef, { root: '/tmp', runImpl: impl });
         const info = await provider.info();
         expect(info.title).toBe('Add b');
+        expect(info.projectId).toBe(36);
         expect(info.commit.head).toBe('c'.repeat(40));
         const diff = await provider.diff();
         expect(diff.map((file) => file.path)).toEqual(['src/app.ts', 'src/new.ts']);
