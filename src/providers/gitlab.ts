@@ -1,5 +1,5 @@
 import { tmpdir } from 'node:os';
-import type { DiffFile, Note, Platform, ReviewInfo, ReviewRef, Thread, User } from '../core/types.js';
+import { REACTIONS, type DiffFile, type Note, type Platform, type Reaction, type ReviewInfo, type ReviewRef, type Thread, type User } from '../core/types.js';
 import { parseUnifiedDiff } from '../core/diff.js';
 import { ProviderError } from '../core/errors.js';
 import { redact } from '../core/redact.js';
@@ -253,6 +253,25 @@ export class GitLabProvider implements Provider {
         await withTempJson({ resolved }, async (file) => {
             await this.call(['--method', 'PUT', this.endpoint(`/discussions/${encodeURIComponent(threadId)}`), '--input', file]);
         });
+    }
+
+    async reactions(noteId: string): Promise<Reaction[]> {
+        const base = this.endpoint(`/notes/${encodeURIComponent(noteId)}/award_emoji`);
+        const items = await this.paged<{ id: number; name: string; user?: GlUser }>(base);
+        const me = await this.currentUser();
+        const grouped = new Map<string, Reaction>();
+        for (const item of items) {
+            if (!(REACTIONS as readonly string[]).includes(item.name)) continue;
+            const reaction = grouped.get(item.name) ?? { name: item.name, count: 0, users: [], mine: false };
+            reaction.count += 1;
+            const username = item.user?.username;
+            if (username) {
+                reaction.users.push(username);
+                if (username === me.username) reaction.mine = true;
+            }
+            grouped.set(item.name, reaction);
+        }
+        return [...grouped.values()].sort((left, right) => left.name.localeCompare(right.name));
     }
 
     async react(noteId: string, emoji: string): Promise<{ active: boolean }> {

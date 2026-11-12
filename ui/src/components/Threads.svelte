@@ -4,6 +4,7 @@
     import type { ReplyDraft } from '../lib/types';
     import { plural, t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
+    import Reactions from './Reactions.svelte';
 
     let filter = $state<'open' | 'all'>('open');
     let selected = $state<string[]>([]);
@@ -123,6 +124,7 @@
                 <div>
                     <div class="muted small"><strong style="color: var(--text)">{note.author}</strong> · {relativeTime(note.createdAt)}</div>
                     <div class="md"><Markdown source={note.body} /></div>
+                    <Reactions reviewId={app.review!.id} {note} />
                 </div>
             {/each}
         </div>

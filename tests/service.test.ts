@@ -103,7 +103,21 @@ class FakeProvider implements Provider {
         this.resolutions.push({ threadId, resolved });
     }
 
-    async react() {
+    readonly reactionsValue: { noteId: string; name: string; mine: boolean }[] = [];
+
+    async reactions(noteId: string) {
+        return this.reactionsValue
+            .filter((item) => item.noteId === noteId)
+            .map((item) => ({ name: item.name, count: 1, users: ['me'], mine: item.mine }));
+    }
+
+    async react(noteId: string, emoji: string) {
+        const index = this.reactionsValue.findIndex((item) => item.noteId === noteId && item.name === emoji);
+        if (index >= 0) {
+            this.reactionsValue.splice(index, 1);
+            return { active: false };
+        }
+        this.reactionsValue.push({ noteId, name: emoji, mine: true });
         return { active: true };
     }
 
@@ -137,7 +151,7 @@ rules:
     service = new ReviewService({
         store,
         providerFactory: async (ref) => {
-            provider = new FakeProvider(ref);
+            if (!provider || provider.ref.number !== ref.number || provider.ref.project !== ref.project) provider = new FakeProvider(ref);
             return provider;
         },
         syncIntervalMs: 0,
@@ -243,6 +257,20 @@ describe('ReviewService', () => {
         const approval = service.approve(review.id, 'reply', ['d1'], preview.plan.hash);
         await service.publish(review.id, approval.id);
         expect(provider.resolutions).toEqual([{ threadId: 'd1', resolved: true }]);
+    });
+
+    it('toggles reactions on a platform note and returns the fresh list', async () => {
+        const review = await open();
+        const added = await service.react(review.id, 'n1', 'thumbsup');
+        expect(added.active).toBe(true);
+        expect(added.reactions).toEqual([{ name: 'thumbsup', count: 1, users: ['me'], mine: true }]);
+        expect(await service.reactions(review.id, ['n1', 'missing'])).toEqual({
+            n1: [{ name: 'thumbsup', count: 1, users: ['me'], mine: true }],
+        });
+        const removed = await service.react(review.id, 'n1', 'thumbsup');
+        expect(removed.active).toBe(false);
+        expect(removed.reactions).toEqual([]);
+        await expect(service.react(review.id, 'n1', 'nope')).rejects.toThrow(/неизвестная реакция/);
     });
 
     it('builds effective rules for changed paths', async () => {

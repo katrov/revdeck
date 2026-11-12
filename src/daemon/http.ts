@@ -224,6 +224,12 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                 reply(res, 200, { ok: true, rules: await service.rules(review) });
                 return;
             }
+            if (req.method === 'GET' && url.pathname === '/api/reactions') {
+                const review = url.searchParams.get('review') ?? '';
+                const noteIds = (url.searchParams.get('notes') ?? '').split(',').map((item) => item.trim()).filter(Boolean);
+                reply(res, 200, { ok: true, reactions: await service.reactions(review, noteIds) });
+                return;
+            }
             if (req.method === 'POST') {
                 const body = await readBody(req);
                 const review = String(body.review ?? '');
@@ -244,6 +250,11 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                     case '/api/reviews/refresh': {
                         const updated = await service.refreshReview(review);
                         reply(res, 200, { ok: true, review: service.getView(updated.id), reviews: service.listReviews() });
+                        return;
+                    }
+                    case '/api/reactions': {
+                        const result = await service.react(review, String(body.noteId ?? ''), String(body.emoji ?? ''));
+                        reply(res, 200, { ok: true, ...result });
                         return;
                     }
                     case '/api/drafts': {

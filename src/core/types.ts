@@ -82,6 +82,18 @@ export interface DiffFile {
     hunks: Hunk[];
 }
 
+/** Реакции платформы; имена совпадают с GitLab award emoji. */
+export const REACTIONS = ['thumbsup', 'thumbsdown', 'smile', 'tada', 'confused', 'heart', 'rocket', 'eyes'] as const;
+export type ReactionName = (typeof REACTIONS)[number];
+
+export interface Reaction {
+    name: string;
+    count: number;
+    users: string[];
+    /** Реакция поставлена текущим пользователем. */
+    mine: boolean;
+}
+
 export interface Note {
     id: string;
     author: string;
@@ -89,6 +101,8 @@ export interface Note {
     createdAt: string;
     body: string;
     system: boolean;
+    /** Может отсутствовать в старых снимках. */
+    reactions?: Reaction[];
 }
 
 export interface Thread {

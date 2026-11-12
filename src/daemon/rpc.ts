@@ -59,6 +59,15 @@ export async function dispatch(service: ReviewService, method: string, params: R
             const file = service.diffFile(String(params.review ?? ''), String(params.file ?? ''));
             return { file };
         }
+        case 'reactions.list':
+            return {
+                reactions: await service.reactions(
+                    String(params.review ?? ''),
+                    Array.isArray(params.noteIds) ? params.noteIds.map(String) : [],
+                ),
+            };
+        case 'reactions.toggle':
+            return service.react(String(params.review ?? ''), String(params.noteId ?? ''), String(params.emoji ?? ''));
         case 'drafts.put':
             return { draft: service.setDraft(String(params.review ?? ''), String(params.threadId ?? ''), (params.patch ?? {}) as Record<string, never>) };
         case 'findings.put':

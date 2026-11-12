@@ -855,3 +855,62 @@ mark {
     border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
     color: var(--accent);
 }
+
+.reactions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.reaction {
+    min-height: 24px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 12px;
+    line-height: 22px;
+    cursor: pointer;
+}
+
+.reaction:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: var(--panel-2);
+}
+
+.reaction.mine {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.reaction.add {
+    color: var(--muted);
+    padding: 0 10px;
+}
+
+.reaction.pending {
+    opacity: 0.55;
+    cursor: progress;
+}
+
+.reaction-picker {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--panel);
+}
+
+.reaction-picker .reaction {
+    border: 0;
+    min-height: 22px;
+    line-height: 20px;
+    font-size: 14px;
+    background: transparent;
+}

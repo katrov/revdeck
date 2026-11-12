@@ -101,6 +101,7 @@ Russian READMEs live in this repository; translation fixes are welcome.
 | `revdeck reply <N> --thread <id> --body …` | draft a reply |
 | `revdeck publish <N> [--yes]` | preview or publish after confirmation |
 | `revdeck notes <N> …` | line comments from the human |
+| `revdeck react <N> --note <id> --emoji <name>` | toggle a reaction on a platform comment |
 | `revdeck rules [--explain <path>]` | effective rules |
 | `revdeck checks <N> [--run --yes]` | project checks |
 | `revdeck export/import <N>` | legacy file exchange |
@@ -216,7 +217,8 @@ Provider tests use recorded CLI responses and need no network. See [CONTRIBUTING
   used yet, though the provider interface is ready.
 - Project checks are planned by the agent; running them requires `revdeck checks --run --yes`.
 - The UI does not open a new review by number; use the CLI and the review appears in the list.
-- Thread resolution is in the thread card; reactions exist in providers but are not exposed in the UI.
+- Thread resolution is in the thread card; reactions are available on thread notes in the UI and through
+  `revdeck react`.
 - Auto-start is supported on Linux and macOS; on Windows run the daemon manually.
 
 ## License

@@ -1,4 +1,4 @@
-import { getReviews, getState, refreshReview } from './api';
+import { getReactions, getReviews, getState, refreshReview } from './api';
 import type { ReviewListItem, ReviewView, Tab } from './types';
 import { i18n, localeTag, t } from './i18n.svelte';
 
@@ -57,6 +57,7 @@ export async function loadReview(id: string, options: { refresh?: boolean; silen
         app.review = data.review;
         app.reviews = data.reviews;
         if (!app.diffFile && data.review.files.length) app.diffFile = data.review.files[0]!.path;
+        void loadReactions(data.review);
         writeHash();
     } catch (error) {
         app.error = errorText(error);
@@ -94,6 +95,18 @@ export function writeHash(): void {
     if (!id) return;
     const hash = `#/r/${encodeURIComponent(id)}/${app.tab}`;
     if (location.hash !== hash) history.replaceState(null, '', hash);
+}
+
+async function loadReactions(review: ReviewView): Promise<void> {
+    const notes = review.threads.flatMap((thread) => thread.notes);
+    if (!notes.length) return;
+    try {
+        const { reactions } = await getReactions(review.id, notes.map((note) => note.id));
+        if (app.review?.id !== review.id) return;
+        for (const note of notes) note.reactions = reactions[note.id] ?? [];
+    } catch {
+        // Реакции не критичны для чтения ревью.
+    }
 }
 
 export async function bootstrap(): Promise<void> {

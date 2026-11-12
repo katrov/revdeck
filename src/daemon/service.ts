@@ -12,6 +12,7 @@ import { canonicalJson } from '../core/canonical.js';
 import { resolveOutputLanguage, tr } from '../core/locale.js';
 import type { Locale } from '../core/locale.js';
 import { reviewId as makeReviewId } from '../core/refs.js';
+import { REACTIONS } from '../core/types.js';
 import type { ReviewConfig } from '../core/config.js';
 import type {
     Approval,
@@ -27,6 +28,7 @@ import type {
     PublishResult,
     PublishResultItem,
     CheckResult,
+    Reaction,
     ReplyDraft,
     Review,
     ReviewInfo,
@@ -159,6 +161,15 @@ export class ReviewService {
         );
         await this.refresh(id, meta.row.root, provider, loaded);
         return this.getReview(id);
+    }
+
+    private async providerFor(id: string): Promise<Provider> {
+        const stored = this.store.getReview(id);
+        if (!stored) throw new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`));
+        return this.providerFactory(
+            { platform: stored.row.platform as Platform, host: stored.row.host, project: stored.row.project, number: stored.row.number },
+            stored.row.root,
+        );
     }
 
     private async refresh(
@@ -412,6 +423,46 @@ export class ReviewService {
         this.store.upsertDraft(id, next);
         this.emit(id);
         return next;
+    }
+
+    // ---------------------------------------------------------------- reactions
+
+    /** Реакции для набора комментариев; отсутствующие id пропускаются. */
+    async reactions(id: string, noteIds: string[]): Promise<Record<string, Reaction[]>> {
+        const review = this.getReview(id);
+        const known = new Set(review.threads.flatMap((thread) => thread.notes.map((note) => note.id)));
+        const requested = [...new Set(noteIds.filter((noteId) => known.has(noteId)))].slice(0, 500);
+        if (!requested.length) return {};
+        const provider = await this.providerFor(id);
+        const result: Record<string, Reaction[]> = {};
+        for (const noteId of requested) {
+            try {
+                result[noteId] = await provider.reactions(noteId);
+            } catch {
+                // Одна недоступная реакция не должна ломать остальные комментарии.
+                result[noteId] = [];
+            }
+        }
+        return result;
+    }
+
+    async react(id: string, noteId: string, emoji: string): Promise<{ active: boolean; reactions: Reaction[] }> {
+        if (!(REACTIONS as readonly string[]).includes(emoji)) {
+            throw new Error(tr(`неизвестная реакция ${emoji}: ${REACTIONS.join(', ')}`, `unknown reaction ${emoji}: ${REACTIONS.join(', ')}`));
+        }
+        const review = this.getReview(id);
+        const note = review.threads.flatMap((thread) => thread.notes).find((item) => item.id === noteId);
+        if (!note) throw new Error(tr(`комментария ${noteId} нет в этом ревью`, `comment ${noteId} is not in this review`));
+        const provider = await this.providerFor(id);
+        const result = await provider.react(noteId, emoji);
+        let reactions: Reaction[] = [];
+        try {
+            reactions = await provider.reactions(noteId);
+        } catch {
+            // Переключение уже произошло; список реакций необязателен.
+        }
+        this.store.audit(id, 'reaction.toggle', { noteId, emoji, active: result.active });
+        return { active: result.active, reactions };
     }
 
     // ---------------------------------------------------------------- notes

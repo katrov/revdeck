@@ -1,5 +1,5 @@
 import { tmpdir } from 'node:os';
-import type { DiffFile, Note, Platform, ReviewInfo, ReviewRef, Thread, User } from '../core/types.js';
+import type { DiffFile, Note, Platform, Reaction, ReviewInfo, ReviewRef, Thread, User } from '../core/types.js';
 import { parseUnifiedDiff } from '../core/diff.js';
 import { ProviderError } from '../core/errors.js';
 import { run as realRun, type Runner } from '../core/exec.js';
@@ -101,6 +101,8 @@ const REACTIONS: Record<string, string> = {
     rocket: 'rocket',
     eyes: 'eyes',
 };
+
+const CONTENT_TO_NAME: Record<string, string> = Object.fromEntries(Object.entries(REACTIONS).map(([name, content]) => [content, name]));
 
 export class GitHubProvider implements Provider {
     readonly platform: Platform = 'github';
@@ -335,6 +337,26 @@ export class GitHubProvider implements Provider {
             ? 'mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { isResolved } } }'
             : 'mutation($id: ID!) { unresolveReviewThread(input: { threadId: $id }) { thread { isResolved } } }';
         await this.graphql<unknown>(mutation, { id: threadId });
+    }
+
+    async reactions(noteId: string): Promise<Reaction[]> {
+        const base = `repos/${this.repo}/pulls/comments/${encodeURIComponent(noteId)}/reactions`;
+        const items = await this.paged<{ id: number; content: string; user: GhUser | null }>(base);
+        const me = await this.currentUser();
+        const grouped = new Map<string, Reaction>();
+        for (const item of items) {
+            const name = CONTENT_TO_NAME[item.content];
+            if (!name) continue;
+            const reaction = grouped.get(name) ?? { name, count: 0, users: [], mine: false };
+            reaction.count += 1;
+            const login = item.user?.login;
+            if (login) {
+                reaction.users.push(login);
+                if (login === me.username) reaction.mine = true;
+            }
+            grouped.set(name, reaction);
+        }
+        return [...grouped.values()].sort((left, right) => left.name.localeCompare(right.name));
     }
 
     async react(noteId: string, emoji: string): Promise<{ active: boolean }> {

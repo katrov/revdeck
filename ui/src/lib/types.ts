@@ -22,6 +22,13 @@ export interface ReviewInfo {
     stats: { files: number; additions: number; deletions: number };
 }
 
+export interface Reaction {
+    name: string;
+    count: number;
+    users: string[];
+    mine: boolean;
+}
+
 export interface Note {
     id: string;
     author: string;
@@ -29,6 +36,7 @@ export interface Note {
     createdAt: string;
     body: string;
     system: boolean;
+    reactions?: Reaction[];
 }
 
 export interface Thread {

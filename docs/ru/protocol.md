@@ -51,6 +51,8 @@
 | `decisions.put` | `review`, `decisions` | решения человека |
 | `notes.add` | `review`, `file`, `line`, `text`, `toAgent` | комментарий к строке |
 | `notes.update` | `review`, `noteId`, `patch` | обновлённый комментарий |
+| `reactions.list` | `review`, `noteIds[]` | реакции, сгруппированные по id комментария |
+| `reactions.toggle` | `review`, `noteId`, `emoji` | `active` и актуальный список реакций |
 | `notes.delete` | `review`, `noteId` | `{ok}` |
 | `publish.preview` | `review`, `kind`, `ids[]` | план + предупреждения |
 | `publish.approve` | `review`, `kind`, `ids[]`, `hash` | `approvalId`, `expiresAt` |
@@ -86,6 +88,8 @@
 | POST | `/api/reviews/open`, `/api/reviews/refresh` | открыть/обновить |
 | POST | `/api/drafts`, `/api/findings`, `/api/summary`, `/api/decisions` | черновики |
 | POST | `/api/notes` | `action: add/update/delete` |
+| GET | `/api/reactions?review=&notes=` | реакции для id комментариев |
+| POST | `/api/reactions` | переключить реакцию |
 | POST | `/api/publish/preview`, `/approve`, `/commit` | публикация |
 | POST | `/api/checks` | проверки |
 | POST | `/api/rpc` | RPC-прокси для HTTP-транспорта |

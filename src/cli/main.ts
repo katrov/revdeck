@@ -51,6 +51,7 @@ const OPTIONS = {
     limit: { type: 'string' },
     decision: { type: 'string' },
     note: { type: 'string' },
+    emoji: { type: 'string' },
     text: { type: 'string' },
     line: { type: 'string' },
     id: { type: 'string' },
@@ -85,6 +86,7 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
   revdeck summary <N> [--file <json>]      выжимка MR
   revdeck reply <N> --thread <id> (--body <текст> | --body-file <файл> | -) [--resolve] [--publish --yes]
   revdeck notes <N> <list|add|update|delete|reply>
+  revdeck react <N> --note <id> --emoji <name>   поставить или снять реакцию
   revdeck publish <N> [--kind reply|finding|note] [--ids a,b] [--yes]
   revdeck rules [<N>] [--explain <путь>]
   revdeck checks <N> [--run --yes]
@@ -110,6 +112,7 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
   revdeck summary <N> [--file <json>]      review summary
   revdeck reply <N> --thread <id> (--body <text> | --body-file <file> | -) [--resolve] [--publish --yes]
   revdeck notes <N> <list|add|update|delete|reply>
+  revdeck react <N> --note <id> --emoji <name>   add or remove a reaction
   revdeck publish <N> [--kind reply|finding|note] [--ids a,b] [--yes]
   revdeck rules [<N>] [--explain <path>]
   revdeck checks <N> [--run --yes]
@@ -174,6 +177,8 @@ async function main(): Promise<void> {
             return reply(positionals[0], values);
         case 'notes':
             return notes(positionals[0], positionals[1] ?? 'list', values);
+        case 'react':
+            return react(positionals[0], values);
         case 'publish':
             return publish(positionals[0], values);
         case 'rules':
@@ -549,6 +554,21 @@ async function notes(arg: string | undefined, action: string, values: Values): P
             writers.out(`${note.file}:${note.line} · ${note.toAgent ? tr('агенту', 'to agent') : tr('себе', 'private')} · ${note.id}`);
             writers.out(`  ${truncate(note.text, 300)}${note.agentReply ? `\n  → ${truncate(note.agentReply, 300)}` : ''}`);
         }
+    });
+}
+
+async function react(arg: string | undefined, values: Values): Promise<void> {
+    if (!values.note || !values.emoji) fail(tr('нужны --note <id> и --emoji <name>', '--note <id> and --emoji <name> are required'));
+    await withClient(async ({ client }) => {
+        const { review } = await resolveReview(client, findRepoRoot(), reviewArg(values, arg), values);
+        const result = await client.request<{ active: boolean; reactions: { name: string; count: number; mine: boolean }[] }>('reactions.toggle', {
+            review: review.id,
+            noteId: String(values.note),
+            emoji: String(values.emoji),
+        });
+        if (values.json) return printJson(result);
+        writers.out(`${result.active ? '✔' : '○'} ${values.emoji}${result.active ? ` · ${tr('поставлена', 'added')}` : ` · ${tr('снята', 'removed')}`}`);
+        for (const reaction of result.reactions) writers.out(`  ${reaction.name}${reaction.mine ? ' ·' : ''} ${reaction.count}`);
     });
 }
 

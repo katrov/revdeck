@@ -1,5 +1,5 @@
 import type { ReviewConfig } from '../core/config.js';
-import type { DiffFile, Platform, ReviewInfo, ReviewRef, Thread, User, Note } from '../core/types.js';
+import type { DiffFile, Platform, Reaction, ReviewInfo, ReviewRef, Thread, User, Note } from '../core/types.js';
 import type { Runner } from '../core/exec.js';
 import { currentBranch, gitRemote } from '../core/git.js';
 import { ProviderError } from '../core/errors.js';
@@ -62,6 +62,8 @@ export interface Provider {
     findByBranch(branch: string): Promise<ReviewRef | null>;
     reply(thread: Thread, body: string): Promise<Note>;
     resolve(threadId: string, resolved: boolean): Promise<void>;
+    /** Текущие реакции комментария, сгруппированные по имени. */
+    reactions(noteId: string): Promise<Reaction[]>;
     react(noteId: string, emoji: string): Promise<{ active: boolean }>;
     createThread(input: CreateThreadInput): Promise<CreatedThread>;
 }

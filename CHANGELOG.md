@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Reactions on platform comments: thread cards in the UI, `revdeck react --note <id> --emoji <name>`,
+  and the `reactions.list` / `reactions.toggle` RPC methods. Existing reactions and the current user's
+  choice are shown for GitLab and GitHub.
+
 ## [0.1.0] - 2026-11-11
 
 First public release.

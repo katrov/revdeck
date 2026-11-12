@@ -118,6 +118,28 @@ describe('GitLabProvider', () => {
         expect(resolveCall.payload).toEqual({ resolved: true });
     });
 
+    it('lists award emoji grouped by name and marks the current user', async () => {
+        const { runner: impl } = runner((call) => {
+            const endpoint = call.args.find((arg) => arg.startsWith('projects/') || arg === 'user') ?? '';
+            if (endpoint === 'user') return { id: 1, username: 'me', name: 'Me' };
+            if (endpoint.includes('/award_emoji')) {
+                return [
+                    { id: 1, name: 'thumbsup', user: { username: 'me' } },
+                    { id: 2, name: 'thumbsup', user: { username: 'reviewer' } },
+                    { id: 3, name: 'heart', user: { username: 'reviewer' } },
+                    { id: 4, name: 'custom', user: { username: 'reviewer' } },
+                ];
+            }
+            return [];
+        });
+        const provider = new GitLabProvider(gitlabRef, { root: '/tmp', runImpl: impl });
+        const reactions = await provider.reactions('11');
+        expect(reactions).toEqual([
+            { name: 'heart', count: 1, users: ['reviewer'], mine: false },
+            { name: 'thumbsup', count: 2, users: ['me', 'reviewer'], mine: true },
+        ]);
+    });
+
     it('creates a positioned discussion and a general one without line', async () => {
         const { runner: impl, calls } = runner((call) => {
             if (call.args.includes('projects/group%2Fsub%2Fproj/merge_requests/7')) return GL_MR;
@@ -242,6 +264,27 @@ describe('GitHubProvider', () => {
         await provider.resolve('PRRT_1', true);
         const mutation = calls.find((call) => call.args.includes('graphql') && call.args.some((arg) => arg.includes('resolveReviewThread')))!;
         expect(mutation).toBeTruthy();
+    });
+
+    it('lists reactions and maps GitHub content to emoji names', async () => {
+        const { runner: impl } = runner((call) => {
+            const endpoint = call.args.find((arg) => arg.startsWith('repos/') || arg === 'user') ?? '';
+            if (endpoint === 'user') return { login: 'me', name: 'Me' };
+            if (endpoint.includes('/reactions')) {
+                return [
+                    { id: 1, content: '+1', user: { login: 'me' } },
+                    { id: 2, content: 'heart', user: { login: 'reviewer' } },
+                    { id: 3, content: 'unknown', user: { login: 'reviewer' } },
+                ];
+            }
+            return [];
+        });
+        const provider = new GitHubProvider(githubRef, { root: '/tmp', runImpl: impl });
+        const reactions = await provider.reactions('501');
+        expect(reactions).toEqual([
+            { name: 'heart', count: 1, users: ['reviewer'], mine: false },
+            { name: 'thumbsup', count: 1, users: ['me'], mine: true },
+        ]);
     });
 
     it('creates a line comment with commit and side', async () => {
