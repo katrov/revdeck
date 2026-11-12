@@ -98,10 +98,14 @@ revdeck ui            # ссылка на локальный интерфейс
 | `revdeck checks <N> [--run --yes]` | проверки проекта |
 | `revdeck export/import <N>` | обмен с файловым форматом |
 | `revdeck ui [N]` | локальный интерфейс |
-| `revdeck daemon <start│stop│status│logs│install>` | управление демоном |
+| `revdeck daemon <start│stop│restart│status│logs│install│uninstall>` | управление демоном |
 | `revdeck mcp` | MCP-сервер (stdio) |
 
 Общие флаги: `--json`, `--root`, `--review`, `--platform`, `--project`, `--host`, `--lang ru|en`.
+
+Горячие клавиши UI: `1`–`5` переключают вкладки, `r` обновляет, `s` скрывает/показывает
+сайдбар, `p` открывает публикацию, `?` — палитру команд. Выбор сайдбара запоминается в
+`localStorage`.
 
 ## Вложения
 
@@ -189,6 +193,8 @@ rules:
     - match: "docs/**"
       docs: [AGENTS.md#Размещение-технических-знаний]
   ignore: ["**/generated/**"]
+  maxDocumentBytes: 0   # 0 = без лимита
+  maxTotalBytes: 0      # 0 = без лимита
 checks:
   - id: lint
     argv: [npm, run, lint]

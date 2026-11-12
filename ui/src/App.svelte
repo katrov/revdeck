@@ -12,6 +12,8 @@
     import CommandPalette from './components/CommandPalette.svelte';
 
     let paletteOpen = $state(false);
+    let sidebarOpen = $state(true);
+    const SIDEBAR_KEY = 'revdeck.sidebar';
 
     const openThreads = $derived(app.review ? app.review.threads.filter((thread) => !thread.resolved).length : 0);
     const draftFindings = $derived(
@@ -61,6 +63,15 @@
         notify(t('Обновлено', 'Updated'), 'info');
     }
 
+    function toggleSidebar(): void {
+        sidebarOpen = !sidebarOpen;
+        try {
+            localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? '1' : '0');
+        } catch {
+            // localStorage может быть недоступен в приватном режиме.
+        }
+    }
+
     function onKeydown(event: KeyboardEvent): void {
         const target = event.target as HTMLElement | null;
         const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
@@ -80,6 +91,8 @@
             if (tab) setTab(tab.id);
         } else if (event.key === 'r') {
             refresh();
+        } else if (event.key === 's') {
+            toggleSidebar();
         } else if (event.key === '?') {
             paletteOpen = true;
         } else if (event.key === 'p' && publishTarget) {
@@ -88,6 +101,11 @@
     }
 
     onMount(() => {
+        try {
+            sidebarOpen = localStorage.getItem(SIDEBAR_KEY) !== '0';
+        } catch {
+            sidebarOpen = true;
+        }
         void bootstrap();
         void loadReviews();
         const unsubscribe = subscribe();
@@ -99,9 +117,20 @@
     });
 </script>
 
-<div class="shell">
+<div class="shell" class:sidebar-collapsed={!sidebarOpen}>
     <aside class="sidebar">
-        <div class="brand"><span class="dot"></span> revdeck</div>
+        <div class="brand">
+            <span class="dot"></span> revdeck
+            <button
+                class="sidebar-collapse"
+                type="button"
+                title={t('Скрыть сайдбар (s)', 'Hide sidebar (s)')}
+                aria-label={t('Скрыть сайдбар', 'Hide sidebar')}
+                onclick={toggleSidebar}
+            >
+                ‹
+            </button>
+        </div>
         <div class="sidebar-list">
             {#each app.reviews as review (review.id)}
                 <button class="review-row" class:active={app.review?.id === review.id} onclick={() => openReview(review.id)}>
@@ -142,6 +171,15 @@
                         </div>
                     </div>
                     <div class="header-actions">
+                        <button
+                            class="btn icon"
+                            onclick={toggleSidebar}
+                            title={t('Скрыть/показать сайдбар (s)', 'Hide/show sidebar (s)')}
+                            aria-label={t('Скрыть/показать сайдбар', 'Hide/show sidebar')}
+                            aria-expanded={sidebarOpen}
+                        >
+                            ☰
+                        </button>
                         <button class="btn" onclick={refresh} title={t('Обновить (r)', 'Refresh (r)')}>{t('Обновить', 'Refresh')}</button>
                         <a class="btn" href={review.info.webUrl} target="_blank" rel="noreferrer noopener">{t('Открыть в платформе', 'Open in platform')}</a>
                         <button
@@ -181,6 +219,9 @@
             </section>
         {:else}
             <div class="empty">
+                {#if !sidebarOpen}
+                    <button class="btn" type="button" onclick={toggleSidebar} title={t('Показать сайдбар (s)', 'Show sidebar (s)')}>☰ {t('Показать сайдбар', 'Show sidebar')}</button>
+                {/if}
                 <h2>revdeck</h2>
                 <p>{t('Откройте ревью из терминала — оно появится здесь и останется в списке.', 'Open a review from the terminal; it will appear here and stay in the list.')}</p>
                 <pre>revdeck open 42

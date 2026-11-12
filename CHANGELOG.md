@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-12
+
+### Added
+
+- Collapsible UI sidebar: the header button or `s` hides/shows it, and the choice is stored in
+  `localStorage`.
+- `rules.maxDocumentBytes` and `rules.maxTotalBytes` in `.revdeck.yml`. `0` (the new default) means no
+  limit, so all rule documents are loaded; set a positive value to cap the context.
+
 ## [0.2.2] - 2026-11-12
 
 ### Added

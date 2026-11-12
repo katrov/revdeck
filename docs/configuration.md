@@ -64,6 +64,15 @@ review to a different project.
 - `map` — a list of rules: `match` (a glob or an array of globs) and `docs` (an array of selectors).
   Multiple matching rows are merged.
 - `ignore` — glob exclusions: a matching file is left out of rule analysis.
+- `maxDocumentBytes` — per-document cap in bytes. `0` (default) means no cap; the hard read limit is
+  16 MB per file.
+- `maxTotalBytes` — cap for the assembled rules context and the rendered rules text. `0` (default)
+  means no cap.
+
+Loading all rules increases the prompt sent to the model: token usage, response time and the chance of
+hitting the model context window. The CLI/MCP `max_bytes` option can still cap the final agent context.
+If a project has very large guides, set a smaller `maxTotalBytes` (for example `327680`) or map only the
+needed sections.
 
 ### Document selectors
 

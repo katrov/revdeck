@@ -833,7 +833,7 @@ export class ReviewService {
 
     // ---------------------------------------------------------------- rules & checks
 
-    async rules(id: string): Promise<{ markdown: string; configPath: string | null; warnings: string[]; checks: CommandCheck[]; language: Locale }> {
+    async rules(id: string): Promise<{ markdown: string; configPath: string | null; warnings: string[]; checks: CommandCheck[]; language: Locale; maxBytes: number }> {
         const stored = this.store.getReview(id);
         if (!stored) throw new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`));
         const info = this.store.info(id);
@@ -858,12 +858,14 @@ export class ReviewService {
             files: changedPaths(stored.snapshot.diff),
             language,
         });
+        const maxBytes = config.rules.maxTotalBytes ?? 0;
         return {
-            markdown: renderRules(effective, { language }),
+            markdown: renderRules(effective, { language, maxBytes }),
             configPath: effective.configPath,
             warnings: effective.warnings,
             checks: effective.checks,
             language,
+            maxBytes,
         };
     }
 

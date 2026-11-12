@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildEffectiveRules } from '../src/core/rules.js';
+import { buildEffectiveRules, renderRules } from '../src/core/rules.js';
 import { reviewConfigSchema } from '../src/core/config.js';
 
 async function root(): Promise<string> {
@@ -31,6 +31,18 @@ describe('buildEffectiveRules', () => {
         // README не попал в map → используется sources.
         expect(rules.scopes[1]!.documents[0]!.path).toBe('AGENTS.md');
         expect(rules.warnings).toEqual([]);
+    });
+
+    it('loads all rules when size limits are disabled', async () => {
+        const dir = await root();
+        await writeFile(path.join(dir, 'big.md'), `# Big\n\n${'- long rule line\n'.repeat(30_000)}`);
+        const config = reviewConfigSchema.parse({ rules: { sources: ['big.md'] } });
+        const rules = await buildEffectiveRules({ root: dir, config, configPath: null, files: [] });
+        expect(rules.warnings.join('\n')).not.toContain('превышен лимит');
+        expect(rules.scopes[0]!.documents[0]!.excerpt.length).toBeGreaterThan(320 * 1024);
+        const markdown = renderRules(rules, { maxBytes: 0 });
+        expect(markdown).toContain('long rule line');
+        expect(markdown).not.toContain('контекст правил обрезан');
     });
 
     it('warns when a path has no mapping and sources are empty', async () => {

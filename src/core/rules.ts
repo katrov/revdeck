@@ -8,8 +8,8 @@ import { readTextNoFollow } from './paths.js';
 import { redactLine } from './redact.js';
 import type { Locale } from './locale.js';
 
-const MAX_DOC_BYTES = 96 * 1024;
-const MAX_TOTAL_BYTES = 320 * 1024;
+/** Жёсткий предохранитель на чтение одного файла, когда лимит отключён. */
+const MAX_READ_BYTES = 16 * 1024 * 1024;
 
 interface CachedDoc {
     exists: boolean;
@@ -42,6 +42,8 @@ export async function buildEffectiveRules(options: BuildRulesOptions): Promise<E
     const ignored = options.files.length - files.length;
     if (ignored > 0) warnings.push(`${ignored} ${t('файл(ов) исключены настройкой rules.ignore', 'file(s) excluded by rules.ignore')}`);
 
+    const documentLimit = config.rules.maxDocumentBytes > 0 ? config.rules.maxDocumentBytes : Number.POSITIVE_INFINITY;
+    const totalLimit = config.rules.maxTotalBytes > 0 ? config.rules.maxTotalBytes : Number.POSITIVE_INFINITY;
     const cache = new Map<string, CachedDoc>();
     let totalBytes = 0;
 
@@ -62,9 +64,10 @@ export async function buildEffectiveRules(options: BuildRulesOptions): Promise<E
                 warnings.push(`${t('документ', 'document')} ${relative} ${t('не найден', 'not found')}`);
             } else {
                 try {
-                    const raw = await readTextNoFollow(resolved, MAX_DOC_BYTES * 2);
-                    const truncated = raw.length > MAX_DOC_BYTES;
-                    cached = { exists: true, text: truncated ? raw.slice(0, MAX_DOC_BYTES) : raw, truncated };
+                    const readLimit = Number.isFinite(documentLimit) ? Math.max(documentLimit * 2, 4096) : MAX_READ_BYTES;
+                    const raw = await readTextNoFollow(resolved, readLimit);
+                    const truncated = Number.isFinite(documentLimit) && raw.length > documentLimit;
+                    cached = { exists: true, text: truncated ? raw.slice(0, documentLimit) : raw, truncated };
                 } catch (error) {
                     cached = { exists: false, text: '', truncated: false };
                     warnings.push(`${relative}: ${redactLine(error)}`);
@@ -95,7 +98,7 @@ export async function buildEffectiveRules(options: BuildRulesOptions): Promise<E
         }
         const documents: RuleDocument[] = [];
         for (const doc of docs) {
-            if (totalBytes > MAX_TOTAL_BYTES) {
+            if (Number.isFinite(totalLimit) && totalBytes > totalLimit) {
                 warnings.push(t('контекст правил обрезан: превышен лимит размера', 'rules context truncated: size limit exceeded'));
                 break;
             }
@@ -193,6 +196,7 @@ export function normalizeHeading(value: string): string {
 /** Компактный markdown-контекст правил для агента (MCP/CLI). */
 export function renderRules(rules: EffectiveRules, options: { withExcerpts?: boolean; maxBytes?: number; language?: Locale } = {}): string {
     const maxBytes = options.maxBytes ?? 200_000;
+    const limit = maxBytes > 0 ? maxBytes : Number.POSITIVE_INFINITY;
     const withExcerpts = options.withExcerpts ?? true;
     const language = options.language ?? 'ru';
     const t = (ru: string, en: string): string => (language === 'ru' ? ru : en);
@@ -210,7 +214,7 @@ export function renderRules(rules: EffectiveRules, options: { withExcerpts?: boo
             if (seen.has(key)) continue;
             seen.add(key);
             out.push(`\n> ${label}\n\n${doc.excerpt}${doc.truncated ? `\n\n[${t('документ обрезан', 'document truncated')}]` : ''}`);
-            if (out.join('\n').length > maxBytes) {
+            if (Number.isFinite(limit) && out.join('\n').length > limit) {
                 out.push(`\n[${t('контекст правил обрезан по размеру', 'rules context truncated by size')}]`);
                 return out.join('\n');
             }

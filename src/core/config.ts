@@ -43,6 +43,10 @@ export const reviewConfigSchema = z.object({
                 .default([]),
             /** Пути, которые не ревьюятся (сгенерированный код и т.п.). */
             ignore: z.array(z.string().min(1)).default([]),
+            /** 0 — без ограничения; иначе документ обрезается до этого размера. */
+            maxDocumentBytes: z.number().int().nonnegative().default(0),
+            /** 0 — без ограничения; иначе общий контекст правил обрезается. */
+            maxTotalBytes: z.number().int().nonnegative().default(0),
         })
         .prefault({}),
     checks: z

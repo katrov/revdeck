@@ -90,4 +90,5 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
 - The diff is parsed on the server; the UI receives files as a list and hunks one file at a time.
 - Review state does not contain the full diff; SSE reports changes and the UI refetches the state.
 - Snippets for threads and findings are computed on the server and size-limited.
-- Rule context is capped at 320 KB; MCP context is capped by the `max_bytes` parameter.
+- Rule context size is controlled by `rules.maxDocumentBytes` and `rules.maxTotalBytes` (`0` =
+  unlimited); MCP context can additionally be capped by the `max_bytes` parameter.

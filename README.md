@@ -112,10 +112,13 @@ Russian READMEs live in this repository; translation fixes are welcome.
 | `revdeck checks <N> [--run --yes]` | project checks |
 | `revdeck export/import <N>` | legacy file exchange |
 | `revdeck ui [N]` | local web UI |
-| `revdeck daemon <start\|stop\|status\|logs\|install>` | daemon lifecycle |
+| `revdeck daemon <start\|stop\|restart\|status\|logs\|install\|uninstall>` | daemon lifecycle |
 | `revdeck mcp` | MCP server over stdio |
 
 Common flags: `--json`, `--root`, `--review`, `--platform`, `--project`, `--host`, `--lang ru|en`.
+
+UI shortcuts: `1`–`5` switch tabs, `r` refreshes, `s` hides/shows the sidebar, `p` opens
+publishing, `?` opens the command palette. The sidebar choice is stored in `localStorage`.
 
 ## Attachments
 
@@ -201,6 +204,8 @@ rules:
     - match: "src/state/**"
       docs: [docs/StateManagement.md]
   ignore: ["**/generated/**"]
+  maxDocumentBytes: 0   # 0 = no limit
+  maxTotalBytes: 0      # 0 = no limit
 checks:
   - id: lint
     argv: [npm, run, lint]

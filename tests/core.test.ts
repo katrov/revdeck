@@ -18,6 +18,8 @@ describe('config', () => {
         expect(config.publish.requireApproval).toBe(true);
         expect(config.publish.maxComments).toBe(50);
         expect(config.rules.map).toEqual([]);
+        expect(config.rules.maxDocumentBytes).toBe(0);
+        expect(config.rules.maxTotalBytes).toBe(0);
     });
 
     it('parses a map and checks', () => {

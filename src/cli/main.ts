@@ -82,7 +82,7 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
   revdeck eject           удалить revdeck из проекта (--yes; --keep-config)
   revdeck devcontainer    подключить devcontainer к демону хоста (--write)
   revdeck doctor          проверить окружение и доступы
-  revdeck daemon <start|stop|status|logs|restart>
+  revdeck daemon <start|stop|restart|status|logs|install|uninstall>
   revdeck list            открытые ревью (локальный кеш), --remote — с платформы
   revdeck open <url|N>    открыть ревью и получить контекст
   revdeck ui [N]          ссылка на локальный интерфейс
@@ -111,7 +111,7 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
   revdeck eject           remove revdeck from the project (--yes; --keep-config)
   revdeck devcontainer    connect a devcontainer to the host daemon (--write)
   revdeck doctor          check the environment and access
-  revdeck daemon <start|stop|status|logs|restart>
+  revdeck daemon <start|stop|restart|status|logs|install|uninstall>
   revdeck list            open reviews (local cache), --remote — from the platform
   revdeck open <url|N>    open a review and get the context
   revdeck ui [N]          link to the local UI
@@ -438,11 +438,11 @@ async function status(): Promise<void> {
 async function context(root: string, arg: string | undefined, values: Values): Promise<void> {
     await withClient(async ({ client }) => {
         const { review } = await resolveReview(client, root, reviewArg(values, arg), values);
-        const { rules } = await client.request<{ rules: { markdown: string; configPath: string | null; warnings: string[]; checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[]; language: 'ru' | 'en' } }>('rules.get', {
+        const { rules } = await client.request<{ rules: { markdown: string; configPath: string | null; warnings: string[]; checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[]; language: 'ru' | 'en'; maxBytes?: number } }>('rules.get', {
             review: review.id,
         });
         if (values.json) return printJson(contextPayload(review, rules));
-        writers.out(renderContext(review, rules, { language: rules.language }));
+        writers.out(renderContext(review, rules, { language: rules.language, ...(rules.maxBytes !== undefined ? { maxBytes: rules.maxBytes } : {}) }));
     });
 }
 
@@ -701,7 +701,7 @@ async function rules(root: string, arg: string | undefined, values: Values): Pro
             language,
         });
         if (values.json) return printJson(effective);
-        return writers.out(renderRules(effective, { language }));
+        return writers.out(renderRules(effective, { language, maxBytes: loaded.config.rules.maxTotalBytes }));
     }
     await withClient(async ({ client }) => {
         const { review } = await resolveReview(client, root, reviewArg(values, arg), values);

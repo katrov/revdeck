@@ -1016,3 +1016,32 @@ mark {
 .md-editor.disabled {
     opacity: 0.85;
 }
+
+.shell.sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.shell.sidebar-collapsed .sidebar {
+    display: none;
+}
+
+.sidebar-collapse {
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 0 6px;
+    font-size: 20px;
+    line-height: 20px;
+}
+
+.sidebar-collapse:hover {
+    color: var(--text);
+    background: var(--panel-2);
+}
+
+.btn.icon {
+    padding: 4px 9px;
+    line-height: 20px;
+}

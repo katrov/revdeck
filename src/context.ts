@@ -8,6 +8,8 @@ export interface RulesPayload {
     warnings: string[];
     checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[];
     language: Locale;
+    /** 0 — без ограничения размера контекста. */
+    maxBytes?: number;
 }
 
 /**
@@ -15,7 +17,8 @@ export interface RulesPayload {
  * файлов и ручной таблицы «какой документ читать для этого пути».
  */
 export function renderContext(review: ReviewView, rules: RulesPayload, options: { maxBytes?: number; language?: Locale } = {}): string {
-    const limit = options.maxBytes ?? 200_000;
+    const maxBytes = options.maxBytes ?? 200_000;
+    const limit = maxBytes > 0 ? maxBytes : Number.POSITIVE_INFINITY;
     const language: Locale = options.language ?? rules.language ?? 'en';
     const t = (ru: string, en: string): string => (language === 'ru' ? ru : en);
     const lines: string[] = [];
@@ -134,7 +137,7 @@ export function renderContext(review: ReviewView, rules: RulesPayload, options: 
         ),
     );
     const text = lines.join('\n');
-    return text.length > limit
+    return Number.isFinite(limit) && text.length > limit
         ? `${text.slice(0, limit)}\n\n[${t('контекст обрезан', 'context truncated')}: ${text.length} > ${limit} ${t('байт', 'bytes')}]`
         : text;
 }

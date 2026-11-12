@@ -161,7 +161,7 @@ server.registerTool(
         try {
             const { review: view } = await call<{ review: ReviewView }>('reviews.get', { review, refresh: refresh === true });
             const { rules } = await call<{ rules: RulesPayload }>('rules.get', { review });
-            let text = renderContext(view, rules, { maxBytes: max_bytes ?? 200_000, language: rules.language });
+            let text = renderContext(view, rules, { maxBytes: max_bytes ?? rules.maxBytes ?? 200_000, language: rules.language });
             if (file) {
                 const { file: diff } = await call<{ file: { hunks: { header: string; lines: { kind: string; text: string }[] }[] } | null }>('diff.get', {
                     review,
