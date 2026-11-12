@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { app, draftFor, errorText, focusLine, notify, relativeTime } from '../lib/state.svelte';
+    import { app, copyFocusLink, draftFor, errorText, focusLine, notify, relativeTime } from '../lib/state.svelte';
     import { saveDraft } from '../lib/api';
     import type { ReplyDraft } from '../lib/types';
     import { plural, t } from '../lib/i18n.svelte';
@@ -77,6 +77,15 @@
     function selectAllChanged(): void {
         selected = changedDrafts.map((draft) => draft.threadId);
     }
+
+    $effect(() => {
+        const focus = app.focus;
+        if (focus?.kind !== 'thread') return;
+        const thread = app.review?.threads.find((item) => item.id === focus.id);
+        if (!thread) return;
+        if (filter === 'open' && thread.resolved) filter = 'all';
+        requestAnimationFrame(() => document.getElementById(`thread-${focus.id}`)?.scrollIntoView({ block: 'center' }));
+    });
 </script>
 
 <div class="row" style="margin-bottom: 12px">
@@ -93,7 +102,7 @@
 {#each threads as thread (thread.id)}
     {@const draft = draftOf(thread.id)}
     {@const busy = saving.includes(thread.id)}
-    <section class="card">
+    <section class="card" id={`thread-${thread.id}`} class:highlight={app.focus?.kind === 'thread' && app.focus.id === thread.id}>
         <div class="card-head">
             <input
                 type="checkbox"
@@ -115,6 +124,7 @@
                     {t('обновлён', 'updated')} {relativeTime(thread.updatedAt)}
                 </div>
             </div>
+            <button class="btn icon" type="button" title={t('Скопировать ссылку на тред', 'Copy thread link')} onclick={() => copyFocusLink({ kind: 'thread', id: thread.id }, 'threads')}>🔗</button>
             {#if draft.replied}<span class="badge ok">{t('ответ опубликован', 'reply published')}</span>{/if}
             {#if draft.error}<span class="badge err" title={draft.error}>{t('ошибка', 'error')}</span>{/if}
             {#if busy}<span class="muted small">{t('сохранение…', 'saving…')}</span>{/if}

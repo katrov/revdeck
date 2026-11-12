@@ -117,8 +117,12 @@ Russian READMEs live in this repository; translation fixes are welcome.
 
 Common flags: `--json`, `--root`, `--review`, `--platform`, `--project`, `--host`, `--lang ru|en`.
 
-UI shortcuts: `1`–`5` switch tabs, `r` refreshes, `s` hides/shows the sidebar, `p` opens
-publishing, `?` opens the command palette. The sidebar choice is stored in `localStorage`.
+UI shortcuts: `1`–`5` switch tabs, `o` opens a review, `r` refreshes, `s` hides/shows the
+sidebar, `p` opens publishing, `?` opens the command palette. The sidebar choice is stored in
+`localStorage`.
+
+The UI shows the MR/PR description, supports deep links to threads, findings and diff lines (with
+working browser Back/Forward), and keeps a per-review "viewed" state and file filter in the diff.
 
 ## Attachments
 
@@ -266,7 +270,8 @@ Provider tests use recorded CLI responses and need no network. See [CONTRIBUTING
 - Publishing uses regular comments; native drafts (GitLab draft notes, GitHub pending review) are not
   used yet, though the provider interface is ready.
 - Project checks are planned by the agent; running them requires `revdeck checks --run --yes`.
-- The UI does not open a new review by number; use the CLI and the review appears in the list.
+- The UI opens a review from the **Open review** dialog; the working-copy root is required so the daemon
+  can read `.revdeck.yml`.
 - Thread resolution is in the thread card; reactions are available on thread notes in the UI and through
   `revdeck react`.
 - GitHub has no public attachment API: the Attach button is disabled there; uploads work in GitLab.

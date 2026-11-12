@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { app, bootstrap, loadReview, loadReviews, notify, setTab, subscribe } from './lib/state.svelte';
+    import { app, applyRoute, bootstrap, loadReview, loadReviews, notify, setTab, subscribe } from './lib/state.svelte';
     import type { Tab } from './lib/types';
     import { i18n, plural, setLocale, t } from './lib/i18n.svelte';
     import Overview from './components/Overview.svelte';
@@ -10,8 +10,10 @@
     import Rules from './components/Rules.svelte';
     import PublishDialog from './components/PublishDialog.svelte';
     import CommandPalette from './components/CommandPalette.svelte';
+    import OpenReviewDialog from './components/OpenReviewDialog.svelte';
 
     let paletteOpen = $state(false);
+    let openDialog = $state(false);
     let sidebarOpen = $state(true);
     const SIDEBAR_KEY = 'revdeck.sidebar';
 
@@ -53,6 +55,8 @@
     function openReview(id: string): void {
         if (app.review?.id === id) return;
         app.tab = 'overview';
+        app.focus = null;
+        app.diffFocus = null;
         void loadReview(id);
     }
 
@@ -75,13 +79,14 @@
     function onKeydown(event: KeyboardEvent): void {
         const target = event.target as HTMLElement | null;
         const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
-        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && !typing) {
             event.preventDefault();
             paletteOpen = true;
             return;
         }
         if (event.key === 'Escape') {
             paletteOpen = false;
+            openDialog = false;
             app.publishing = null;
             return;
         }
@@ -93,6 +98,8 @@
             refresh();
         } else if (event.key === 's') {
             toggleSidebar();
+        } else if (event.key === 'o') {
+            openDialog = true;
         } else if (event.key === '?') {
             paletteOpen = true;
         } else if (event.key === 'p' && publishTarget) {
@@ -101,23 +108,32 @@
     }
 
     onMount(() => {
+        const narrow = window.innerWidth <= 860;
         try {
-            sidebarOpen = localStorage.getItem(SIDEBAR_KEY) !== '0';
+            const stored = localStorage.getItem(SIDEBAR_KEY);
+            sidebarOpen = narrow ? false : stored === null ? true : stored !== '0';
         } catch {
-            sidebarOpen = true;
+            sidebarOpen = !narrow;
         }
         void bootstrap();
         void loadReviews();
         const unsubscribe = subscribe();
         window.addEventListener('keydown', onKeydown);
+        window.addEventListener('popstate', applyRoute);
+        window.addEventListener('hashchange', applyRoute);
         return () => {
             unsubscribe();
             window.removeEventListener('keydown', onKeydown);
+            window.removeEventListener('popstate', applyRoute);
+            window.removeEventListener('hashchange', applyRoute);
         };
     });
 </script>
 
 <div class="shell" class:sidebar-collapsed={!sidebarOpen}>
+    {#if sidebarOpen}
+        <button class="sidebar-backdrop" type="button" aria-label={t('Закрыть сайдбар', 'Close sidebar')} onclick={toggleSidebar}></button>
+    {/if}
     <aside class="sidebar">
         <div class="brand">
             <span class="dot"></span> revdeck
@@ -130,6 +146,9 @@
             >
                 ‹
             </button>
+        </div>
+        <div class="sidebar-actions">
+            <button class="btn" type="button" onclick={() => (openDialog = true)}>{t('+ Открыть ревью', '+ Open review')}</button>
         </div>
         <div class="sidebar-list">
             {#each app.reviews as review (review.id)}
@@ -219,9 +238,12 @@
             </section>
         {:else}
             <div class="empty">
-                {#if !sidebarOpen}
-                    <button class="btn" type="button" onclick={toggleSidebar} title={t('Показать сайдбар (s)', 'Show sidebar (s)')}>☰ {t('Показать сайдбар', 'Show sidebar')}</button>
-                {/if}
+                <div class="row" style="justify-content: center; margin-bottom: 12px">
+                    {#if !sidebarOpen}
+                        <button class="btn" type="button" onclick={toggleSidebar} title={t('Показать сайдбар (s)', 'Show sidebar (s)')}>☰ {t('Показать сайдбар', 'Show sidebar')}</button>
+                    {/if}
+                    <button class="btn primary" type="button" onclick={() => (openDialog = true)}>{t('Открыть ревью', 'Open review')}</button>
+                </div>
                 <h2>revdeck</h2>
                 <p>{t('Откройте ревью из терминала — оно появится здесь и останется в списке.', 'Open a review from the terminal; it will appear here and stay in the list.')}</p>
                 <pre>revdeck open 42
@@ -237,7 +259,18 @@ revdeck open https://gitlab.com/group/project/-/merge_requests/42</pre>
 {/if}
 
 {#if paletteOpen}
-    <CommandPalette onclose={() => (paletteOpen = false)} onpublish={() => publishTarget && (app.publishing = publishTarget)} />
+    <CommandPalette
+        onclose={() => (paletteOpen = false)}
+        onpublish={() => publishTarget && (app.publishing = publishTarget)}
+        onopen={() => {
+            paletteOpen = false;
+            openDialog = true;
+        }}
+    />
+{/if}
+
+{#if openDialog}
+    <OpenReviewDialog onclose={() => (openDialog = false)} />
 {/if}
 
 {#if app.toast}

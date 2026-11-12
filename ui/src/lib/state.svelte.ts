@@ -8,10 +8,18 @@ export interface Toast {
     id: number;
 }
 
+export type Focus =
+    | { kind: 'thread'; id: string }
+    | { kind: 'finding'; id: string }
+    | { kind: 'note'; id: string }
+    | { kind: 'line'; file: string; line: number }
+    | null;
+
 export const app = $state({
     reviews: [] as ReviewListItem[],
     review: null as ReviewView | null,
     tab: 'overview' as Tab,
+    focus: null as Focus,
     loading: false,
     error: '',
     toast: null as Toast | null,
@@ -36,9 +44,10 @@ export function errorText(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
-export function setTab(tab: Tab): void {
+export function setTab(tab: Tab, push = true): void {
     app.tab = tab;
-    writeHash();
+    app.focus = null;
+    writeHash(push);
 }
 
 export async function loadReviews(): Promise<void> {
@@ -56,9 +65,11 @@ export async function loadReview(id: string, options: { refresh?: boolean; silen
         const data = options.refresh ? await refreshReview(id) : await getState(id);
         app.review = data.review;
         app.reviews = data.reviews;
-        if (!app.diffFile && data.review.files.length) app.diffFile = data.review.files[0]!.path;
+        if (!app.diffFile || !data.review.files.some((file) => file.path === app.diffFile)) {
+            app.diffFile = data.review.files[0]?.path ?? null;
+        }
         void loadReactions(data.review);
-        writeHash();
+        writeHash(false);
     } catch (error) {
         app.error = errorText(error);
         if (!options.silent) notify(app.error, 'error');
@@ -83,18 +94,91 @@ export function subscribe(): () => void {
     return () => source.close();
 }
 
-export function parseHash(): { id: string | null; tab: Tab } {
-    const match = /^#\/r\/([^/]+)(?:\/([a-z]+))?$/.exec(location.hash);
-    if (!match) return { id: null, tab: 'overview' };
-    const tab = (['overview', 'threads', 'findings', 'diff', 'rules'] as const).includes(match[2] as Tab) ? (match[2] as Tab) : 'overview';
-    return { id: decodeURIComponent(match[1]!), tab };
+const TABS: readonly Tab[] = ['overview', 'threads', 'findings', 'diff', 'rules'];
+
+export interface Route {
+    id: string | null;
+    tab: Tab;
+    focus: Focus;
 }
 
-export function writeHash(): void {
+export function parseHash(): Route {
+    const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+    if (parts[0] !== 'r' || !parts[1]) return { id: null, tab: 'overview', focus: null };
+    const id = decodeURIComponent(parts[1]);
+    const tab = TABS.includes(parts[2] as Tab) ? (parts[2] as Tab) : 'overview';
+    const rest = parts.slice(3);
+    let focus: Focus = null;
+    if (rest[0] === 'thread' && rest[1]) focus = { kind: 'thread', id: decodeURIComponent(rest[1]) };
+    else if (rest[0] === 'finding' && rest[1]) focus = { kind: 'finding', id: decodeURIComponent(rest[1]) };
+    else if (rest[0] === 'note' && rest[1]) focus = { kind: 'note', id: decodeURIComponent(rest[1]) };
+    else if (rest[0] === 'line' && rest[1] && rest[2]) {
+        const line = Number(rest[2]);
+        if (Number.isInteger(line) && line > 0) focus = { kind: 'line', file: decodeURIComponent(rest[1]), line };
+    }
+    return { id, tab, focus };
+}
+
+export function hashFor(tab: Tab, focus: Focus): string {
     const id = app.review?.id;
-    if (!id) return;
-    const hash = `#/r/${encodeURIComponent(id)}/${app.tab}`;
-    if (location.hash !== hash) history.replaceState(null, '', hash);
+    if (!id) return '';
+    let hash = `#/r/${encodeURIComponent(id)}/${tab}`;
+    if (focus?.kind === 'thread') hash += `/thread/${encodeURIComponent(focus.id)}`;
+    else if (focus?.kind === 'finding') hash += `/finding/${encodeURIComponent(focus.id)}`;
+    else if (focus?.kind === 'note') hash += `/note/${encodeURIComponent(focus.id)}`;
+    else if (focus?.kind === 'line') hash += `/line/${encodeURIComponent(focus.file)}/${focus.line}`;
+    return hash;
+}
+
+export function writeHash(push = false): void {
+    const hash = hashFor(app.tab, app.focus);
+    if (!hash || location.hash === hash) return;
+    history[push ? 'pushState' : 'replaceState'](null, '', hash);
+}
+
+export function copyFocusLink(focus: Focus, tab: Tab = app.tab): void {
+    const hash = hashFor(tab, focus);
+    if (!hash) return;
+    const url = `${location.origin}${location.pathname}${hash}`;
+    void navigator.clipboard?.writeText(url).then(
+        () => notify(t('Ссылка скопирована', 'Link copied'), 'ok'),
+        () => notify(t('Не удалось скопировать', 'Could not copy'), 'error'),
+    );
+}
+
+export function applyRoute(): void {
+    const route = parseHash();
+    app.tab = route.tab;
+    app.focus = route.focus;
+    if (route.focus?.kind === 'line') {
+        app.diffFile = route.focus.file;
+        app.diffFocus = { file: route.focus.file, line: route.focus.line };
+    }
+    if (route.id && route.id !== app.review?.id) {
+        void loadReview(route.id, { silent: true });
+        return;
+    }
+    writeHash(false);
+}
+
+export function focusThread(id: string): void {
+    app.tab = 'threads';
+    app.focus = { kind: 'thread', id };
+    writeHash(true);
+}
+
+export function focusFinding(id: string): void {
+    app.tab = 'findings';
+    app.focus = { kind: 'finding', id };
+    writeHash(true);
+}
+
+export function focusNote(note: { id: string; file: string; line: number }): void {
+    app.tab = 'diff';
+    app.focus = { kind: 'note', id: note.id };
+    app.diffFile = note.file;
+    app.diffFocus = { file: note.file, line: note.line };
+    writeHash(true);
 }
 
 async function loadReactions(review: ReviewView): Promise<void> {
@@ -115,6 +199,11 @@ export async function bootstrap(): Promise<void> {
     const queryReview = new URLSearchParams(location.search).get('review');
     const id = route.id ?? queryReview ?? app.reviews[0]?.id ?? null;
     app.tab = route.tab;
+    app.focus = route.focus;
+    if (route.focus?.kind === 'line') {
+        app.diffFile = route.focus.file;
+        app.diffFocus = { file: route.focus.file, line: route.focus.line };
+    }
     if (id) await loadReview(id);
 }
 
@@ -129,7 +218,9 @@ export function threadFor(threadId: string) {
 export function focusLine(file: string, line: number | null): void {
     app.diffFile = file;
     app.diffFocus = line ? { file, line } : null;
-    setTab('diff');
+    app.tab = 'diff';
+    app.focus = line ? { kind: 'line', file, line } : null;
+    writeHash(true);
 }
 
 export function relativeTime(iso: string): string {

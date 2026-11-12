@@ -1,2 +1,2 @@
-export const VERSION = '0.2.3';
+export const VERSION = '0.3.0';
 export const PROTOCOL_VERSION = 1;

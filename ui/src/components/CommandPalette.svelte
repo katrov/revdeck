@@ -3,7 +3,7 @@
     import type { Tab } from '../lib/types';
     import { t } from '../lib/i18n.svelte';
 
-    let { onclose, onpublish }: { onclose: () => void; onpublish: () => void } = $props();
+    let { onclose, onpublish, onopen }: { onclose: () => void; onpublish: () => void; onopen: () => void } = $props();
 
     interface Action {
         id: string;
@@ -22,7 +22,9 @@
 
     const actions = $derived.by((): Action[] => {
         const review = app.review;
-        const list: Action[] = [];
+        const list: Action[] = [
+            { id: 'open-review', label: t('Открыть ревью', 'Open review'), hint: 'o', run: onopen },
+        ];
         const tabs: [Tab, string][] = [
             ['overview', t('Обзор', 'Overview')],
             ['threads', t('Треды', 'Threads')],
@@ -46,6 +48,7 @@
                 },
             });
             list.push({ id: 'platform', label: t('Открыть в платформе', 'Open in platform'), hint: '↗', run: () => window.open(review.info.webUrl, '_blank', 'noopener') });
+            list.push({ id: 'copy-link', label: t('Скопировать ссылку на ревью', 'Copy review link'), hint: '⌘L', run: () => void navigator.clipboard?.writeText(`${location.origin}${location.pathname}${location.hash}`).then(() => notify(t('Ссылка скопирована', 'Link copied'), 'ok'), () => notify(t('Не удалось скопировать', 'Could not copy'), 'error')) });
         }
         for (const item of app.reviews) {
             if (item.id === review?.id) continue;

@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-12
+
+### Added
+
+- UI: MR/PR description on the Overview; an **Open review** dialog (`o`) that opens a number or URL
+  from the browser; deep links to threads, findings and diff lines with working Back/Forward; a file
+  filter, per-review "viewed" checkboxes and previous/next file buttons in the diff.
+- Markdown editor: paste and drag-and-drop image/video uploads, and `Ctrl/Cmd+B`, `Ctrl/Cmd+I`,
+  `Ctrl/Cmd+K` formatting shortcuts.
+- Mobile sidebar as an overlay with a backdrop; it is closed by default on narrow screens.
+
+### Fixed
+
+- Header actions wrap on mobile instead of squeezing the MR title.
+
 ## [0.2.3] - 2026-11-12
 
 ### Added

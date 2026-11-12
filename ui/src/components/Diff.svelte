@@ -1,10 +1,11 @@
 <script lang="ts">
-    import { app, errorText, notify } from '../lib/state.svelte';
+    import { app, copyFocusLink, errorText, focusNote, notify } from '../lib/state.svelte';
     import { addNote, getDiff } from '../lib/api';
     import type { DiffPayload } from '../lib/types';
     import { truncate } from '../lib/format';
     import { t } from '../lib/i18n.svelte';
     import MarkdownEditor from './MarkdownEditor.svelte';
+    import Markdown from './Markdown.svelte';
 
     let diff = $state<DiffPayload | null>(null);
     let loading = $state(false);
@@ -13,9 +14,55 @@
     let noteTarget = $state<{ line: number } | null>(null);
     let noteText = $state('');
     let savingNote = $state(false);
+    let fileQuery = $state('');
+    let hideViewed = $state(false);
+    let viewed = $state<Record<string, boolean>>({});
 
     const file = $derived(app.diffFile);
     const fileInfo = $derived(app.review?.files.find((item) => item.path === file) ?? null);
+    const files = $derived(
+        (app.review?.files ?? []).filter((item) => {
+            if (fileQuery.trim() && !item.path.toLowerCase().includes(fileQuery.trim().toLowerCase())) return false;
+            if (hideViewed && viewed[item.path]) return false;
+            return true;
+        }),
+    );
+    const currentIndex = $derived(files.findIndex((item) => item.path === file));
+    const viewedCount = $derived(Object.values(viewed).filter(Boolean).length);
+
+    $effect(() => {
+        const id = app.review?.id;
+        if (!id) return;
+        try {
+            const stored = JSON.parse(localStorage.getItem(`revdeck.viewed.${id}`) ?? '{}') as unknown;
+            viewed = stored && typeof stored === 'object' && !Array.isArray(stored) ? (stored as Record<string, boolean>) : {};
+        } catch {
+            viewed = {};
+        }
+    });
+
+    $effect(() => {
+        if (!files.some((item) => item.path === app.diffFile)) app.diffFile = files[0]?.path ?? null;
+    });
+
+    function toggleViewed(path: string, value: boolean): void {
+        viewed = { ...viewed, [path]: value };
+        const id = app.review?.id;
+        if (id) {
+            try {
+                localStorage.setItem(`revdeck.viewed.${id}`, JSON.stringify(viewed));
+            } catch {
+                // localStorage может быть недоступен.
+            }
+        }
+    }
+
+    function selectRelative(delta: number): void {
+        if (!files.length) return;
+        const index = currentIndex >= 0 ? currentIndex : 0;
+        const next = Math.max(0, Math.min(files.length - 1, index + delta));
+        app.diffFile = files[next]!.path;
+    }
 
     $effect(() => {
         const reviewId = app.review?.id;
@@ -104,16 +151,48 @@
             document.getElementById(`line-${focus.line}`)?.scrollIntoView({ block: 'center' });
         });
     });
+
+    $effect(() => {
+        const focus = app.focus;
+        if (focus?.kind !== 'note') return;
+        requestAnimationFrame(() => document.getElementById(`note-${focus.id}`)?.scrollIntoView({ block: 'center' }));
+    });
 </script>
 
 <div class="split">
     <div class="file-list">
-        {#each app.review?.files ?? [] as item (item.path)}
-            <button class="file-item" class:active={app.diffFile === item.path} onclick={() => (app.diffFile = item.path)}>
-                {#if item.status === 'added'}<span class="badge ok">A</span>{:else if item.status === 'deleted'}<span class="badge err">D</span>{:else if item.status === 'renamed'}<span class="badge">R</span>{:else}<span class="badge">M</span>{/if}
-                <span class="name" title={item.path}>{item.path}</span>
-                <span class="counts">{item.additions}/{item.deletions}</span>
-            </button>
+        <div class="file-tools">
+            <input bind:value={fileQuery} placeholder={t('Найти файл…', 'Filter files…')} aria-label={t('Найти файл', 'Filter files')} />
+            <div class="spread">
+                <label class="switch small">
+                    <input type="checkbox" bind:checked={hideViewed} style="width: auto" />
+                    {t('Скрыть просмотренные', 'Hide viewed')}
+                </label>
+                <span class="muted small">{viewedCount}/{app.review?.files.length ?? 0}</span>
+            </div>
+            <div class="file-nav">
+                <button class="btn icon" type="button" onclick={() => selectRelative(-1)} disabled={currentIndex <= 0} title={t('Предыдущий файл', 'Previous file')}>←</button>
+                <span class="muted small">{files.length ? `${currentIndex + 1}/${files.length}` : '0/0'}</span>
+                <button class="btn icon" type="button" onclick={() => selectRelative(1)} disabled={currentIndex < 0 || currentIndex >= files.length - 1} title={t('Следующий файл', 'Next file')}>→</button>
+            </div>
+        </div>
+        {#each files as item (item.path)}
+            <div class="file-row" class:active={app.diffFile === item.path}>
+                <input
+                    type="checkbox"
+                    class="file-check"
+                    checked={viewed[item.path] ?? false}
+                    aria-label={t('Файл просмотрен', 'File viewed')}
+                    onchange={(event) => toggleViewed(item.path, event.currentTarget.checked)}
+                />
+                <button class="file-item" class:active={app.diffFile === item.path} onclick={() => (app.diffFile = item.path)}>
+                    {#if item.status === 'added'}<span class="badge ok">A</span>{:else if item.status === 'deleted'}<span class="badge err">D</span>{:else if item.status === 'renamed'}<span class="badge">R</span>{:else}<span class="badge">M</span>{/if}
+                    <span class="name" title={item.path}>{item.path}</span>
+                    <span class="counts">{item.additions}/{item.deletions}</span>
+                </button>
+            </div>
+        {:else}
+            <p class="muted small" style="padding: 8px">{t('Файлов не найдено.', 'No files found.')}</p>
         {/each}
     </div>
 
@@ -178,6 +257,7 @@
                     />
                     <div class="row end" style="margin-top: 6px">
                         <span class="muted small">{t('Агент увидит комментарий в контексте ревью.', 'The agent sees this comment in the review context.')}</span>
+                        <button class="btn icon" type="button" title={t('Скопировать ссылку на строку', 'Copy line link')} onclick={() => copyFocusLink({ kind: 'line', file: file ?? '', line: noteTarget?.line ?? 0 }, 'diff')}>🔗</button>
                         <button class="btn primary" onclick={() => void submitNote()} disabled={savingNote || !noteText.trim()}>{t('Сохранить', 'Save')}</button>
                     </div>
                 </div>
@@ -187,13 +267,14 @@
                 <div style="padding: 12px">
                     <div class="section-title">{t('Комментарии к строкам этого файла', 'Line comments in this file')}</div>
                     {#each fileNotes as note (note.id)}
-                        <section class="card flat">
+                        <section class="card flat" id={`note-${note.id}`} class:highlight={app.focus?.kind === 'note' && app.focus.id === note.id}>
                             <div class="card-head">
-                                <span class="mono small">{note.file}:{note.line}</span>
+                                <button class="path-link" type="button" onclick={() => focusNote(note)}>{note.file}:{note.line}</button>
+                                <button class="btn icon" type="button" title={t('Скопировать ссылку на комментарий', 'Copy comment link')} onclick={() => copyFocusLink({ kind: 'note', id: note.id }, 'diff')}>🔗</button>
                                 {#if note.posted}<span class="badge ok">{t('опубликовано', 'published')}</span>{/if}
                                 {#if note.agentReply}<span class="badge">{t('ответ агента', 'agent reply')}</span>{/if}
                             </div>
-                            <div class="md"><span>{note.text}</span></div>
+                            <div class="md"><Markdown source={note.text} /></div>
                             {#if note.agentReply}<div class="muted small">→ {note.agentReply}</div>{/if}
                             {#if note.error}<div class="alert error">{note.error}</div>{/if}
                         </section>

@@ -49,6 +49,11 @@ export const getReactions = (review: string, noteIds: string[]) =>
 export const toggleReaction = (review: string, noteId: string, emoji: string) =>
     api<{ active: boolean; reactions: import('./types').Reaction[] }>('/api/reactions', { body: { review, noteId, emoji } });
 
+export const openReview = (root: string, input: string, options: { platform?: string; project?: string; host?: string; branch?: string } = {}) =>
+    api<{ review: import('./types').ReviewView; reviews: import('./types').ReviewListItem[] }>('/api/reviews/open', {
+        body: { root, input, ...options },
+    });
+
 export const refreshReview = (review: string) => api<{ review: import('./types').ReviewView; reviews: import('./types').ReviewListItem[] }>('/api/reviews/refresh', { body: { review } });
 
 export const saveDraft = (review: string, threadId: string, patch: Record<string, unknown>) =>

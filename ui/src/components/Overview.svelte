@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { app, focusLine, relativeTime, setTab } from '../lib/state.svelte';
+    import { app, focusLine, focusNote, focusThread, relativeTime, setTab } from '../lib/state.svelte';
     import { plainText, truncate } from '../lib/format';
     import { plural, t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
@@ -25,6 +25,17 @@
         </ul>
     </div>
 {/if}
+
+<section class="card">
+    <div class="card-head">
+        <div class="card-title">{t('Описание MR/PR', 'MR/PR description')}</div>
+    </div>
+    {#if review.info.description.trim()}
+        <div class="md" style="margin-top: 6px"><Markdown source={review.info.description} /></div>
+    {:else}
+        <p class="muted" style="margin: 6px 0 0">{t('Описание пустое.', 'The description is empty.')}</p>
+    {/if}
+</section>
 
 <div class="stats">
     <div><div class="value">{review.stats.files}</div><div class="label">{plural(review.stats.files, ['файл', 'файла', 'файлов'], ['file', 'files'])}</div></div>
@@ -88,7 +99,7 @@
                         {/if}
                     </div>
                 </div>
-                <button class="btn" onclick={() => setTab('threads')}>{t('Ответить', 'Reply')}</button>
+                <button class="btn" onclick={() => focusThread(thread.id)}>{t('Ответить', 'Reply')}</button>
             </div>
         </section>
     {/each}
@@ -109,7 +120,7 @@
                 <div class="grow">
                     <div class="card-title">{truncate(plainText(note.text), 200)}</div>
                     <div class="muted small">
-                        <button class="path-link" onclick={() => focusLine(note.file, note.line)}>{note.file}:{note.line}</button>
+                        <button class="path-link" onclick={() => focusNote(note)}>{note.file}:{note.line}</button>
                         · {relativeTime(note.createdAt)}
                     </div>
                 </div>

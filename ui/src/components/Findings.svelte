@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { app, errorText, focusLine, notify, relativeTime } from '../lib/state.svelte';
+    import { app, copyFocusLink, errorText, focusLine, notify, relativeTime } from '../lib/state.svelte';
     import { saveDecisions, saveFindings } from '../lib/api';
     import type { Finding, Level } from '../lib/types';
     import { truncate } from '../lib/format';
@@ -96,6 +96,17 @@
         }
         app.publishing = { kind: 'finding', ids };
     }
+
+    $effect(() => {
+        const focus = app.focus;
+        if (focus?.kind !== 'finding') return;
+        const finding = app.review?.findings.find((item) => item.id === focus.id);
+        if (!finding) return;
+        if (levelFilter !== 'all' && finding.level !== levelFilter) levelFilter = 'all';
+        if (statusFilter === 'published' && finding.status !== 'published') statusFilter = 'all';
+        if (statusFilter === 'open' && (finding.status === 'published' || finding.status === 'rejected')) statusFilter = 'all';
+        requestAnimationFrame(() => document.getElementById(`finding-${focus.id}`)?.scrollIntoView({ block: 'center' }));
+    });
 </script>
 
 <div class="row" style="margin-bottom: 12px">
@@ -121,7 +132,7 @@
 
 {#each findings as finding (finding.id)}
     {@const decision = app.review?.decisions[finding.id]?.decision ?? finding.decision}
-    <section class="card">
+    <section class="card" id={`finding-${finding.id}`} class:highlight={app.focus?.kind === 'finding' && app.focus.id === finding.id}>
         <div class="card-head">
             <input
                 type="checkbox"
@@ -134,6 +145,7 @@
             <span class="badge">{statusLabel(finding.status)}</span>
             {#if finding.publishedAt}<span class="muted small">{t('опубликовано', 'published')} {relativeTime(finding.publishedAt)}</span>{/if}
             <div class="grow"></div>
+            <button class="btn icon" type="button" title={t('Скопировать ссылку на замечание', 'Copy finding link')} onclick={() => copyFocusLink({ kind: 'finding', id: finding.id }, 'findings')}>🔗</button>
             <button class="path-link" onclick={() => focusLine(finding.file, finding.line)}>{finding.file}:{finding.line ?? '—'}</button>
         </div>
 
