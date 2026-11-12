@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-12
+
 ### Added
 
 - Reactions on platform comments: thread cards in the UI, `revdeck react --note <id> --emoji <name>`,
