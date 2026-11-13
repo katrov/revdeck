@@ -11,7 +11,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { ensureDaemon, RpcError, type DaemonClient } from '../client.js';
 import { contextPayload, renderContext, type RulesPayload } from '../context.js';
-import { REVIEW_ROLE_IDS } from '../core/review-roles.js';
 import { redact } from '../core/redact.js';
 import { VERSION } from '../version.js';
 import { detectLocale, setLocale, tr } from '../core/locale.js';
@@ -167,7 +166,7 @@ server.registerTool(
             refresh: z.boolean().optional().describe('Fetch fresh diff and threads from the platform'),
             file: z.string().optional().describe('Append the diff of one file'),
             max_bytes: z.number().int().positive().max(500_000).optional(),
-            role: z.enum(REVIEW_ROLE_IDS).optional().describe('Role for an independent shard reviewer'),
+            role: z.string().max(64).optional().describe('Role for an independent shard reviewer'),
             shard: z.string().regex(/^\d+\/\d+$/).optional().describe('Shard as i/N, for example 1/3'),
             root: rootSchema,
         },

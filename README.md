@@ -176,8 +176,10 @@ return findings as JSON and do not write to revdeck; the lead deduplicates by `f
 the final summary/findings once.
 
 Built-in roles: `correctness`, `architecture`, `tests`, `security`, `performance`, `compatibility`,
-`docs`, `concurrency`, `ux`, `general`. Default is three agents with correctness, architecture and tests.
-A role list shorter than `agents` is repeated.
+`docs`, `concurrency`, `ux`, `data`, `api`, `dependencies`, `observability`, `build`, `privacy`,
+`general`. Default is three agents with correctness, architecture and tests. A role list shorter than
+`agents` is repeated. Custom roles with a title, description, criteria and instructions live in
+`review.customRoles`.
 
 Several reviews can be opened together: `revdeck open 345 344 556` or `revdeck_open` with an array of
 inputs. Each review gets its own group of agents; findings from different MRs are never merged.
@@ -240,7 +242,9 @@ Harness matrix and slash commands: [docs/integrations.md](docs/integrations.md).
 
 ## Rules
 
-`.revdeck.yml` at the repository root:
+`.revdeck.yml` at the repository root; personal overrides go to `.revdeck.local.yml` (ignored by git and
+added by `init`). Local objects merge recursively, local arrays replace, and a base `review.readOnly`
+cannot be disabled locally.
 
 ```yaml
 version: 1

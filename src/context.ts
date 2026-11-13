@@ -1,7 +1,7 @@
 import type { ReviewView } from './daemon/view.js';
 import { truncate, when } from './cli/format.js';
 import type { Locale } from './core/locale.js';
-import { DEFAULT_REVIEW_ROLES, REVIEW_ROLES, effectiveReviewRoles, reviewRoleFocus, reviewRoleTitle, type ReviewRoleId } from './core/review-roles.js';
+import { DEFAULT_REVIEW_ROLES, effectiveRoleIds, resolveReviewRole, roleCriteriaText, type ResolvedReviewRole } from './core/review-roles.js';
 
 export interface RulesPayload {
     markdown: string;
@@ -12,16 +12,16 @@ export interface RulesPayload {
     /** 0 — без ограничения размера контекста. */
     maxBytes?: number;
     agents?: number;
-    roles?: ReviewRoleId[];
+    roles?: ResolvedReviewRole[];
 }
 
 export interface ContextOptions {
     maxBytes?: number;
     language?: Locale;
-    role?: ReviewRoleId;
+    role?: string;
     shard?: { index: number; count: number };
     agents?: number;
-    roles?: ReviewRoleId[];
+    roles?: ResolvedReviewRole[];
 }
 
 /**
@@ -34,7 +34,14 @@ export function renderContext(review: ReviewView, rules: RulesPayload, options: 
     const language: Locale = options.language ?? rules.language ?? 'en';
     const t = (ru: string, en: string): string => (language === 'ru' ? ru : en);
     const agents = Math.max(1, options.agents ?? rules.agents ?? 1);
-    const roles = effectiveReviewRoles(agents, options.roles ?? rules.roles ?? DEFAULT_REVIEW_ROLES);
+    const planRoles = options.roles ?? rules.roles ?? effectiveRoleIds(agents, DEFAULT_REVIEW_ROLES);
+    const roles: ResolvedReviewRole[] = Array.isArray(planRoles) && planRoles.length && typeof planRoles[0] === 'object'
+        ? (planRoles as ResolvedReviewRole[])
+        : effectiveRoleIds(agents, planRoles as unknown as string[])
+              .map((id) => resolveReviewRole(id, language))
+              .filter((role): role is ResolvedReviewRole => Boolean(role));
+    const selectedRole = options.role ? roles.find((role) => role.id === options.role) : undefined;
+    if (options.role && !selectedRole) throw new Error(`unknown review role: ${options.role}`);
     const shardCount = options.shard?.count ?? 1;
     const shardIndex = options.shard?.index ?? 1;
     const visibleFiles = shardCount > 1 ? review.files.filter((_, index) => index % shardCount === shardIndex - 1) : review.files;
@@ -67,11 +74,12 @@ export function renderContext(review: ReviewView, rules: RulesPayload, options: 
     if (agents > 1 || options.role || shardCount > 1) {
         push(`## ${t('Многоагентное ревью', 'Multi-agent review')}`);
         push(`${t('Агентов', 'Agents')}: ${agents}`);
-        push(`${t('Роли', 'Roles')}: ${roles.map((role) => reviewRoleTitle(role, language)).join(', ')}`);
-        if (options.role) {
-            push(`### ${t('Роль', 'Role')}: ${reviewRoleTitle(options.role, language)}`);
-            push(`${t('Критерии', 'Criteria')}: Criteria.md ${REVIEW_ROLE_CRITERIA(options.role)}`);
-            push(`${t('Фокус', 'Focus')}: ${reviewRoleFocus(options.role, language)}`);
+        push(`${t('Роли', 'Roles')}: ${roles.map((role) => role.title).join(', ')}`);
+        if (selectedRole) {
+            push(`### ${t('Роль', 'Role')}: ${selectedRole.title}`);
+            if (selectedRole.criteria.length) push(`${t('Критерии', 'Criteria')}: Criteria.md ${roleCriteriaText(selectedRole)}`);
+            push(`${t('Фокус', 'Focus')}: ${selectedRole.description}`);
+            if (selectedRole.instructions) push(`${t('Инструкции', 'Instructions')}: ${selectedRole.instructions}`);
         }
         if (shardCount > 1) {
             push(`### ${t('Шард', 'Shard')}: ${shardIndex}/${shardCount}`);
@@ -190,10 +198,6 @@ export function renderContext(review: ReviewView, rules: RulesPayload, options: 
         : text;
 }
 
-function REVIEW_ROLE_CRITERIA(role: ReviewRoleId): string {
-    return `§${REVIEW_ROLES[role].criteria.join(', §')}`;
-}
-
 /** Структурированный вариант для --json и MCP structuredContent. */
 export function contextPayload(review: ReviewView, rules: RulesPayload): Record<string, unknown> {
     return {
@@ -213,6 +217,9 @@ export function contextPayload(review: ReviewView, rules: RulesPayload): Record<
         },
         rules,
         language: rules.language,
-        multiAgent: { agents: rules.agents ?? 1, roles: rules.roles ?? DEFAULT_REVIEW_ROLES },
+        multiAgent: {
+            agents: rules.agents ?? 1,
+            roles: rules.roles ?? DEFAULT_REVIEW_ROLES.map((id) => resolveReviewRole(id, rules.language)).filter(Boolean),
+        },
     };
 }

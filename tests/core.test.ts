@@ -1,5 +1,8 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseConfig, reviewConfigSchema } from '../src/core/config.js';
+import { loadConfig, parseConfig, reviewConfigSchema } from '../src/core/config.js';
 import { fingerprintOf, mergeFindings, validateFinding } from '../src/core/findings.js';
 import { normalizeMediaLinks, sanitizeBody } from '../src/core/sanitize.js';
 import { attachmentSpec, matchesSignature } from '../src/core/attachments.js';
@@ -47,6 +50,42 @@ checks:
         expect(config.review.agents).toBe(2);
         expect(config.review.roles).toEqual(['security', 'performance']);
         expect(() => parseConfig('version: 1\nreview:\n  roles: [nope]\n')).toThrow(/review/);
+    });
+
+    it('accepts custom review roles and rejects unknown references', () => {
+        const config = parseConfig(`
+version: 1
+review:
+  agents: 2
+  roles: [correctness, accessibility]
+  customRoles:
+    accessibility:
+      title: Accessibility
+      description: Keyboard, ARIA and contrast.
+      criteria: ["9", "10"]
+      focus: a11y
+`);
+        expect(config.review.customRoles.accessibility!.title).toBe('Accessibility');
+        expect(config.review.roles).toEqual(['correctness', 'accessibility']);
+        expect(() => parseConfig('version: 1\nreview:\n  roles: [missing]\n')).toThrow(/unknown role/);
+        expect(() => parseConfig('version: 1\nreview:\n  customRoles:\n    tests:\n      title: X\n      description: Y\n')).toThrow(/built in/);
+    });
+
+    it('merges .revdeck.local.yml and keeps base read-only enforced', async () => {
+        const root = await mkdtemp(path.join(tmpdir(), 'revdeck-config-'));
+        try {
+            await writeFile(path.join(root, '.revdeck.yml'), 'version: 1\nreview:\n  agents: 2\n  roles: [correctness, architecture]\n  readOnly: true\nrules:\n  sources: [AGENTS.md]\n');
+            await writeFile(path.join(root, '.revdeck.local.yml'), 'review:\n  agents: 4\n  roles: [security]\n  readOnly: false\n');
+            const loaded = await loadConfig(root);
+            expect(loaded.config.review.agents).toBe(4);
+            expect(loaded.config.review.roles).toEqual(['security']);
+            expect(loaded.config.review.readOnly).toBe(true);
+            expect(loaded.config.rules.sources).toEqual(['AGENTS.md']);
+            expect(loaded.path).toBe(path.join(root, '.revdeck.yml'));
+            expect(loaded.localPath).toBe(path.join(root, '.revdeck.local.yml'));
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
     });
 
     it('rejects unknown levels and bad shapes', () => {

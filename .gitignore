@@ -7,6 +7,8 @@ ui/dist/
 .DS_Store
 # Локальный каталог обмена старых версий и кеш текущего демона.
 .revdeck/
+.revdeck.local.yml
+.revdeck.local.yaml
 .tmp/
 coverage/
 *.tsbuildinfo

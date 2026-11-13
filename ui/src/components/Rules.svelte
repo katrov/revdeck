@@ -1,12 +1,33 @@
 <script lang="ts">
-    import { app, errorText } from '../lib/state.svelte';
-    import { getRules } from '../lib/api';
+    import { app, errorText, notify } from '../lib/state.svelte';
+    import { getRules, runChecks } from '../lib/api';
     import { t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
 
     let loading = $state(true);
     let error = $state('');
     let rules = $state<{ markdown: string; configPath: string | null; warnings: string[]; checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[] } | null>(null);
+    let checkResults = $state<Record<string, { status: string; output: string; durationMs: number }>>({});
+    let checkBusy = $state<string | null>(null);
+
+    async function runCheck(id?: string): Promise<void> {
+        const review = app.review;
+        if (!review || review.readOnly) return;
+        const ids = id ? [id] : rules?.checks.filter((check) => check.matched).map((check) => check.id);
+        if (!ids?.length) return;
+        if (!confirm(t(`Запустить проверки: ${ids.join(', ')}?`, `Run checks: ${ids.join(', ')}?`))) return;
+        checkBusy = id ?? '*';
+        try {
+            const { results } = await runChecks(review.id, ids);
+            for (const result of results) checkResults[result.id] = result;
+            const failed = results.filter((result) => result.status !== 'passed' && result.status !== 'skipped');
+            notify(failed.length ? t(`Проверки: ${failed.length} с ошибками`, `Checks: ${failed.length} failed`) : t('Проверки прошли', 'Checks passed'), failed.length ? 'error' : 'ok');
+        } catch (cause) {
+            notify(errorText(cause), 'error');
+        } finally {
+            checkBusy = null;
+        }
+    }
 
     $effect(() => {
         const id = app.review?.id;
@@ -60,6 +81,7 @@
                         <th style="padding: 4px 6px">id</th>
                         <th style="padding: 4px 6px">{t('команда', 'command')}</th>
                         <th style="padding: 4px 6px">{t('относится к diff', 'matched by diff')}</th>
+                        <th style="padding: 4px 6px"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -68,11 +90,32 @@
                             <td style="padding: 4px 6px" class="mono">{check.id}</td>
                             <td style="padding: 4px 6px" class="mono small">{check.argv.join(' ')}</td>
                             <td style="padding: 4px 6px">{check.matched ? t('да', 'yes') : t('нет', 'no')}</td>
+                            <td style="padding: 4px 6px">
+                                {#if check.matched && !app.review?.readOnly}
+                                    <button class="btn icon" type="button" title={t('Запустить проверку', 'Run check')} disabled={checkBusy !== null} onclick={() => void runCheck(check.id)}>▶</button>
+                                {/if}
+                                {#if checkResults[check.id]}
+                                    <span class="badge {checkResults[check.id]!.status === 'passed' ? 'ok' : 'err'}">{checkResults[check.id]!.status}</span>
+                                {/if}
+                            </td>
                         </tr>
+                        {#if checkResults[check.id]?.output}
+                            <tr>
+                                <td colspan="4" style="padding: 4px 6px">
+                                    <pre style="margin: 0; max-height: 220px">{checkResults[check.id]!.output}</pre>
+                                </td>
+                            </tr>
+                        {/if}
                     {/each}
                 </tbody>
             </table>
-            <p class="muted small">{t('Запуск проверок — только вручную:', 'Checks run only manually:')} <span class="mono">revdeck checks &lt;N&gt; --run --yes</span>.</p>
+            <p class="muted small">
+                {t('Запуск проверок — только вручную:', 'Checks run only manually:')}
+                {#if !app.review?.readOnly}
+                    <button class="btn" type="button" disabled={checkBusy !== null} onclick={() => void runCheck()}>{checkBusy === '*' ? t('Запуск…', 'Running…') : t('Запустить подходящие', 'Run matching')}</button>
+                {/if}
+                <span class="mono">revdeck checks &lt;N&gt; --run --yes</span>.
+            </p>
         </section>
     {/if}
 {/if}

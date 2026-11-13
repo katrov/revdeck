@@ -21,7 +21,7 @@ import { runDevcontainer } from './devcontainer.js';
 import { exportReview, importReview } from './export.js';
 import { attachmentSpec, MAX_ATTACHMENT_BYTES } from '../core/attachments.js';
 import { contextPayload, renderContext } from '../context.js';
-import { REVIEW_ROLE_IDS, type ReviewRoleId } from '../core/review-roles.js';
+import type { ResolvedReviewRole } from '../core/review-roles.js';
 
 const OPTIONS = {
     json: { type: 'boolean', default: false },
@@ -454,12 +454,9 @@ async function status(): Promise<void> {
     });
 }
 
-function parseRole(value: string | undefined): ReviewRoleId | undefined {
+function parseRole(value: string | undefined): string | undefined {
     if (!value) return undefined;
-    if (!(REVIEW_ROLE_IDS as readonly string[]).includes(value)) {
-        fail(tr(`неизвестная роль ${value}`, `unknown role ${value}`), `revdeck context --role <${REVIEW_ROLE_IDS.join('|')}>`);
-    }
-    return value as ReviewRoleId;
+    return value;
 }
 
 function parseShard(value: string | undefined): { index: number; count: number } | undefined {
@@ -475,11 +472,14 @@ function parseShard(value: string | undefined): { index: number; count: number }
 async function context(root: string, arg: string | undefined, values: Values): Promise<void> {
     await withClient(async ({ client }) => {
         const { review } = await resolveReview(client, root, reviewArg(values, arg), values);
-        const { rules } = await client.request<{ rules: { markdown: string; configPath: string | null; warnings: string[]; checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[]; language: 'ru' | 'en'; maxBytes?: number; agents: number; roles: import('../core/review-roles.js').ReviewRoleId[] } }>('rules.get', {
+        const { rules } = await client.request<{ rules: { markdown: string; configPath: string | null; warnings: string[]; checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[]; language: 'ru' | 'en'; maxBytes?: number; agents: number; roles: ResolvedReviewRole[] } }>('rules.get', {
             review: review.id,
         });
         if (values.json) return printJson(contextPayload(review, rules));
         const role = parseRole(values.role as string | undefined);
+        if (role && !rules.roles.some((item) => item.id === role)) {
+            fail(tr(`неизвестная роль ${role}`, `unknown role ${role}`), `--role <${rules.roles.map((item) => item.id).join('|')}>`);
+        }
         const shard = parseShard(values.shard as string | undefined);
         writers.out(renderContext(review, rules, {
             language: rules.language,
@@ -774,8 +774,10 @@ async function checks(root: string, arg: string | undefined, values: Values): Pr
 
 async function config(root: string, values: Values): Promise<void> {
     const loaded = await loadConfig(root);
-    if (values.json) return printJson({ path: loaded.path, config: loaded.config, warnings: loaded.warnings });
+    if (values.json) return printJson({ path: loaded.path, localPath: loaded.localPath, config: loaded.config, warnings: loaded.warnings });
     writers.out(`${tr('конфиг', 'config')}: ${loaded.path ?? tr('нет (.revdeck.yml)', 'none (.revdeck.yml)')}`);
+    if (loaded.localPath) writers.out(`${tr('локальный конфиг', 'local config')}: ${loaded.localPath}`);
+    writers.out(`${tr('роли', 'roles')}: ${loaded.config.review.agents} · ${loaded.config.review.roles.join(', ')}${loaded.config.review.readOnly ? tr(' · read-only', ' · read-only') : ''}`);
     writers.out(`${tr('правила', 'rules')}: ${loaded.config.rules.sources.join(', ') || '—'}`);
     writers.out(`${tr('проверки', 'checks')}: ${loaded.config.checks.map((check) => check.id).join(', ') || '—'}`);
     writers.out(`${tr('публикация', 'publishing')}: requireApproval=${loaded.config.publish.requireApproval}, ${tr('максимум', 'max')} ${loaded.config.publish.maxComments}`);
@@ -833,6 +835,7 @@ async function doctor(root: string): Promise<void> {
         const loaded = await loadConfig(root);
         host = loaded.config.provider.host ?? (await gitRemote(root))?.host;
         rows.push(['config', loaded.path ? 'ok' : 'warn', loaded.path ?? tr('нет .revdeck.yml (автообнаружение)', 'no .revdeck.yml (auto-discovery)')]);
+        if (loaded.localPath) rows.push(['local config', 'ok', loaded.localPath]);
         for (const warning of loaded.warnings) rows.push(['warning', 'warn', warning]);
     } catch (error) {
         rows.push(['config', 'fail', redactLine(error)]);

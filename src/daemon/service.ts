@@ -8,7 +8,7 @@ import { messageOf } from '../core/errors.js';
 import { findRepoRoot, findConfigFile } from '../core/paths.js';
 import { loadConfig } from '../core/config.js';
 import { buildEffectiveRules, renderRules } from '../core/rules.js';
-import { DEFAULT_REVIEW_ROLES, type ReviewRoleId } from '../core/review-roles.js';
+import { DEFAULT_REVIEW_ROLES, effectiveRoleIds, resolveReviewRole, type ResolvedReviewRole } from '../core/review-roles.js';
 import { diffStats, changedPaths, findNewLine, linePosition, snippetAround } from '../core/diff.js';
 import { sanitizeBody, normalizeMediaLinks } from '../core/sanitize.js';
 import { attachmentSpec, decodeAttachment, matchesSignature } from '../core/attachments.js';
@@ -302,6 +302,7 @@ export class ReviewService {
             user: snapshot.user,
             syncedAt: snapshot.syncedAt,
             errors: snapshot.errors,
+            readOnly: this.isReadOnly(id),
         };
     }
 
@@ -360,6 +361,7 @@ export class ReviewService {
 
     setSummary(id: string, input: unknown): ReviewSummary {
         this.requireReview(id);
+        this.assertWritable(id);
         const value = (input ?? {}) as Record<string, unknown>;
         const list = (item: unknown, limit: number): string[] =>
             (Array.isArray(item) ? item : [])
@@ -382,6 +384,7 @@ export class ReviewService {
     // ---------------------------------------------------------------- findings
 
     setFindings(id: string, raw: unknown): Finding[] {
+        this.assertWritable(id);
         const review = this.getReview(id);
         if (!Array.isArray(raw)) throw new Error(tr('findings: ожидался массив', 'findings: expected an array'));
         const existing = this.store.listFindings(id);
@@ -420,6 +423,7 @@ export class ReviewService {
 
     setDecisions(id: string, raw: unknown): Record<string, { decision: Decision | null; note: string }> {
         this.requireReview(id);
+        this.assertWritable(id);
         const patch: Record<string, { decision: Decision | null; note: string }> = {};
         const input = (raw ?? {}) as Record<string, unknown>;
         for (const [findingId, value] of Object.entries(input)) {
@@ -442,6 +446,7 @@ export class ReviewService {
         threadId: string,
         patch: { body?: string; resolve?: boolean; noteForAgent?: string; agentAction?: string },
     ): ReplyDraft {
+        this.assertWritable(id);
         const review = this.getReview(id);
         const thread = review.threads.find((item) => item.id === threadId);
         if (!thread) throw new Error(tr(`треда ${threadId} нет в этом ревью`, `thread ${threadId} is not in this review`));
@@ -488,6 +493,7 @@ export class ReviewService {
     }
 
     async reactToReview(id: string, emoji: string): Promise<{ active: boolean; reactions: Reaction[] }> {
+        this.assertWritable(id);
         if (!(REACTIONS as readonly string[]).includes(emoji)) {
             throw new Error(tr(`неизвестная реакция ${emoji}: ${REACTIONS.join(', ')}`, `unknown reaction ${emoji}: ${REACTIONS.join(', ')}`));
         }
@@ -508,6 +514,7 @@ export class ReviewService {
     }
 
     async react(id: string, noteId: string, emoji: string): Promise<{ active: boolean; reactions: Reaction[] }> {
+        this.assertWritable(id);
         if (!(REACTIONS as readonly string[]).includes(emoji)) {
             throw new Error(tr(`неизвестная реакция ${emoji}: ${REACTIONS.join(', ')}`, `unknown reaction ${emoji}: ${REACTIONS.join(', ')}`));
         }
@@ -527,6 +534,7 @@ export class ReviewService {
     }
 
     async uploadAttachment(id: string, input: { name: string; contentType: string; data: string }): Promise<UploadedAttachment> {
+        this.assertWritable(id);
         const stored = this.store.getReview(id);
         if (!stored) throw new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`));
         const spec = attachmentSpec(String(input.name ?? ''), String(input.contentType ?? ''));
@@ -573,6 +581,7 @@ export class ReviewService {
     }
 
     async updateComment(id: string, noteId: string, body: string): Promise<void> {
+        this.assertWritable(id);
         const { review, note } = this.noteInReview(id, noteId);
         if (!note) throw new Error(tr(`комментария ${noteId} нет в этом ревью`, `comment ${noteId} is not in this review`));
         if (!review.user || note.author !== review.user.username) {
@@ -595,6 +604,7 @@ export class ReviewService {
     }
 
     async deleteComment(id: string, noteId: string): Promise<void> {
+        this.assertWritable(id);
         const { review, note } = this.noteInReview(id, noteId);
         if (!note) throw new Error(tr(`комментария ${noteId} нет в этом ревью`, `comment ${noteId} is not in this review`));
         if (!review.user || note.author !== review.user.username) {
@@ -616,6 +626,7 @@ export class ReviewService {
     // ---------------------------------------------------------------- notes
 
     addNote(id: string, input: { file: string; line: number; side?: Side; text: string; toAgent?: boolean }): LineNote {
+        this.assertWritable(id);
         const review = this.getReview(id);
         if (!findNewLine(review.diff, input.file, input.line)) {
             throw new Error(tr(`строка ${input.file}:${input.line} не входит в diff`, `line ${input.file}:${input.line} is not in the diff`));
@@ -647,6 +658,7 @@ export class ReviewService {
         noteId: string,
         patch: { text?: string; toAgent?: boolean; agentAction?: string; agentReply?: string; posted?: string; discussionId?: string; noteId?: string; error?: string },
     ): LineNote {
+        this.assertWritable(id);
         const existing = this.store.listNotes(id).find((note) => note.id === noteId);
         if (!existing) throw new Error(tr(`комментария ${noteId} нет`, `comment ${noteId} not found`));
         const next: LineNote = {
@@ -669,6 +681,7 @@ export class ReviewService {
     }
 
     deleteNote(id: string, noteId: string): void {
+        this.assertWritable(id);
         const existing = this.store.listNotes(id).find((note) => note.id === noteId);
         if (!existing) return;
         if (existing.posted) throw new Error(tr('комментарий уже опубликован: удалять его нужно в платформе', 'the comment is already published: delete it in the platform'));
@@ -771,6 +784,7 @@ export class ReviewService {
     }
 
     approve(id: string, kind: PublishKind, ids: string[], expectedHash: string): Approval {
+        this.assertWritable(id);
         const preview = this.previewPublish(id, kind, ids);
         if (preview.plan.hash !== expectedHash) {
             throw new Error(tr('набор изменений изменился после подтверждения: обновите страницу и подтвердите заново', 'the plan changed after confirmation: refresh and confirm again'));
@@ -800,6 +814,7 @@ export class ReviewService {
     }
 
     async publish(id: string, approvalId: string): Promise<PublishResult> {
+        this.assertWritable(id);
         const approval = this.store.getApproval(approvalId);
         if (!approval) throw new Error(tr('подтверждение не найдено', 'approval not found'));
         if (approval.reviewId !== id) throw new Error(tr('подтверждение выдано для другого ревью', 'the approval belongs to another review'));
@@ -947,7 +962,7 @@ export class ReviewService {
         language: Locale;
         maxBytes: number;
         agents: number;
-        roles: ReviewRoleId[];
+        roles: ResolvedReviewRole[];
     }> {
         const stored = this.store.getReview(id);
         if (!stored) throw new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`));
@@ -974,6 +989,10 @@ export class ReviewService {
             language,
         });
         const maxBytes = config.rules.maxTotalBytes ?? 0;
+        const agents = config.review?.agents ?? 3;
+        const roles = effectiveRoleIds(agents, config.review?.roles ?? DEFAULT_REVIEW_ROLES)
+            .map((id) => resolveReviewRole(id, language, config.review?.customRoles ?? {}))
+            .filter((role): role is ResolvedReviewRole => Boolean(role));
         return {
             markdown: renderRules(effective, { language, maxBytes }),
             configPath: effective.configPath,
@@ -981,12 +1000,13 @@ export class ReviewService {
             checks: effective.checks,
             language,
             maxBytes,
-            agents: config.review?.agents ?? 3,
-            roles: (config.review?.roles ?? DEFAULT_REVIEW_ROLES) as ReviewRoleId[],
+            agents,
+            roles,
         };
     }
 
     async runChecks(id: string, options: { allowRun: boolean; ids?: string[] }): Promise<CheckResult[]> {
+        this.assertWritable(id);
         const stored = this.store.getReview(id);
         if (!stored) throw new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`));
         const { checks } = await this.rules(id);
@@ -1090,6 +1110,15 @@ export class ReviewService {
     threadSnippet(id: string, file: string, line: number | null): ReturnType<typeof snippetAround> {
         if (line === null) return null;
         return snippetAround(this.diffFor(id), file, line, 4);
+    }
+
+    isReadOnly(id: string): boolean {
+        return process.env.REVDECK_READ_ONLY === '1' || this.configOf(id)?.review?.readOnly === true;
+    }
+
+    private assertWritable(id: string): void {
+        if (!this.isReadOnly(id)) return;
+        throw new Error(tr('ревью в режиме read-only: изменения и публикация запрещены', 'the review is read-only: changes and publishing are disabled'));
     }
 
     configOf(id: string): ReviewConfig | null {

@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `.revdeck.local.yml` / `.revdeck.local.yaml` personal overrides with recursive merge, local array
+  replacement, gitignore entries, and read-only escalation that cannot be disabled locally.
+- Expanded built-in review roles and custom roles with title, description, criteria and instructions;
+  role/shard context resolves them from the project config.
+- `review.readOnly`: server-side ban on drafts, findings, comments, reactions, checks and publishing,
+  with a UI banner and disabled publish action.
+- Run configured checks from the Rules tab with explicit confirmation and per-check output; read-only
+  reviews hide the runner.
 - Batch review opening: `revdeck open 345 344 556` and an array input for `revdeck_open`; each review
   keeps its own agent group.
 - Multi-agent review plan in `.revdeck.yml` (`review.agents`, `review.roles`) with role catalog, role/shard

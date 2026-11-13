@@ -59,6 +59,10 @@ export async function runInit(rootInput: string, options: InitOptions): Promise<
             '    - correctness',
             '    - architecture',
             '    - tests',
+            tr('  # customRoles:', '  # customRoles:'),
+            tr('  #   accessibility:', '  #   accessibility:'),
+            tr('  #     title: "Доступность"', '  #     title: "Accessibility"'),
+            tr('  #     description: "Клавиатура, ARIA, контраст."', '  #     description: "Keyboard, ARIA, contrast."'),
             'rules:',
             tr('  # Документы с правилами. Если пусто — ищутся AGENTS.md, CLAUDE.md, CONTRIBUTING.md, docs/*.', '  # Rule documents. When empty, AGENTS.md, CLAUDE.md, CONTRIBUTING.md and docs/* are discovered.'),
             ...(sources.length ? ['  sources:', ...sources.map((item) => `    - ${item}`)] : [tr('  # Документы перечисляются здесь; пустой список включает автообнаружение.', '  # List documents here; an empty list enables auto-discovery.'), '  sources: []']),
@@ -298,10 +302,17 @@ async function mergeMcpJson(file: string, root: string, mcp: McpConfig): Promise
 
 async function ensureGitignore(root: string): Promise<void> {
     const file = path.join(root, '.gitignore');
-    const current = existsSync(file) ? await readFile(file, 'utf8') : '';
-    if (/(^|\n)\.revdeck\/?\s*$/m.test(current)) return;
-    await appendFile(file, `${current && !current.endsWith('\n') ? '\n' : ''}.revdeck/\n`);
-    writers.out(tr('✔ .revdeck/ добавлен в .gitignore', '✔ .revdeck/ added to .gitignore'));
+    let current = existsSync(file) ? await readFile(file, 'utf8') : '';
+    const entries = ['.revdeck/', '.revdeck.local.yml', '.revdeck.local.yaml'];
+    const added: string[] = [];
+    for (const entry of entries) {
+        if (new RegExp(`(^|\\n)${entry.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm').test(current)) continue;
+        current += `${current && !current.endsWith('\n') ? '\n' : ''}${entry}\n`;
+        added.push(entry);
+    }
+    if (!added.length) return;
+    await writeFile(file, current);
+    writers.out(tr(`✔ ${added.join(', ')} добавлены в .gitignore`, `✔ ${added.join(', ')} added to .gitignore`));
 }
 
 export async function installService(host?: string): Promise<string> {

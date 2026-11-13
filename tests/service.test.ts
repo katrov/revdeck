@@ -219,6 +219,46 @@ describe('ReviewService', () => {
         expect(view.threads[0]!.snippet?.some((line) => line.target)).toBe(true);
     });
 
+    it('resolves custom review roles into the context plan', async () => {
+        await writeFile(
+            path.join(root, '.revdeck.yml'),
+            `version: 1
+provider: { type: gitlab }
+review:
+  agents: 1
+  roles: [accessibility]
+  customRoles:
+    accessibility:
+      title: Accessibility
+      description: Keyboard and ARIA.
+      criteria: ["9"]
+      focus: a11y
+rules: { sources: [AGENTS.md] }
+`,
+        );
+        const review = await open();
+        const rules = await service.rules(review.id);
+        expect(rules.agents).toBe(1);
+        expect(rules.roles[0]).toMatchObject({ id: 'accessibility', title: 'Accessibility', description: 'Keyboard and ARIA.' });
+    });
+
+    it('enforces review.readOnly on mutations', async () => {
+        await writeFile(
+            path.join(root, '.revdeck.yml'),
+            `version: 1
+provider: { type: gitlab }
+review: { readOnly: true }
+rules: { sources: [AGENTS.md] }
+`,
+        );
+        const review = await open();
+        expect(review.readOnly).toBe(true);
+        expect(service.getView(review.id).readOnly).toBe(true);
+        expect(() => service.setSummary(review.id, { title: 'x' })).toThrow(/read-only/);
+        expect(() => service.setFindings(review.id, [])).toThrow(/read-only/);
+        expect(() => service.setDraft(review.id, 'd1', { body: 'x' })).toThrow(/read-only/);
+    });
+
     it('stores summary and validates findings against the diff', async () => {
         const review = await open();
         service.setSummary(review.id, { title: 'Add b', scope: 'main...feature', summary: 'Добавляет b.', changes: ['b'], focus: ['зачем b'] });

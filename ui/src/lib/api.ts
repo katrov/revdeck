@@ -36,6 +36,12 @@ export const getReviews = () => api<{ reviews: import('./types').ReviewListItem[
 export const getDiff = (review: string, file: string) =>
     api<{ file: import('./types').DiffPayload }>(`/api/diff?review=${encodeURIComponent(review)}&file=${encodeURIComponent(file)}`);
 
+export const runChecks = (review: string, ids?: string[]) =>
+    api<{ results: { id: string; name: string; argv: string[]; status: 'passed' | 'failed' | 'error' | 'skipped'; output: string; durationMs: number }[] }>(
+        '/api/checks',
+        { body: { review, run: true, ...(ids?.length ? { ids } : {}) } },
+    );
+
 export const getRules = (review: string) =>
     api<{ rules: { markdown: string; configPath: string | null; warnings: string[]; checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[] } }>(
         `/api/rules?review=${encodeURIComponent(review)}`,

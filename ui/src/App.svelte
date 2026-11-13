@@ -34,7 +34,7 @@
 
     const publishTarget = $derived.by((): { kind: 'reply' | 'finding' | 'note'; ids: string[] } | null => {
         const review = app.review;
-        if (!review) return null;
+        if (!review || review.readOnly) return null;
         if (app.tab === 'threads') {
             const ids = review.drafts
                 .filter((draft) => {
@@ -248,6 +248,13 @@
                     </div>
                 </div>
             </header>
+
+            {#if review.readOnly}
+                <div class="alert readonly-banner">
+                    <strong>{t('Read-only', 'Read-only')}</strong>
+                    {t('Это ревью настроено только для чтения: изменения, публикация и проверки отключены.', 'This review is read-only: changes, publishing and checks are disabled.')}
+                </div>
+            {/if}
 
             {#if app.loading}
                 <div class="loading-bar" role="progressbar" aria-label={t('Загрузка ревью', 'Loading review')}></div>

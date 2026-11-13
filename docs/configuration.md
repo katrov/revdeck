@@ -36,6 +36,29 @@ publish:
   maxComments: 50
 ```
 
+## Personal overrides: `.revdeck.local.yml`
+
+`revdeck` also reads `.revdeck.local.yml` (or `.revdeck.local.yaml`) next to the base config. Use it for
+local roles, checks, output language or provider settings without changing the shared file. `init`
+adds both local names to `.gitignore`.
+
+Merge rules:
+
+- objects are merged recursively;
+- arrays and scalars from the local file replace the base value;
+- `review.readOnly: true` in the base cannot be disabled locally (the effective value is OR);
+- local file alone is allowed, but a base `.revdeck.yml` is recommended for the team;
+- YAML/schema errors in the local file are reported, never silently ignored.
+
+```yaml
+# .revdeck.local.yml — do not commit
+review:
+  agents: 2
+  roles: [correctness, tests]
+output:
+  language: ru
+```
+
 ## provider
 
 | Field | Default | Meaning |
@@ -88,7 +111,31 @@ Available roles:
 | `docs` | documentation, configs, CHANGELOG and AI instructions | §9 |
 | `concurrency` | races, locks, idempotency, retries, cancellation | §10 |
 | `ux` | UI states, accessibility, errors, narrow screens | §9, §10 |
+| `data` | schemas, migrations, storage | §3, §10 |
+| `api` | public contracts, versioning, client compatibility | §6, §7 |
+| `dependencies` | versions, licenses, supply chain | §3, §10 |
+| `observability` | logs, metrics, traces, diagnostics | §9, §10 |
+| `build` | CI, build, packaging, reproducibility | §8, §9 |
+| `privacy` | PII, personal data, logs and leaks | §9, §10 |
 | `general` | full review across all sections | §1–§12 |
+
+Custom roles live in `review.customRoles`; `roles` may reference built-ins or those keys:
+
+```yaml
+review:
+  roles: [correctness, accessibility]
+  customRoles:
+    accessibility:
+      title: "Accessibility"
+      description: "Keyboard navigation, ARIA, focus and contrast."
+      criteria: ["9", "10"]
+      focus: "a11y and keyboard"
+      instructions: |
+        Report only accessibility problems; do not repeat general architecture findings.
+```
+
+Custom ids cannot override a built-in role. `review.readOnly: true` disables all writes and publishing
+for that review (the UI shows a banner, the daemon rejects mutations).
 
 Several MRs can be opened at once with `revdeck open 345 344 556` (or an array in `revdeck_open`); run
 a separate group per review and do not merge findings across MRs.
@@ -175,7 +222,8 @@ string would allow arbitrary code to be executed during a review.
 | `consent` | requires explicit confirmation (default `true`) |
 | `timeoutMs` | timeout (default 300,000) |
 
-Running: `revdeck checks <N> --run --yes`. The MCP tool only shows the plan.
+Running: `revdeck checks <N> --run --yes`, or **Run matching** in the Rules tab with an explicit
+confirmation. Read-only reviews disable the runner. The MCP tool only shows the plan.
 
 ## publish
 

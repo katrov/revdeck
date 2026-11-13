@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { readTextNoFollow, findConfigFile, findRepoRoot } from './paths.js';
+import { readTextNoFollow, findConfigFile, findLocalConfigFile, findRepoRoot } from './paths.js';
 import { ConfigError } from './errors.js';
 import { parse as parseYaml } from 'yaml';
 import { existsSync } from 'node:fs';
@@ -9,6 +9,14 @@ import { tr } from './locale.js';
 import { DEFAULT_REVIEW_ROLES, REVIEW_ROLE_IDS } from './review-roles.js';
 
 const matchSchema = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]);
+
+const customRoleSchema = z.object({
+    title: z.string().min(1).max(120),
+    description: z.string().min(1).max(2000),
+    criteria: z.array(z.string().min(1).max(20)).max(20).default([]),
+    focus: z.string().max(2000).optional(),
+    instructions: z.string().max(8000).optional(),
+});
 
 export const reviewConfigSchema = z.object({
     version: z.literal(1).default(1),
@@ -32,10 +40,26 @@ export const reviewConfigSchema = z.object({
         .object({
             /** Сколько независимых ревьюеров запускать. */
             agents: z.number().int().min(1).max(8).default(3),
-            /** Роли агентов; при нехватке ролей они повторяются. */
-            roles: z.array(z.enum(REVIEW_ROLE_IDS)).min(1).max(10).default([...DEFAULT_REVIEW_ROLES]),
+            /** Роли агентов; встроенные id или ключи customRoles. */
+            roles: z.array(z.string().min(1).max(64)).min(1).max(10).default([...DEFAULT_REVIEW_ROLES]),
+            /** Пользовательские роли с описанием и инструкциями. */
+            customRoles: z.record(z.string().min(1).max(64), customRoleSchema).default({}),
+            /** Запрет любых изменений: drafts, findings, публикация. */
+            readOnly: z.boolean().default(false),
         })
-        .prefault({}),
+        .prefault({})
+        .superRefine((value, ctx) => {
+            for (const key of Object.keys(value.customRoles)) {
+                if ((REVIEW_ROLE_IDS as readonly string[]).includes(key)) {
+                    ctx.addIssue({ code: 'custom', path: ['customRoles', key], message: `role ${key} is built in and cannot be overridden` });
+                }
+            }
+            for (const role of value.roles) {
+                if (!(REVIEW_ROLE_IDS as readonly string[]).includes(role) && !(role in value.customRoles)) {
+                    ctx.addIssue({ code: 'custom', path: ['roles'], message: `unknown role: ${role}` });
+                }
+            }
+        }),
     rules: z
         .object({
             /** Общие документы, если ни одна строка map не подошла. Пусто — автообнаружение. */
@@ -84,7 +108,10 @@ export type ReviewConfig = z.infer<typeof reviewConfigSchema>;
 
 export interface LoadedConfig {
     config: ReviewConfig;
+    /** Базовый .revdeck.yml, если он есть. */
     path: string | null;
+    /** Личный .revdeck.local.yml, если он есть. */
+    localPath: string | null;
     warnings: string[];
 }
 
@@ -119,16 +146,44 @@ export function parseConfig(text: string, source = '.revdeck.yml'): ReviewConfig
     return result.data;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseYamlData(text: string, source: string): unknown {
+    try {
+        return parseYaml(text);
+    } catch (error) {
+        throw new ConfigError(tr(`${source}: некорректный YAML: ${(error as Error).message}`, `${source}: invalid YAML: ${(error as Error).message}`));
+    }
+}
+
+/** Локальный файл переопределяет объекты рекурсивно, массивы заменяет целиком. */
+function mergeConfigData(base: unknown, local: unknown): unknown {
+    if (!isRecord(base) || !isRecord(local)) return local;
+    const result: Record<string, unknown> = { ...base };
+    for (const [key, value] of Object.entries(local)) {
+        const current = result[key];
+        result[key] = isRecord(current) && isRecord(value) ? mergeConfigData(current, value) : value;
+    }
+    return result;
+}
+
 export async function loadConfig(root = findRepoRoot()): Promise<LoadedConfig> {
     const warnings: string[] = [];
     const file = findConfigFile(root);
-    let config: ReviewConfig;
-    if (file) {
-        config = parseConfig(await readTextNoFollow(file), path.relative(root, file) || file);
-    } else {
-        config = reviewConfigSchema.parse({});
+    const localFile = findLocalConfigFile(root);
+    const baseData = file ? parseYamlData(await readTextNoFollow(file), path.relative(root, file) || file) : {};
+    const localData = localFile ? parseYamlData(await readTextNoFollow(localFile), path.relative(root, localFile) || localFile) : {};
+    if (!file && !localFile) {
         warnings.push(tr('файл .revdeck.yml не найден: правила взяты из автообнаруженных документов', '.revdeck.yml not found: rules come from auto-discovered documents'));
     }
+    const merged = mergeConfigData(baseData, localData);
+    const config = reviewConfigSchema.parse(merged);
+    // Базовый read-only нельзя снять личным файлом: OR, а не обычный override.
+    const baseReadOnly = isRecord(baseData) && isRecord(baseData.review) && baseData.review.readOnly === true;
+    const localReadOnly = isRecord(localData) && isRecord(localData.review) && localData.review.readOnly === true;
+    config.review.readOnly = baseReadOnly || localReadOnly;
     if (!config.rules.sources.length && !config.rules.map.length) {
         const found = DISCOVERED_SOURCES.filter((item) => existsSync(path.join(root, item)));
         config.rules.sources = found;
@@ -136,7 +191,12 @@ export async function loadConfig(root = findRepoRoot()): Promise<LoadedConfig> {
             warnings.push(tr('документы с правилами не найдены: ревью будет опираться только на код и здравый смысл', 'no rule documents found: the review will rely on the code only'));
         }
     }
-    return { config, path: file, warnings };
+    return {
+        config,
+        path: file,
+        localPath: localFile,
+        warnings,
+    };
 }
 
 /** Проверка, что путь из конфига не выводит за пределы репозитория. */

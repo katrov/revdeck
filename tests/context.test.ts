@@ -43,7 +43,10 @@ const rules: RulesPayload = {
     checks: [],
     language: 'en',
     agents: 2,
-    roles: ['correctness', 'architecture'],
+    roles: [
+        { id: 'correctness', title: 'Correctness', description: 'logic', criteria: ['6', '10'], instructions: '' },
+        { id: 'architecture', title: 'Architecture', description: 'layers', criteria: ['3', '4'], instructions: '' },
+    ],
 };
 
 describe('multi-agent context', () => {

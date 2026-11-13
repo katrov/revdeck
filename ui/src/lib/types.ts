@@ -140,6 +140,7 @@ export interface ReviewView {
     user: { username: string; name: string } | null;
     syncedAt: string;
     errors: string[];
+    readOnly: boolean;
     files: FileSummary[];
     stats: { files: number; additions: number; deletions: number };
     stale: boolean;

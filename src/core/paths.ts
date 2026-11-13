@@ -16,10 +16,20 @@ export function findRepoRoot(start = process.cwd()): string {
 }
 
 export const CONFIG_FILES = ['.revdeck.yml', '.revdeck.yaml'] as const;
+export const LOCAL_CONFIG_FILES = ['.revdeck.local.yml', '.revdeck.local.yaml'] as const;
 export const CACHE_DIR = '.revdeck';
 
 export function findConfigFile(root: string): string | null {
     for (const name of CONFIG_FILES) {
+        const candidate = path.join(root, name);
+        if (existsSync(candidate)) return candidate;
+    }
+    return null;
+}
+
+/** Личные переопределения; файл не коммитится. */
+export function findLocalConfigFile(root: string): string | null {
+    for (const name of LOCAL_CONFIG_FILES) {
         const candidate = path.join(root, name);
         if (existsSync(candidate)) return candidate;
     }

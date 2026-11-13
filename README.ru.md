@@ -162,8 +162,10 @@ review:
 раз записывает итоговые summary/findings.
 
 Встроенные роли: `correctness`, `architecture`, `tests`, `security`, `performance`, `compatibility`,
-`docs`, `concurrency`, `ux`, `general`. По умолчанию три агента: correctness, architecture, tests.
-Если ролей меньше, чем `agents`, список повторяется.
+`docs`, `concurrency`, `ux`, `data`, `api`, `dependencies`, `observability`, `build`, `privacy`,
+`general`. По умолчанию три агента: correctness, architecture, tests. Если ролей меньше, чем `agents`,
+список повторяется. Кастомные роли с названием, описанием, критериями и инструкциями задаются в
+`review.customRoles`.
 
 Несколько ревью можно открыть одной командой: `revdeck open 345 344 556` или `revdeck_open` с массивом
 входов. Для каждого ревью запускается своя группа агентов; замечания разных MR не смешиваются.
@@ -225,7 +227,9 @@ HTTP: достаточно `revdeck daemon restart`, потому что `daemon
 
 ## Правила проекта
 
-`.revdeck.yml` в корне репозитория:
+`.revdeck.yml` в корне репозитория; личные переопределения — в `.revdeck.local.yml` (игнорируется git,
+добавляется `init`). Локальные объекты сливаются рекурсивно, массивы заменяются, а базовый
+`review.readOnly` нельзя отключить локально.
 
 ```yaml
 version: 1

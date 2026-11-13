@@ -207,6 +207,8 @@ export interface Review {
     user: User | null;
     syncedAt: string;
     errors: string[];
+    /** Запрет изменений и публикации, задаётся review.readOnly. */
+    readOnly: boolean;
 }
 
 export type PublishKind = 'reply' | 'finding' | 'note';
