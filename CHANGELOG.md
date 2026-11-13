@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-13
+
 ### Added
 
 - Analytics tab and `revdeck stats <N>` with accepted/rejected/pending findings, acceptance rate and
