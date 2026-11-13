@@ -44,6 +44,34 @@ export const reviewConfigSchema = z.object({
             roles: z.array(z.string().min(1).max(64)).min(1).max(10).default([...DEFAULT_REVIEW_ROLES]),
             /** Пользовательские роли с описанием и инструкциями. */
             customRoles: z.record(z.string().min(1).max(64), customRoleSchema).default({}),
+            /** Явные группы изменений; остальные группируются по типу и модулю. */
+            groups: z
+                .array(
+                    z.object({
+                        id: z.string().min(1).max(64),
+                        title: z.string().min(1).max(120),
+                        match: matchSchema,
+                    }),
+                )
+                .max(100)
+                .default([]),
+            /** Опциональный скан секретов; по умолчанию выключен. */
+            secrets: z
+                .object({
+                    enabled: z.boolean().default(false),
+                    scan: z.enum(['diff', 'files', 'both']).default('diff'),
+                    includeTests: z.boolean().default(false),
+                    /** Glob-пути или id правила (`rule:generic-secret`). */
+                    allowlist: z.array(z.string().min(1)).default([]),
+                })
+                .prefault({}),
+            /** История версий ревью (снимки по commit SHA). */
+            history: z
+                .object({
+                    enabled: z.boolean().default(false),
+                    keep: z.number().int().min(1).max(100).default(20),
+                })
+                .prefault({}),
             /** Запрет любых изменений: drafts, findings, публикация. */
             readOnly: z.boolean().default(false),
         })

@@ -42,6 +42,22 @@ export interface ReviewSnapshot {
     syncedAt: string;
 }
 
+export interface ReviewVersion {
+    id: number;
+    headSha: string;
+    baseSha: string;
+    diffHash: string;
+    createdAt: string;
+    files: number;
+    findings: number;
+    additions: number;
+    deletions: number;
+}
+
+export interface ReviewVersionData extends ReviewVersion {
+    data: unknown;
+}
+
 export interface ReviewListItem {
     id: string;
     platform: string;
@@ -217,6 +233,16 @@ export class Store {
                 detail TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS audit_review ON audit(review_id, at);
+            CREATE TABLE IF NOT EXISTS review_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+                head_sha TEXT NOT NULL DEFAULT '',
+                base_sha TEXT NOT NULL DEFAULT '',
+                diff_hash TEXT NOT NULL,
+                data_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS review_versions_review ON review_versions(review_id, created_at);
         `);
         // Мягкая миграция старых баз: CREATE TABLE IF NOT EXISTS не добавляет новые колонки.
         const findingColumns = this.db.prepare('PRAGMA table_info(findings)').all() as Row[];
@@ -340,6 +366,62 @@ export class Store {
         const row = this.db.prepare('SELECT info_json FROM reviews WHERE id = ?').get(id) as Row | undefined;
         if (!row) return null;
         return json<ReviewInfo | null>(row, 'info_json', null);
+    }
+
+    addVersion(
+        id: string,
+        version: { headSha: string; baseSha: string; diffHash: string; data: unknown },
+        keep = 20,
+        now = new Date().toISOString(),
+    ): void {
+        const last = this.db.prepare('SELECT head_sha, diff_hash FROM review_versions WHERE review_id = ? ORDER BY id DESC LIMIT 1').get(id) as Row | undefined;
+        if (last && String(last.head_sha ?? '') === version.headSha && String(last.diff_hash ?? '') === version.diffHash) return;
+        this.db
+            .prepare('INSERT INTO review_versions (review_id, head_sha, base_sha, diff_hash, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+            .run(id, version.headSha, version.baseSha, version.diffHash, JSON.stringify(version.data), now);
+        this.db
+            .prepare('DELETE FROM review_versions WHERE review_id = ? AND id NOT IN (SELECT id FROM review_versions WHERE review_id = ? ORDER BY id DESC LIMIT ?)')
+            .run(id, id, Math.max(1, keep));
+    }
+
+    listVersions(id: string): ReviewVersion[] {
+        const rows = this.db.prepare('SELECT * FROM review_versions WHERE review_id = ? ORDER BY id DESC').all(id) as Row[];
+        return rows.map((row) => {
+            const data = json<Record<string, unknown>>(row, 'data_json', {});
+            const stats = (data.stats as { additions?: number; deletions?: number } | undefined) ?? {};
+            const files = Array.isArray(data.files) ? data.files.length : 0;
+            const findings = Array.isArray(data.findings) ? data.findings.length : 0;
+            return {
+                id: Number(row.id),
+                headSha: text(row, 'head_sha'),
+                baseSha: text(row, 'base_sha'),
+                diffHash: text(row, 'diff_hash'),
+                createdAt: text(row, 'created_at'),
+                files,
+                findings,
+                additions: Number(stats.additions ?? 0),
+                deletions: Number(stats.deletions ?? 0),
+            };
+        });
+    }
+
+    getVersion(id: string, versionId: number): ReviewVersionData | null {
+        const row = this.db.prepare('SELECT * FROM review_versions WHERE review_id = ? AND id = ?').get(id, versionId) as Row | undefined;
+        if (!row) return null;
+        const data = json<Record<string, unknown>>(row, 'data_json', {});
+        const stats = (data.stats as { additions?: number; deletions?: number } | undefined) ?? {};
+        return {
+            id: Number(row.id),
+            headSha: text(row, 'head_sha'),
+            baseSha: text(row, 'base_sha'),
+            diffHash: text(row, 'diff_hash'),
+            createdAt: text(row, 'created_at'),
+            files: Array.isArray(data.files) ? data.files.length : 0,
+            findings: Array.isArray(data.findings) ? data.findings.length : 0,
+            additions: Number(stats.additions ?? 0),
+            deletions: Number(stats.deletions ?? 0),
+            data,
+        };
     }
 
     removeReview(id: string): void {

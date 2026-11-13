@@ -236,6 +236,27 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                 reply(res, 200, { ok: true, reactions: await service.reactions(review, noteIds) });
                 return;
             }
+            if (req.method === 'GET' && url.pathname === '/api/versions') {
+                const review = url.searchParams.get('review') ?? '';
+                reply(res, 200, { ok: true, versions: service.listVersions(review) });
+                return;
+            }
+            if (req.method === 'GET' && url.pathname === '/api/version') {
+                const review = url.searchParams.get('review') ?? '';
+                const id = Number(url.searchParams.get('id') ?? 0);
+                reply(res, 200, { ok: true, version: service.getVersion(review, id) });
+                return;
+            }
+            if (req.method === 'GET' && url.pathname === '/api/secrets') {
+                const review = url.searchParams.get('review') ?? '';
+                reply(res, 200, { ok: true, ...(await service.secrets(review)) });
+                return;
+            }
+            if (req.method === 'GET' && url.pathname === '/api/analytics') {
+                const review = url.searchParams.get('review') ?? '';
+                reply(res, 200, { ok: true, analytics: service.analytics(review) });
+                return;
+            }
             if (req.method === 'GET' && url.pathname === '/api/review-reactions') {
                 const review = url.searchParams.get('review') ?? '';
                 const view = service.getReview(review);

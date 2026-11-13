@@ -199,6 +199,8 @@ export interface Review {
     threads: Thread[];
     /** Реакции на сам MR/PR (описание), не на комментарий. */
     reactions: Reaction[];
+    /** Семантические группы изменений. */
+    groups: import('./groups.js').ChangeGroup[];
     summary: ReviewSummary | null;
     findings: Finding[];
     drafts: ReplyDraft[];

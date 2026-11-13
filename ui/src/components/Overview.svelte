@@ -1,5 +1,6 @@
 <script lang="ts">
     import { app, focusLine, focusNote, focusThread, notify, relativeTime, setTab } from '../lib/state.svelte';
+    import { getVersions } from '../lib/api';
     import { plainText, truncate } from '../lib/format';
     import { plural, t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
@@ -14,6 +15,12 @@
         question: review.findings.filter((finding) => finding.level === 'question' && finding.status !== 'stale').length,
     });
     const pendingNotes = $derived(review.notes.filter((note) => note.toAgent && !note.agentReply));
+    let versions = $state<{ id: number; headSha: string; createdAt: string; files: number; findings: number; additions: number; deletions: number }[]>([]);
+
+    $effect(() => {
+        const id = review.id;
+        void getVersions(id).then((result) => (versions = result.versions)).catch(() => undefined);
+    });
 
     function copyPath(path: string, line: number | null): void {
         const value = `${path}${line ? `:${line}` : ''}`;
@@ -54,6 +61,34 @@
     <div><div class="value">{openThreads.length}</div><div class="label">{plural(openThreads.length, ['открытый тред', 'открытых треда', 'открытых тредов'], ['open thread', 'open threads'])}</div></div>
     <div><div class="value">{review.findings.length}</div><div class="label">{plural(review.findings.length, ['замечание', 'замечания', 'замечаний'], ['finding', 'findings'])}</div></div>
 </div>
+
+{#if versions.length}
+    <section class="card">
+        <div class="card-head">
+            <div class="card-title">{t('История версий', 'Version history')}</div>
+        </div>
+        {#each versions.slice(0, 8) as version (version.id)}
+            <div class="row" style="margin-top: 6px">
+                <span class="mono small">#{version.id} · {version.headSha.slice(0, 10) || '—'}</span>
+                <span class="muted small">{relativeTime(version.createdAt)}</span>
+                <span class="muted small">+{version.additions} −{version.deletions} · {version.findings} {t('замечаний', 'findings')}</span>
+            </div>
+        {/each}
+    </section>
+{/if}
+
+{#if review.groups.length}
+    <section class="card">
+        <div class="card-head">
+            <div class="card-title">{t('Группы изменений', 'Change groups')}</div>
+        </div>
+        <div class="row" style="margin-top: 8px">
+            {#each review.groups as group (group.id)}
+                <span class="badge" title={group.files.join(', ')}>{group.title} · {group.files.length} {t('файл(ов)', 'file(s)')} · +{group.additions} −{group.deletions}</span>
+            {/each}
+        </div>
+    </section>
+{/if}
 
 {#if review.summary}
     <section class="card">

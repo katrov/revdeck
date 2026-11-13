@@ -140,7 +140,7 @@ export function subscribe(): () => void {
     };
 }
 
-const TABS: readonly Tab[] = ['overview', 'threads', 'findings', 'diff', 'rules'];
+const TABS: readonly Tab[] = ['overview', 'threads', 'findings', 'diff', 'rules', 'analytics'];
 
 export interface Route {
     id: string | null;

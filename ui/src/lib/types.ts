@@ -4,7 +4,7 @@ export type Level = 'blocker' | 'major' | 'minor' | 'question';
 export type FindingStatus = 'draft' | 'accepted' | 'rejected' | 'published' | 'fixed' | 'stale';
 export type Decision = 'accept' | 'reject' | 'discuss';
 export type Platform = 'gitlab' | 'github';
-export type Tab = 'overview' | 'threads' | 'findings' | 'diff' | 'rules';
+export type Tab = 'overview' | 'threads' | 'findings' | 'diff' | 'rules' | 'analytics';
 
 export interface ReviewInfo {
     ref: { platform: Platform; host: string; project: string; number: number };
@@ -132,6 +132,7 @@ export interface ReviewView {
     info: ReviewInfo;
     threads: Thread[];
     reactions: Reaction[];
+    groups: { id: string; title: string; files: string[]; additions: number; deletions: number }[];
     summary: ReviewSummary | null;
     findings: Finding[];
     drafts: ReplyDraft[];

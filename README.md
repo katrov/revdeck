@@ -184,6 +184,17 @@ Built-in roles: `correctness`, `architecture`, `tests`, `security`, `performance
 Several reviews can be opened together: `revdeck open 345 344 556` or `revdeck_open` with an array of
 inputs. Each review gets its own group of agents; findings from different MRs are never merged.
 
+## Analytics, secrets and history
+
+- **Analytics** tab and `revdeck stats <N>`: accepted/rejected/pending findings, acceptance rate,
+  threads, drafts and the list of rejected suggestions with their notes.
+- **Change groups**: explicit `review.groups` or automatic grouping by file kind/module; shown in
+  Overview and in the agent context.
+- **Secret scan** (optional): `review.secrets.enabled: true`; `revdeck scan <N>`; only masked previews
+  are exposed.
+- **Version history** (optional): `review.history.enabled: true`; `revdeck versions <N>` and the
+  Overview timeline.
+
 ## Devcontainer
 
 The daemon, `glab` and `gh` stay on the host. From the repository root:

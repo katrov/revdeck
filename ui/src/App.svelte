@@ -10,6 +10,7 @@
     import Findings from './components/Findings.svelte';
     import Diff from './components/Diff.svelte';
     import Rules from './components/Rules.svelte';
+    import Analytics from './components/Analytics.svelte';
     import PublishDialog from './components/PublishDialog.svelte';
     import CommandPalette from './components/CommandPalette.svelte';
     import OpenReviewDialog from './components/OpenReviewDialog.svelte';
@@ -30,6 +31,7 @@
         { id: 'findings', label: t('Замечания', 'Findings'), count: draftFindings },
         { id: 'diff', label: 'Diff' },
         { id: 'rules', label: t('Правила', 'Rules') },
+        { id: 'analytics', label: t('Аналитика', 'Analytics') },
     ]);
 
     const publishTarget = $derived.by((): { kind: 'reply' | 'finding' | 'note'; ids: string[] } | null => {
@@ -279,6 +281,8 @@
                     <Findings />
                 {:else if app.tab === 'diff'}
                     <Diff />
+                {:else if app.tab === 'analytics'}
+                    <Analytics />
                 {:else}
                     <Rules />
                 {/if}

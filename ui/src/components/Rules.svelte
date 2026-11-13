@@ -1,6 +1,6 @@
 <script lang="ts">
     import { app, errorText, notify } from '../lib/state.svelte';
-    import { getRules, runChecks } from '../lib/api';
+    import { getRules, getSecrets, runChecks } from '../lib/api';
     import { t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
 
@@ -9,6 +9,13 @@
     let rules = $state<{ markdown: string; configPath: string | null; warnings: string[]; checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[] } | null>(null);
     let checkResults = $state<Record<string, { status: string; output: string; durationMs: number }>>({});
     let checkBusy = $state<string | null>(null);
+    let secrets = $state<{ enabled: boolean; scan: string; findings: { rule: string; title: string; file: string; line: number; preview: string }[] } | null>(null);
+
+    $effect(() => {
+        const id = app.review?.id;
+        if (!id) return;
+        void getSecrets(id).then((result) => (secrets = result)).catch(() => undefined);
+    });
 
     async function runCheck(id?: string): Promise<void> {
         const review = app.review;
@@ -59,7 +66,8 @@
                 {#each rules.warnings as warning}<li>{warning}</li>{/each}
             </ul>
         </div>
-    {/if}
+
+{/if}
     <section class="card flat">
         <div class="spread">
             <div class="card-title">{t('Правила проекта', 'Project rules')}</div>
@@ -116,6 +124,23 @@
                 {/if}
                 <span class="mono">revdeck checks &lt;N&gt; --run --yes</span>.
             </p>
+        </section>
+    {/if}
+    {#if secrets?.enabled}
+        <section class="card">
+            <div class="card-title">{t('Секреты', 'Secrets')} <span class="badge {secrets.findings.length ? 'err' : 'ok'}">{secrets.findings.length}</span></div>
+            <p class="muted small" style="margin: 4px 0 0">{t('Скан:', 'Scan:')} <span class="mono">{secrets.scan}</span> · {t('значения замаскированы', 'values are masked')}</p>
+            {#if secrets.findings.length}
+                {#each secrets.findings as finding (finding.rule + finding.file + finding.line)}
+                    <div class="row" style="margin-top: 6px">
+                        <span class="badge err">{finding.rule}</span>
+                        <span class="mono small">{finding.file}:{finding.line}</span>
+                        <span class="muted small">{finding.preview}</span>
+                    </div>
+                {/each}
+            {:else}
+                <p class="muted small" style="margin: 8px 0 0">{t('Секретов не найдено.', 'No secrets found.')}</p>
+            {/if}
         </section>
     {/if}
 {/if}

@@ -190,6 +190,49 @@ rules:
 Если заданы `rules.sources`/`rules.map`, автообнаружение отключается; отсутствующий явный документ
 даст отдельное предупреждение. Пустой `sources: []` оставляет автообнаружение включённым.
 
+### Группы изменений
+
+```yaml
+review:
+  groups:
+    - id: auth
+      title: "Авторизация"
+      match: ["src/auth/**", "src/security/**"]
+```
+
+Явные группы применяются первыми; остальные файлы группируются по типу (docs, tests, config, styles,
+generated) и верхнему модулю. Группы видны в «Обзоре» и в контексте агента.
+
+### Скан секретов
+
+По умолчанию выключен:
+
+```yaml
+review:
+  secrets:
+    enabled: true
+    scan: diff          # diff | files | both
+    includeTests: false
+    allowlist: ["test/fixtures/**", "rule:generic-secret"]
+```
+
+Сканер ищет ключи AWS/GitHub/GitLab/Stripe/OpenAI, private keys и generic secret assignments.
+Возвращается только замаскированный preview; сырые значения не сохраняются в ревью и не уходят
+агенту. `revdeck scan <N>` возвращает тот же список.
+
+### История версий
+
+```yaml
+review:
+  history:
+    enabled: true
+    keep: 20
+```
+
+Каждое обновление с изменившимся head/diff сохраняет версию (head/base SHA, diff hash, счётчики и
+снимок ревью). `revdeck versions <N>` показывает список; в «Обзоре» есть таймлайн. Хранится не больше
+`keep` версий.
+
 ### Селекторы документов
 
 | Селектор | Что берётся |

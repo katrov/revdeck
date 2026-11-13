@@ -55,6 +55,34 @@ export const getReactions = (review: string, noteIds: string[]) =>
 export const toggleReaction = (review: string, noteId: string, emoji: string) =>
     api<{ active: boolean; reactions: import('./types').Reaction[] }>('/api/reactions', { body: { review, noteId, emoji } });
 
+export const getVersions = (review: string) =>
+    api<{ versions: { id: number; headSha: string; baseSha: string; createdAt: string; files: number; findings: number; additions: number; deletions: number }[] }>(
+        `/api/versions?review=${encodeURIComponent(review)}`,
+    );
+
+export const getVersion = (review: string, id: number) =>
+    api<{ version: { id: number; createdAt: string; data: unknown } | null }>(`/api/version?review=${encodeURIComponent(review)}&id=${id}`);
+
+export const getSecrets = (review: string) =>
+    api<{
+        enabled: boolean;
+        scan: string;
+        findings: { rule: string; title: string; file: string; line: number; preview: string }[];
+    }>(`/api/secrets?review=${encodeURIComponent(review)}`);
+
+export const getAnalytics = (review: string) =>
+    api<{
+        analytics: {
+            generatedAt: string;
+            findings: { total: number; accepted: number; rejected: number; discussed: number; pending: number; published: number };
+            levels: Record<string, number>;
+            threads: { total: number; open: number; resolved: number };
+            drafts: { ready: number; published: number };
+            acceptanceRate: number | null;
+            rejections: { id: string; level: string; file: string; line: number | null; title: string; note: string }[];
+        };
+    }>(`/api/analytics?review=${encodeURIComponent(review)}`);
+
 export const getReviewReactions = (review: string) =>
     api<{ reactions: import('./types').Reaction[] }>(`/api/review-reactions?review=${encodeURIComponent(review)}`);
 

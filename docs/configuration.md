@@ -190,6 +190,48 @@ rules:
 If `rules.sources`/`rules.map` are set, auto-discovery is disabled; a missing explicit document then
 produces its own warning instead. Empty `sources: []` keeps auto-discovery enabled.
 
+### Change groups
+
+```yaml
+review:
+  groups:
+    - id: auth
+      title: "Authorization"
+      match: ["src/auth/**", "src/security/**"]
+```
+
+Explicit groups are applied first; other files are grouped by kind (docs, tests, config, styles,
+generated) and by top-level module. Groups are shown in Overview and in the agent context.
+
+### Secret scan
+
+Off by default:
+
+```yaml
+review:
+  secrets:
+    enabled: true
+    scan: diff          # diff | files | both
+    includeTests: false
+    allowlist: ["test/fixtures/**", "rule:generic-secret"]
+```
+
+The scanner looks for AWS/GitHub/GitLab/Stripe/OpenAI keys, private keys and generic secret
+assignments. Only a masked preview is returned; raw values are never stored in the review or sent to the
+agent. `revdeck scan <N>` returns the same list.
+
+### Version history
+
+```yaml
+review:
+  history:
+    enabled: true
+    keep: 20
+```
+
+Each refresh with a changed head/diff stores a version (head/base SHA, diff hash, counts and review
+snapshot). `revdeck versions <N>` lists them; Overview shows the timeline. Versions are pruned to `keep`.
+
 ### Document selectors
 
 | Selector | What is included |

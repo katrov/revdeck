@@ -57,6 +57,14 @@ export async function dispatch(service: ReviewService, method: string, params: R
             if (params.refresh === true) await service.refreshReview(id);
             return { review: service.getView(id), reviews: service.listReviews() };
         }
+        case 'versions.list':
+            return { versions: service.listVersions(String(params.review ?? '')) };
+        case 'versions.get':
+            return { version: service.getVersion(String(params.review ?? ''), Number(params.id ?? 0)) };
+        case 'secrets.get':
+            return service.secrets(String(params.review ?? ''));
+        case 'analytics.get':
+            return service.analytics(String(params.review ?? ''));
         case 'reviews.remove':
             service.removeReview(String(params.review ?? ''));
             return { ok: true };

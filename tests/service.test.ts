@@ -219,6 +219,23 @@ describe('ReviewService', () => {
         expect(view.threads[0]!.snippet?.some((line) => line.target)).toBe(true);
     });
 
+    it('records a review version when history is enabled', async () => {
+        await writeFile(
+            path.join(root, '.revdeck.yml'),
+            `version: 1
+provider: { type: gitlab }
+review:
+  history: { enabled: true, keep: 5 }
+rules: { sources: [AGENTS.md] }
+`,
+        );
+        const review = await open();
+        const versions = service.listVersions(review.id);
+        expect(versions).toHaveLength(1);
+        expect(versions[0]!.headSha).toBe('b'.repeat(40));
+        expect(versions[0]!.findings).toBe(0);
+    });
+
     it('resolves custom review roles into the context plan', async () => {
         await writeFile(
             path.join(root, '.revdeck.yml'),
@@ -240,6 +257,24 @@ rules: { sources: [AGENTS.md] }
         const rules = await service.rules(review.id);
         expect(rules.agents).toBe(1);
         expect(rules.roles[0]).toMatchObject({ id: 'accessibility', title: 'Accessibility', description: 'Keyboard and ARIA.' });
+    });
+
+    it('computes review analytics including rejected suggestions', async () => {
+        const review = await open();
+        const findings = service.setFindings(review.id, [
+            { level: 'major', file: 'src/app.ts', line: 2, title: 'accepted', body: 'a', comment: 'a' },
+            { level: 'minor', file: 'src/app.ts', line: 3, title: 'rejected', body: 'b', comment: 'b' },
+        ]);
+        service.setDecisions(review.id, {
+            [findings[0]!.id]: { decision: 'accept', note: '' },
+            [findings[1]!.id]: { decision: 'reject', note: 'not worth it' },
+        });
+        const analytics = service.analytics(review.id);
+        expect(analytics.findings.total).toBe(2);
+        expect(analytics.findings.accepted).toBe(1);
+        expect(analytics.findings.rejected).toBe(1);
+        expect(analytics.acceptanceRate).toBe(0.5);
+        expect(analytics.rejections[0]!.note).toBe('not worth it');
     });
 
     it('enforces review.readOnly on mutations', async () => {

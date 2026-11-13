@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Analytics tab and `revdeck stats <N>` with accepted/rejected/pending findings, acceptance rate and
+  rejected suggestions.
+- Change groups (explicit `review.groups` or automatic by file kind/module) in Overview and context.
+- Optional secret scan (`review.secrets`, `revdeck scan <N>`) with masked previews only.
+- Optional review version history (`review.history`, `revdeck versions <N>`, Overview timeline).
 - `.revdeck.local.yml` / `.revdeck.local.yaml` personal overrides with recursive merge, local array
   replacement, gitignore entries, and read-only escalation that cannot be disabled locally.
 - Expanded built-in review roles and custom roles with title, description, criteria and instructions;

@@ -5,11 +5,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { redact } from '../core/redact.js';
 import { messageOf } from '../core/errors.js';
-import { findRepoRoot, findConfigFile } from '../core/paths.js';
-import { loadConfig } from '../core/config.js';
+import { findRepoRoot, findConfigFile, readTextNoFollow } from '../core/paths.js';
+import { assertConfigPath, loadConfig } from '../core/config.js';
 import { buildEffectiveRules, renderRules } from '../core/rules.js';
 import { DEFAULT_REVIEW_ROLES, effectiveRoleIds, resolveReviewRole, type ResolvedReviewRole } from '../core/review-roles.js';
 import { diffStats, changedPaths, findNewLine, linePosition, snippetAround } from '../core/diff.js';
+import { computeGroups } from '../core/groups.js';
+import { scanLines, type SecretFinding } from '../core/secrets.js';
 import { sanitizeBody, normalizeMediaLinks } from '../core/sanitize.js';
 import { attachmentSpec, decodeAttachment, matchesSignature } from '../core/attachments.js';
 import { mergeFindings, validateFinding, applyDecisions, fingerprintOf, levelOrder } from '../core/findings.js';
@@ -245,7 +247,21 @@ export class ReviewService {
             syncedAt,
         });
         if (diff.length) this.markStaleFindings(id, diff);
+        this.recordVersion(id, info, diff);
         this.emit(id);
+    }
+
+    private recordVersion(id: string, info: ReviewInfo, diff: DiffFile[]): void {
+        const history = this.configOf(id)?.review?.history;
+        if (!history?.enabled) return;
+        const view = this.getReview(id);
+        const diffHash = createHash('sha256').update(canonicalJson(diff)).digest('hex');
+        this.store.addVersion(
+            id,
+            { headSha: info.commit.head, baseSha: info.commit.base, diffHash, data: view },
+            history.keep,
+            this.now().toISOString(),
+        );
     }
 
     private markStaleFindings(id: string, diff: DiffFile[]): void {
@@ -288,12 +304,14 @@ export class ReviewService {
         const findings = applyDecisions(this.store.listFindings(id), this.store.listDecisions(id)).sort(
             (a, b) => levelOrder(a.level) - levelOrder(b.level) || a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0),
         );
+        const groups = computeGroups(snapshot.diff, this.configOf(id)?.review?.groups ?? []);
         return {
             id,
             info,
             diff: snapshot.diff,
             threads,
             reactions: snapshot.reactions,
+            groups,
             summary: this.store.getSummary(id),
             findings,
             drafts,
@@ -308,6 +326,88 @@ export class ReviewService {
 
     getView(id: string): ReviewView {
         return toReviewView(this.getReview(id), this.now().getTime());
+    }
+
+    async secrets(id: string): Promise<{ enabled: boolean; scan: string; findings: SecretFinding[] }> {
+        const stored = this.store.getReview(id);
+        if (!stored) throw new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`));
+        const config = this.configOf(id)?.review?.secrets;
+        if (!config?.enabled) return { enabled: false, scan: config?.scan ?? 'diff', findings: [] };
+        const options = {
+            ...(config.allowlist.length ? { allowlist: config.allowlist } : {}),
+            includeTests: config.includeTests,
+        };
+        const findings: SecretFinding[] = [];
+        if (config.scan !== 'files') {
+            for (const file of stored.snapshot.diff) {
+                const lines = file.hunks.flatMap((hunk) =>
+                    hunk.lines
+                        .filter((line) => line.kind === '+' && line.newLine !== null)
+                        .map((line) => ({ number: line.newLine!, text: line.text })),
+                );
+                findings.push(...scanLines(file.path, lines, options));
+            }
+        }
+        if (config.scan !== 'diff') {
+            for (const file of stored.snapshot.diff) {
+                if (file.binary) continue;
+                try {
+                    const resolved = assertConfigPath(stored.row.root, file.path);
+                    const text = await readTextNoFollow(resolved, 1_000_000);
+                    const lines = text.split('\n').map((line, index) => ({ number: index + 1, text: line }));
+                    findings.push(...scanLines(file.path, lines, options));
+                } catch {
+                    // Файл мог исчезнуть или быть нечитаемым; скан diff уже дал результат.
+                }
+            }
+        }
+        const unique = [...new Map(findings.map((item) => [`${item.file}:${item.line}:${item.rule}`, item])).values()];
+        this.store.audit(id, 'secrets.scan', { count: unique.length, scan: config.scan });
+        return { enabled: true, scan: config.scan, findings: unique };
+    }
+
+    analytics(id: string): {
+        generatedAt: string;
+        findings: { total: number; accepted: number; rejected: number; discussed: number; pending: number; published: number };
+        levels: Record<string, number>;
+        threads: { total: number; open: number; resolved: number };
+        drafts: { ready: number; published: number };
+        acceptanceRate: number | null;
+        rejections: { id: string; level: string; file: string; line: number | null; title: string; note: string }[];
+    } {
+        const review = this.getReview(id);
+        const decisions = review.decisions;
+        const decisionOf = (finding: Finding): Decision | null => decisions[finding.id]?.decision ?? finding.decision;
+        const accepted = review.findings.filter((finding) => decisionOf(finding) === 'accept').length;
+        const rejected = review.findings.filter((finding) => decisionOf(finding) === 'reject').length;
+        const discussed = review.findings.filter((finding) => decisionOf(finding) === 'discuss').length;
+        const published = review.findings.filter((finding) => finding.status === 'published').length;
+        const pending = review.findings.length - accepted - rejected - discussed;
+        const levels: Record<string, number> = {};
+        for (const finding of review.findings) levels[finding.level] = (levels[finding.level] ?? 0) + 1;
+        const drafts = review.drafts.filter((draft) => draft.body.trim() !== '');
+        return {
+            generatedAt: this.now().toISOString(),
+            findings: { total: review.findings.length, accepted, rejected, discussed, pending, published },
+            levels,
+            threads: {
+                total: review.threads.length,
+                open: review.threads.filter((thread) => !thread.resolved).length,
+                resolved: review.threads.filter((thread) => thread.resolved).length,
+            },
+            drafts: { ready: drafts.filter((draft) => !draft.replied).length, published: drafts.filter((draft) => draft.replied).length },
+            acceptanceRate: accepted + rejected ? accepted / (accepted + rejected) : null,
+            rejections: review.findings
+                .filter((finding) => decisionOf(finding) === 'reject')
+                .map((finding) => ({
+                    id: finding.id,
+                    level: finding.level,
+                    file: finding.file,
+                    line: finding.line,
+                    title: finding.title,
+                    note: decisions[finding.id]?.note ?? finding.note,
+                })),
+        };
     }
 
     listReviews(): ReturnType<Store['listReviews']> {
@@ -1119,6 +1219,14 @@ export class ReviewService {
     private assertWritable(id: string): void {
         if (!this.isReadOnly(id)) return;
         throw new Error(tr('ревью в режиме read-only: изменения и публикация запрещены', 'the review is read-only: changes and publishing are disabled'));
+    }
+
+    listVersions(id: string): ReturnType<Store['listVersions']> {
+        return this.store.listVersions(id);
+    }
+
+    getVersion(id: string, versionId: number): ReturnType<Store['getVersion']> {
+        return this.store.getVersion(id, versionId);
     }
 
     configOf(id: string): ReviewConfig | null {

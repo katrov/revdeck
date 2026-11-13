@@ -90,6 +90,9 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
   revdeck open <url|N...>  открыть одно или несколько ревью
   revdeck ui [N]          ссылка на локальный интерфейс
   revdeck context <N>     контекст для агента: правила, diff, треды [--role <роль>] [--shard i/N]
+  revdeck stats <N>       аналитика ревью: решения, отклонения, треды
+  revdeck scan <N>        скан секретов (если включён review.secrets)
+  revdeck versions <N>    история версий ревью
   revdeck threads <N>     обсуждения
   revdeck diff <N> [--file <путь>]
   revdeck findings <N> [list|set --file <json>|decide --id <id> --decision accept|reject|discuss]
@@ -119,6 +122,9 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
   revdeck open <url|N...>  open one or more reviews
   revdeck ui [N]          link to the local UI
   revdeck context <N>     agent context: rules, diff, threads [--role <role>] [--shard i/N]
+  revdeck stats <N>       review analytics: decisions, rejections, threads
+  revdeck scan <N>        secret scan (when review.secrets is enabled)
+  revdeck versions <N>    review version history
   revdeck threads <N>     discussions
   revdeck diff <N> [--file <path>]
   revdeck findings <N> [list|set --file <json>|decide --id <id> --decision accept|reject|discuss]
@@ -183,6 +189,14 @@ async function main(): Promise<void> {
         case 'context':
         case 'review':
             return context(root, positionals[0], values);
+        case 'stats':
+        case 'analytics':
+            return stats(positionals[0], values);
+        case 'scan':
+        case 'secrets':
+            return secrets(positionals[0], values);
+        case 'versions':
+            return versions(positionals[0], values);
         case 'threads':
             return threads(positionals[0], values);
         case 'diff':
@@ -487,6 +501,53 @@ async function context(root: string, arg: string | undefined, values: Values): P
             ...(role ? { role } : {}),
             ...(shard ? { shard } : {}),
         }));
+    });
+}
+
+async function versions(arg: string | undefined, values: Values): Promise<void> {
+    await withClient(async ({ client }) => {
+        const { review } = await resolveReview(client, findRepoRoot(), reviewArg(values, arg), values);
+        const { versions } = await client.request<{ versions: { id: number; headSha: string; baseSha: string; createdAt: string; files: number; findings: number; additions: number; deletions: number }[] }>('versions.list', { review: review.id });
+        if (values.json) return printJson(versions);
+        if (!versions.length) {
+            writers.out(tr('история версий пуста: включите review.history.enabled', 'version history is empty: enable review.history.enabled'));
+            return;
+        }
+        for (const version of versions) {
+            writers.out(`#${version.id} · ${version.headSha.slice(0, 12) || '—'} · ${version.createdAt} · ${version.files} ${tr('файлов', 'files')} · +${version.additions} −${version.deletions} · ${version.findings} ${tr('замечаний', 'findings')}`);
+        }
+    });
+}
+
+async function secrets(arg: string | undefined, values: Values): Promise<void> {
+    await withClient(async ({ client }) => {
+        const { review } = await resolveReview(client, findRepoRoot(), reviewArg(values, arg), values);
+        const result = await client.request<{ enabled: boolean; scan: string; findings: { rule: string; title: string; file: string; line: number; preview: string }[] }>('secrets.get', { review: review.id });
+        if (values.json) return printJson(result);
+        if (!result.enabled) {
+            writers.out(tr('скан секретов выключен: review.secrets.enabled: true', 'secret scan is disabled: set review.secrets.enabled: true'));
+            return;
+        }
+        writers.out(`${tr('скан', 'scan')}: ${result.scan} · ${result.findings.length} ${tr('находок', 'findings')}`);
+        for (const finding of result.findings) writers.out(`✖ ${finding.rule} · ${finding.file}:${finding.line} · ${finding.preview}`);
+    });
+}
+
+async function stats(arg: string | undefined, values: Values): Promise<void> {
+    await withClient(async ({ client }) => {
+        const { review } = await resolveReview(client, findRepoRoot(), reviewArg(values, arg), values);
+        const { analytics } = await client.request<{ analytics: Record<string, unknown> }>('analytics.get', { review: review.id });
+        if (values.json) return printJson(analytics);
+        const findings = analytics.findings as { total: number; accepted: number; rejected: number; pending: number; published: number };
+        const threads = analytics.threads as { total: number; open: number; resolved: number };
+        const rate = analytics.acceptanceRate as number | null;
+        writers.out(`#${review.info.ref.number} ${review.info.title}`);
+        writers.out(`${tr('замечания', 'findings')}: ${findings.total} · ${tr('принято', 'accepted')} ${findings.accepted} · ${tr('отклонено', 'rejected')} ${findings.rejected} · ${tr('без решения', 'pending')} ${findings.pending} · ${tr('опубликовано', 'published')} ${findings.published}`);
+        writers.out(`${tr('треды', 'threads')}: ${threads.total} · ${tr('открыто', 'open')} ${threads.open} · ${tr('закрыто', 'resolved')} ${threads.resolved}`);
+        writers.out(`${tr('acceptance rate', 'acceptance rate')}: ${rate == null ? '—' : `${Math.round(rate * 100)}%`}`);
+        for (const rejection of analytics.rejections as { level: string; title: string; file: string; line: number | null; note: string }[]) {
+            writers.out(`✖ ${rejection.level} ${rejection.title} (${rejection.file}:${rejection.line ?? '—'})${rejection.note ? ` — ${rejection.note}` : ''}`);
+        }
     });
 }
 

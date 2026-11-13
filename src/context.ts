@@ -119,6 +119,13 @@ export function renderContext(review: ReviewView, rules: RulesPayload, options: 
         push(`- ${file.path} (${file.status}, +${file.additions} −${file.deletions})${file.binary ? ' [binary]' : ''}`);
     }
     push('');
+    if (review.groups?.length) {
+        push(`## ${t('Группы изменений', 'Change groups')}`);
+        for (const group of review.groups) {
+            push(`- ${group.title}: ${group.files.length} ${t('файл(ов)', 'file(s)')}, +${group.additions} −${group.deletions}`);
+        }
+        push('');
+    }
     push(rules.markdown.trim());
     push('');
     const openThreads = visibleThreads.filter((thread) => !thread.resolved);
