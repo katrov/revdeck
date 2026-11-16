@@ -36,6 +36,35 @@
 | Supply chain | Minimal dependencies, lockfile, esbuild/Vite build, provenance on npm publish | The same as for any npm package |
 | Approval theft | An approval is 16 random bytes, TTL 10 minutes, single-use, bound to review+hash, stored only in SQLite on the host | Socket access = RPC access; protected by file permissions |
 
+## Project isolation
+
+Projects separate review contexts, not security domains. One daemon and one SQLite stay on the host.
+The MCP server resolves one project from its working copy, filters `reviews.list`, and rejects a
+review id/URL from another project; the agent gets no `root` or project override. The UI and CLI
+filters are convenience, not authorization.
+
+Residual risk: an agent with shell access to the user's home can read the daemon's database or call
+the RPC socket directly, just as it could read other repositories. For hard isolation, run a separate
+daemon with its own `REVDECK_STATE_DIR` under a separate user/container; that is outside this model
+and breaks cross-project review.
+
+## Features
+
+A feature is an explicit human-created bridge between projects. Project sessions may read a feature's
+combined context, but cannot write outside their project. A feature session (`REVDECK_FEATURE`) is
+started explicitly and may write drafts to any member; publishing still requires per-review human
+approval. Feature membership is visible to the agent, so the human should treat adding a review as
+disclosing it to the feature sessions.
+
+Feature notes/findings are not published; the agent can write them only in a feature session. MCP may
+update or delete only agent-authored notes; human notes are read-only to MCP. Contract, profile and
+note text is data, not instructions, and is rendered as quoted context.
+
+The feature context reads only the declared `context.sources` profile files from member working
+copies, inside the member root; symlinked paths that escape the root are rejected. It does not read
+arbitrary source trees. A process with access to the user's home can still read the database; this is
+context isolation, not a security boundary.
+
 ## Out of scope
 
 - Protection from an administrator/user who already has access to host processes.

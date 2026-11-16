@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { openReview } from '../lib/api';
-    import { app, errorText, notify, writeHash } from '../lib/state.svelte';
+    import { adoptOpenedReview, app, errorText, notify } from '../lib/state.svelte';
     import { t } from '../lib/i18n.svelte';
 
     let { onclose }: { onclose: () => void } = $props();
@@ -18,9 +18,9 @@
 
     onMount(() => {
         try {
-            root = app.reviews[0]?.root ?? localStorage.getItem('revdeck.root') ?? '';
+            root = app.projects.find((project) => project.key === app.activeProject)?.roots[0] ?? app.reviews[0]?.root ?? localStorage.getItem('revdeck.root') ?? '';
         } catch {
-            root = app.reviews[0]?.root ?? '';
+            root = app.projects.find((project) => project.key === app.activeProject)?.roots[0] ?? app.reviews[0]?.root ?? '';
         }
         inputElement?.focus();
     });
@@ -50,12 +50,10 @@
             } catch {
                 // localStorage может быть недоступен.
             }
-            app.reviews = result.reviews;
-            app.review = result.review;
             app.tab = 'overview';
             app.focus = null;
             app.diffFocus = null;
-            writeHash(false);
+            await adoptOpenedReview(result.review);
             notify(t('Ревью открыто', 'Review opened'), 'ok');
             onclose();
         } catch (cause) {

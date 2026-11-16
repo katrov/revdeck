@@ -6,6 +6,63 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-16
+
+### Added
+
+- Cross-project features: human-created bundles of reviews with a Markdown brief/contract, roles and
+  order (`features`, `feature_reviews`), combined read-only context, and feature UI (`#/features`,
+  review badges, add-to-feature flow).
+- Feature-scoped MCP sessions via `REVDECK_FEATURE`: only feature members are visible; drafts may be
+  written to any member, while publishing remains per review and requires human approval.
+- Feature-level contract (Markdown or OpenAPI): OpenAPI is parsed into operations, parameters,
+  request bodies, responses and schemas; context marks which changed reviews mention each operation.
+- Application profiles via `context.sources` / `context.maxBytes` in `.revdeck.yml`, included per
+  project in the feature context.
+- Feature notes/findings: stored on the feature, visible in UI/context, writable by humans and by an
+  agent in a feature session (`revdeck_feature_note`); never published.
+- Feature UI reorder (up/down) and delete, plus contract and notes editors.
+- `revdeck_feature` MCP tool and `review-feature` prompt; `revdeck feature list|create|get|add|remove|context|update|archive|delete`.
+- Capabilities and design documentation for features in English and Russian.
+- Removing a tracked review that belongs to a feature is blocked until it is removed from the feature.
+- Project separation: a `projects` registry with working-copy roots, a normalized
+  `platform:host/project` key and a `reviews.project_key` column; existing databases are backfilled.
+- Project switcher and projects home in the UI; the review queue is scoped to the selected project
+  and the choice is kept in the URL and local storage.
+- Project-scoped MCP server: it resolves the project from the repository root, lists only that
+  project and rejects review ids/URLs from other projects. `REVDECK_ROOT` supports multi-root
+  workspaces and devcontainers.
+- `revdeck projects` and `revdeck projects add <path>`; `revdeck list --all` for a human-wide list.
+- Project-isolation documentation (capabilities, architecture, protocol, configuration, integrations,
+  threat model) in English and Russian.
+
+### Fixed
+
+- Config, rules and profile reads now resolve real paths and reject symlinked files or directories
+  that escape the repository; all reads use `O_NOFOLLOW` for the final component.
+- Feature notes written by an agent can only be updated/deleted by MCP when they were authored by an
+  agent; human notes are read-only to MCP. Notes and profiles are quoted as data in feature context.
+- Feature-context `maxBytes` is now a real cap (including brief, contract, profiles, notes and review
+  sections); `context.maxBytes` is an aggregate per-project profile limit.
+- A review URL from another configured project is rejected when opened from the wrong checkout.
+- Feature member roles can be cleared; reorder rejects duplicate ids; up/down arrows move within the
+  visible project group.
+- UI navigation uses `pushState` for user transitions, ignores stale feature/review requests, resets
+  feature-local forms when switching features, refreshes an open feature page on SSE, and exposes the
+  sidebar on mobile project/feature pages.
+- Feature badges and the active sidebar row use theme variables in dark mode.
+
+### Changed
+
+- Consolidated the daemon-first, project-scope and feature decision records into
+  `docs/capabilities.md` / `docs/ru/capabilities.md`; the `docs/adr` directories were removed.
+- Replaced the retired internal monorepo example with a neutral analytics-platform example and added
+  tests for every example config.
+- `revdeck list` and `revdeck status` default to the current repository's project; `--all` restores the
+  previous global list.
+- MCP `revdeck_open`, `revdeck_context` and the review tools no longer accept a working-copy `root` or
+  project overrides; cross-project access is rejected unless it is opened through an explicit feature.
+
 ## [0.5.0] - 2026-11-13
 
 ### Added
@@ -247,5 +304,5 @@ First public release.
 - English documentation as the canonical set under `docs/`, with Russian translations under `docs/ru/`.
 - Security: token scrubbing, redaction, publish sanitizer, loopback-only UI, one-time launch token,
   cookie/Origin/Host checks, CSP.
-- Docs: architecture, configuration, protocol, threat model, integrations, ADR.
+- Docs: architecture, configuration, protocol, threat model and integrations.
 - Tests: diff parser, core helpers, providers with recorded responses, service with a fake provider.

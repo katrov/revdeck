@@ -1,0 +1,40 @@
+# Аналитическая платформа: сервисы, приложения и общие пакеты в одном монорепозитории.
+# Пример показывает, как разнести правила по путям, чтобы агент получал только нужные документы.
+version: 1
+provider:
+  type: gitlab
+  host: gitlab.example.com
+  project: acme/atlas
+  base: main
+rules:
+  sources:
+    - AGENTS.md
+  map:
+    - match: "**/package.json"
+      docs: [AGENTS.md, docs/guides/Dependencies.md]
+    - match: ["services/ingest/**", "services/scheduler/**"]
+      docs: [services/AGENTS.md, docs/guides/Backend.md]
+    - match: "apps/dashboards/**"
+      docs: [apps/dashboards/AGENTS.md, docs/guides/Frontend.md, docs/guides/Charts.md]
+    - match: ["packages/ui-kit/**", "packages/charts/**"]
+      docs: [packages/AGENTS.md, docs/guides/DesignSystem.md]
+    - match: ["docs/**", "*.md"]
+      docs: [AGENTS.md, "AGENTS.md#Документация"]
+    - match: ["infra/**", ".github/workflows/**"]
+      docs: [infra/README.md, docs/guides/Deploy.md]
+  ignore:
+    - "**/node_modules/**"
+    - "**/dist/**"
+    - "**/coverage/**"
+checks:
+  - id: lint
+    argv: [npm, run, lint]
+    when: ["**/src/**", "**/*.ts", "**/*.tsx"]
+  - id: types
+    argv: [npm, run, typecheck]
+    when: ["**/*.ts", "**/*.tsx"]
+  - id: tests
+    argv: [npm, test]
+    when: ["**/*.test.ts", "**/*.spec.ts"]
+publish:
+  maxComments: 40

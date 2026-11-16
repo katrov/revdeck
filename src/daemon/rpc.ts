@@ -22,14 +22,107 @@ interface RpcRequest {
 // Вложения передаются base64: 25 МБ файла — это ~34 МБ строки.
 const MAX_LINE = 40 * 1024 * 1024;
 
+function featureReviewInput(value: unknown): { review: string; role?: string } {
+    if (typeof value === 'string') return { review: value };
+    const item = (value ?? {}) as Record<string, unknown>;
+    return {
+        review: String(item.review ?? ''),
+        ...(typeof item.role === 'string' ? { role: item.role } : {}),
+    };
+}
+
 export async function dispatch(service: ReviewService, method: string, params: Record<string, unknown>): Promise<unknown> {
     switch (method) {
         case 'ping': {
             const [glab, gh, git] = await Promise.all(['glab', 'gh', 'git'].map((name) => resolveExecutable(name)));
             return { ok: true, version: VERSION, protocol: PROTOCOL_VERSION, pid: process.pid, binaries: { glab, gh, git } };
         }
-        case 'reviews.list':
+        case 'projects.list':
+            return { projects: service.listProjects() };
+        case 'projects.register': {
+            const root = String(params.root ?? '');
+            if (!root) throw new MrReviewError('нужен root рабочей копии');
+            const project = await service.registerProject(root);
+            return { project, projects: service.listProjects() };
+        }
+        case 'features.list': {
+            const project = typeof params.project === 'string' && params.project.trim() ? params.project.trim() : undefined;
+            return { features: service.listFeatures(project, params.includeArchived === true) };
+        }
+        case 'features.get':
+            return { feature: service.getFeature(String(params.feature ?? '')) };
+        case 'features.create':
+            return {
+                feature: service.createFeature({
+                    title: String(params.title ?? ''),
+                    ...(typeof params.brief === 'string' ? { brief: params.brief } : {}),
+                    ...(typeof params.contract === 'string' ? { contract: params.contract } : {}),
+                    ...(Array.isArray(params.reviews) ? { reviews: params.reviews.map(featureReviewInput) } : {}),
+                }),
+            };
+        case 'features.update':
+            return {
+                feature: service.updateFeature(String(params.feature ?? ''), {
+                    ...(typeof params.title === 'string' ? { title: params.title } : {}),
+                    ...(typeof params.brief === 'string' ? { brief: params.brief } : {}),
+                    ...(typeof params.contract === 'string' ? { contract: params.contract } : {}),
+                    ...(params.status === 'open' || params.status === 'archived' ? { status: params.status } : {}),
+                }),
+            };
+        case 'features.addReviews':
+            return {
+                feature: service.addFeatureReviews(
+                    String(params.feature ?? ''),
+                    Array.isArray(params.reviews) ? params.reviews.map(featureReviewInput) : [],
+                ),
+            };
+        case 'features.removeReview':
+            return { feature: service.removeFeatureReview(String(params.feature ?? ''), String(params.review ?? '')) };
+        case 'features.reorder':
+            return {
+                feature: service.reorderFeature(
+                    String(params.feature ?? ''),
+                    Array.isArray(params.reviews) ? params.reviews.map(String) : [],
+                ),
+            };
+        case 'features.addNote':
+            return {
+                note: service.addFeatureNote(String(params.feature ?? ''), {
+                    ...(params.kind === 'finding' || params.kind === 'note' ? { kind: params.kind } : {}),
+                    ...(typeof params.level === 'string' ? { level: params.level } : {}),
+                    title: String(params.title ?? ''),
+                    body: String(params.body ?? ''),
+                    ...(params.author === 'agent' || params.author === 'human' ? { author: params.author } : {}),
+                }),
+            };
+        case 'features.updateNote':
+            return {
+                note: service.updateFeatureNote(String(params.feature ?? ''), String(params.note ?? ''), {
+                    ...(params.kind === 'finding' || params.kind === 'note' ? { kind: params.kind } : {}),
+                    ...(typeof params.level === 'string' ? { level: params.level } : {}),
+                    ...(typeof params.title === 'string' ? { title: params.title } : {}),
+                    ...(typeof params.body === 'string' ? { body: params.body } : {}),
+                }),
+            };
+        case 'features.deleteNote':
+            service.deleteFeatureNote(String(params.feature ?? ''), String(params.note ?? ''));
+            return { ok: true };
+        case 'features.delete':
+            service.deleteFeature(String(params.feature ?? ''));
+            return { ok: true };
+        case 'features.forReview':
+            return { features: service.featuresForReview(String(params.review ?? '')) };
+        case 'features.context':
+            return service.featureContext(String(params.feature ?? ''), {
+                ...(Number.isFinite(Number(params.maxBytes)) && Number(params.maxBytes) >= 0 ? { maxBytes: Number(params.maxBytes) } : {}),
+            });
+        case 'reviews.list': {
+            const project = typeof params.project === 'string' && params.project.trim() ? params.project.trim() : undefined;
+            const root = typeof params.root === 'string' && params.root.trim() ? params.root.trim() : undefined;
+            if (project) return { reviews: service.listReviews(project) };
+            if (root) return { reviews: service.listReviews(await service.projectForRoot(root)) };
             return { reviews: service.listReviews() };
+        }
         case 'reviews.open': {
             const root = String(params.root ?? '');
             if (!root) throw new MrReviewError('нужен root рабочей копии');

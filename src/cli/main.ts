@@ -12,6 +12,7 @@ import { daemonBinaries, isDaemonRunning, ensureDaemon, daemonInfo, uiBaseUrl, i
 import { resolveExecutable, run } from '../core/exec.js';
 import { redactLine } from '../core/redact.js';
 import { gitRemote } from '../core/git.js';
+import { reviewId as makeReviewId, parseReviewUrl } from '../core/refs.js';
 import { VERSION } from '../version.js';
 import { detectLocale, locale, plural, setLocale, tr } from '../core/locale.js';
 import { fail, parseList, printJson, reviewLine, truncate, usage, when, writers } from './format.js';
@@ -57,6 +58,7 @@ const OPTIONS = {
     limit: { type: 'string' },
     decision: { type: 'string' },
     note: { type: 'string' },
+    level: { type: 'string' },
     emoji: { type: 'string' },
     text: { type: 'string' },
     line: { type: 'string' },
@@ -66,6 +68,13 @@ const OPTIONS = {
     lang: { type: 'string' },
     role: { type: 'string' },
     shard: { type: 'string' },
+    title: { type: 'string' },
+    brief: { type: 'string' },
+    contract: { type: 'string' },
+    status: { type: 'string' },
+    'max-bytes': { type: 'string' },
+    feature: { type: 'string' },
+    archived: { type: 'boolean', default: false },
 } as const;
 
 type Values = Record<string, string | boolean | undefined>;
@@ -86,7 +95,9 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
   revdeck devcontainer    подключить devcontainer к демону хоста (--write)
   revdeck doctor          проверить окружение и доступы
   revdeck daemon <start|stop|restart|status|logs|install|uninstall>
-  revdeck list            открытые ревью (локальный кеш), --remote — с платформы
+  revdeck projects        проекты и их рабочие копии (add <path> — зарегистрировать)
+  revdeck feature         фичи: list|create|get|add|remove|reorder|notes|note|note-delete|context|update|archive|delete
+  revdeck list            ревью текущего проекта (--all — все проекты; --remote — с платформы)
   revdeck open <url|N...>  открыть одно или несколько ревью
   revdeck ui [N]          ссылка на локальный интерфейс
   revdeck context <N>     контекст для агента: правила, diff, треды [--role <роль>] [--shard i/N]
@@ -118,7 +129,9 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
   revdeck devcontainer    connect a devcontainer to the host daemon (--write)
   revdeck doctor          check the environment and access
   revdeck daemon <start|stop|restart|status|logs|install|uninstall>
-  revdeck list            open reviews (local cache), --remote — from the platform
+  revdeck projects        projects and their working copies (add <path> — register)
+  revdeck feature         features: list|create|get|add|remove|reorder|notes|note|note-delete|context|update|archive|delete
+  revdeck list            reviews of the current project (--all — all projects; --remote — from the platform)
   revdeck open <url|N...>  open one or more reviews
   revdeck ui [N]          link to the local UI
   revdeck context <N>     agent context: rules, diff, threads [--role <role>] [--shard i/N]
@@ -178,6 +191,10 @@ async function main(): Promise<void> {
             return doctor(root);
         case 'daemon':
             return daemon(positionals[0] ?? 'status', values);
+        case 'projects':
+            return projects(root, positionals, values);
+        case 'feature':
+            return feature(root, positionals, values);
         case 'list':
             return list(root, values);
         case 'open':
@@ -185,7 +202,7 @@ async function main(): Promise<void> {
         case 'ui':
             return ui(positionals[0], values);
         case 'status':
-            return status();
+            return status(root, values);
         case 'context':
         case 'review':
             return context(root, positionals[0], values);
@@ -307,10 +324,246 @@ async function list(root: string, values: Values): Promise<void> {
         return;
     }
     await withClient(async ({ client }) => {
-        const { reviews } = await client.request<{ reviews: { number: number; title: string; author: string; project: string; syncedAt: string }[] }>('reviews.list');
+        const project = typeof values.project === 'string' && values.project.trim() ? values.project.trim() : undefined;
+        const params = values.all === true ? {} : project ? { project } : { root };
+        const { reviews } = await client.request<{ reviews: { number: number; title: string; author: string; project: string; syncedAt: string }[] }>('reviews.list', params);
         if (values.json) return printJson({ reviews });
-        if (!reviews.length) return writers.out(tr('ревью ещё не открывались: revdeck open <N>', 'no reviews opened yet: revdeck open <N>'));
+        if (!reviews.length) return writers.out(tr('в этом проекте ревью ещё не открывались: revdeck open <N>', 'no reviews opened in this project yet: revdeck open <N>'));
         for (const item of reviews) writers.out(reviewLine(item));
+    });
+}
+
+async function projects(root: string, args: string[], values: Values): Promise<void> {
+    const action = args[0] ?? 'list';
+    await withClient(async ({ client }) => {
+        if (action === 'add') {
+            const target = args[1] ?? values.root ?? root;
+            const result = await client.request<{ project: { key: string; title: string; project: string; host: string } | null; projects: unknown[] }>('projects.register', { root: target });
+            if (values.json) return printJson(result);
+            if (!result.project) return writers.out(tr('проект не определён: проверьте git remote и .revdeck.yml', 'could not determine the project: check git remote and .revdeck.yml'));
+            writers.out(`${tr('проект зарегистрирован', 'project registered')}: ${result.project.key}`);
+            return;
+        }
+        if (action !== 'list') usage([tr('revdeck projects [add <path>]', 'revdeck projects [add <path>]')]);
+        const { projects } = await client.request<{
+            projects: { key: string; title: string; host: string; project: string; reviews: number; roots: string[] }[];
+        }>('projects.list');
+        if (values.json) return printJson({ projects });
+        if (!projects.length) return writers.out(tr('проектов пока нет: revdeck open <N> или revdeck projects add <path>', 'no projects yet: revdeck open <N> or revdeck projects add <path>'));
+        for (const item of projects) {
+            writers.out(`${item.key}  ${item.title}  ${item.reviews} ${tr('ревью', 'reviews')}  ${item.roots[0] ?? ''}`);
+        }
+    });
+}
+
+interface FeatureNoteCli {
+    id: string;
+    kind: string;
+    level: string;
+    title: string;
+    body: string;
+    author: string;
+    createdAt: string;
+}
+
+interface FeatureSummaryCli {
+    id: string;
+    title: string;
+    brief: string;
+    contract: string;
+    status: 'open' | 'archived';
+    reviews: number;
+    projects: { key: string; title: string }[];
+    members?: { review: { id: string; project: string; number: number; title: string; state: string }; role: string }[];
+    notes?: FeatureNoteCli[];
+}
+
+function featureRef(value: string): string {
+    const input = value.trim();
+    if (/^(gitlab|github):/.test(input)) return input;
+    if (/^\d+$/.test(input)) fail(tr('в фиче укажите полный id или ссылку на ревью', 'in a feature pass the full review id or URL'));
+    try {
+        return makeReviewId(parseReviewUrl(input));
+    } catch {
+        fail(tr(`не удалось разобрать ревью: ${value}`, `could not parse the review: ${value}`), tr('пример: https://gitlab.com/group/project/-/merge_requests/42', 'example: https://gitlab.com/group/project/-/merge_requests/42'));
+    }
+}
+
+async function textFromFile(file: string | undefined, label: string): Promise<string | undefined> {
+    if (typeof file !== 'string' || !file.trim()) return undefined;
+    try {
+        return await readFile(file, 'utf8');
+    } catch (error) {
+        fail(tr(`не удалось прочитать ${label}: ${(error as Error).message}`, `could not read the ${label}: ${(error as Error).message}`));
+    }
+}
+
+async function briefFrom(values: Values): Promise<string | undefined> {
+    return textFromFile(typeof values.brief === 'string' ? values.brief : undefined, tr('бриф', 'brief'));
+}
+
+function printFeature(feature: FeatureSummaryCli): void {
+    writers.out(`${feature.id}  ${feature.status}  ${feature.reviews} ${tr('ревью', 'reviews')}  ${feature.title}`);
+    for (const project of feature.projects) writers.out(`  ${project.key}`);
+    for (const member of feature.members ?? []) {
+        writers.out(`  ${member.review.id}  ${member.role || '—'}  #${member.review.number} ${member.review.title} (${member.review.state})`);
+    }
+}
+
+async function feature(_root: string, args: string[], values: Values): Promise<void> {
+    const action = args[0] ?? 'list';
+    await withClient(async ({ client }) => {
+        if (action === 'list') {
+            const project = typeof values.project === 'string' && values.project.trim() ? values.project.trim() : undefined;
+            const includeArchived = values.all === true || values.archived === true;
+            const { features } = await client.request<{ features: FeatureSummaryCli[] }>('features.list', {
+                ...(project ? { project } : {}),
+                includeArchived,
+            });
+            if (values.json) return printJson({ features });
+            if (!features.length) return writers.out(tr('фич пока нет', 'no features yet'));
+            for (const item of features) {
+                writers.out(`${item.id}  ${item.status}  ${item.reviews} ${tr('ревью', 'reviews')}  ${item.projects.length} ${tr('проектов', 'projects')}  ${item.title}`);
+            }
+            return;
+        }
+        if (action === 'get') {
+            const id = args[1];
+            if (!id) fail(tr('укажите id фичи', 'pass the feature id'));
+            const { feature } = await client.request<{ feature: FeatureSummaryCli }>('features.get', { feature: id });
+            if (values.json) return printJson(feature);
+            printFeature(feature);
+            if (feature.brief.trim()) writers.out(`\n${feature.brief}`);
+            if (feature.contract.trim()) writers.out(`\n${feature.contract}`);
+            return;
+        }
+        if (action === 'create') {
+            const title = args[1] ?? (typeof values.title === 'string' ? values.title : '');
+            if (!title.trim()) fail(tr('укажите название фичи', 'pass the feature title'));
+            const reviews = args.slice(2).map((value) => ({ review: featureRef(value), ...(values.role ? { role: String(values.role) } : {}) }));
+            const brief = await briefFrom(values);
+            const contract = await textFromFile(typeof values.contract === 'string' ? values.contract : undefined, tr('контракт', 'contract'));
+            const { feature } = await client.request<{ feature: FeatureSummaryCli }>('features.create', {
+                title,
+                ...(brief !== undefined ? { brief } : {}),
+                ...(contract !== undefined ? { contract } : {}),
+                ...(reviews.length ? { reviews } : {}),
+            });
+            if (values.json) return printJson(feature);
+            writers.out(`${tr('фича создана', 'feature created')}: ${feature.id}`);
+            printFeature(feature);
+            return;
+        }
+        if (action === 'add') {
+            const id = args[1];
+            if (!id) fail(tr('укажите id фичи', 'pass the feature id'));
+            const reviews = args.slice(2).map((value) => ({ review: featureRef(value), ...(values.role ? { role: String(values.role) } : {}) }));
+            if (!reviews.length) fail(tr('укажите хотя бы одно ревью', 'pass at least one review'));
+            const { feature } = await client.request<{ feature: FeatureSummaryCli }>('features.addReviews', { feature: id, reviews });
+            if (values.json) return printJson(feature);
+            printFeature(feature);
+            return;
+        }
+        if (action === 'reorder') {
+            const id = args[1];
+            if (!id) fail(tr('укажите id фичи', 'pass the feature id'));
+            const reviews = args.slice(2).map(featureRef);
+            if (!reviews.length) fail(tr('укажите порядок ревью', 'pass the review order'));
+            const { feature } = await client.request<{ feature: FeatureSummaryCli }>('features.reorder', { feature: id, reviews });
+            if (values.json) return printJson(feature);
+            printFeature(feature);
+            return;
+        }
+        if (action === 'notes') {
+            const id = args[1];
+            if (!id) fail(tr('укажите id фичи', 'pass the feature id'));
+            const { feature } = await client.request<{ feature: FeatureSummaryCli }>('features.get', { feature: id });
+            if (values.json) return printJson(feature.notes ?? []);
+            for (const note of feature.notes ?? []) {
+                writers.out(`${note.id}  ${note.kind}${note.level ? `/${note.level}` : ''}  ${note.author}  ${note.title}`);
+                if (note.body) writers.out(`  ${note.body}`);
+            }
+            return;
+        }
+        if (action === 'note') {
+            const id = args[1];
+            if (!id) fail(tr('укажите id фичи', 'pass the feature id'));
+            const title = typeof values.title === 'string' ? values.title : '';
+            const body = typeof values.body === 'string' ? values.body : '';
+            if (!title.trim()) fail(tr('укажите --title', 'pass --title'));
+            const { note } = await client.request<{ note: FeatureNoteCli }>('features.addNote', {
+                feature: id,
+                kind: values.kind === 'finding' ? 'finding' : 'note',
+                ...(values.level ? { level: String(values.level) } : {}),
+                title,
+                body,
+            });
+            if (values.json) return printJson(note);
+            writers.out(`${tr('заметка добавлена', 'note added')}: ${note.id}`);
+            return;
+        }
+        if (action === 'note-delete') {
+            const id = args[1];
+            const note = args[2];
+            if (!id || !note) fail(tr('укажите id фичи и заметки', 'pass the feature id and note id'));
+            await client.request('features.deleteNote', { feature: id, note });
+            writers.out(tr('заметка удалена', 'note deleted'));
+            return;
+        }
+        if (action === 'remove') {
+            const id = args[1];
+            const review = args[2];
+            if (!id || !review) fail(tr('укажите id фичи и ревью', 'pass the feature id and a review'));
+            const { feature } = await client.request<{ feature: FeatureSummaryCli }>('features.removeReview', { feature: id, review: featureRef(review) });
+            if (values.json) return printJson(feature);
+            printFeature(feature);
+            return;
+        }
+        if (action === 'context') {
+            const id = args[1];
+            if (!id) fail(tr('укажите id фичи', 'pass the feature id'));
+            const result = await client.request<{ feature: FeatureSummaryCli; markdown: string }>('features.context', {
+                feature: id,
+                ...(values['max-bytes'] ? { maxBytes: Number(values['max-bytes']) } : {}),
+            });
+            if (values.json) return printJson(result);
+            writers.out(result.markdown);
+            return;
+        }
+        if (action === 'update') {
+            const id = args[1];
+            if (!id) fail(tr('укажите id фичи', 'pass the feature id'));
+            const brief = await briefFrom(values);
+            const contract = await textFromFile(typeof values.contract === 'string' ? values.contract : undefined, tr('контракт', 'contract'));
+            const patch = {
+                ...(typeof values.title === 'string' ? { title: values.title } : {}),
+                ...(brief !== undefined ? { brief } : {}),
+                ...(contract !== undefined ? { contract } : {}),
+                ...(values.status === 'open' || values.status === 'archived' ? { status: values.status } : {}),
+            };
+            if (!Object.keys(patch).length) fail(tr('нечего обновлять: --title, --brief, --contract или --status', 'nothing to update: --title, --brief, --contract or --status'));
+            const { feature } = await client.request<{ feature: FeatureSummaryCli }>('features.update', { feature: id, ...patch });
+            if (values.json) return printJson(feature);
+            printFeature(feature);
+            return;
+        }
+        if (action === 'archive') {
+            const id = args[1];
+            if (!id) fail(tr('укажите id фичи', 'pass the feature id'));
+            const { feature } = await client.request<{ feature: FeatureSummaryCli }>('features.update', { feature: id, status: 'archived' });
+            if (values.json) return printJson(feature);
+            writers.out(`${tr('фича архивирована', 'feature archived')}: ${feature.id}`);
+            return;
+        }
+        if (action === 'delete') {
+            const id = args[1];
+            if (!id) fail(tr('укажите id фичи', 'pass the feature id'));
+            if (values.yes !== true) fail(tr('удаление фичи требует --yes', 'deleting a feature requires --yes'));
+            await client.request('features.delete', { feature: id });
+            writers.out(`${tr('фича удалена', 'feature deleted')}: ${id}`);
+            return;
+        }
+        usage([tr('revdeck feature list|create|get|add|remove|reorder|notes|note|note-delete|context|update|archive|delete', 'revdeck feature list|create|get|add|remove|reorder|notes|note|note-delete|context|update|archive|delete')]);
     });
 }
 
@@ -457,11 +710,12 @@ async function daemon(action: string, values: Values = {}): Promise<void> {
     usage(['daemon <start|stop|status|restart|logs|install|uninstall>']);
 }
 
-async function status(): Promise<void> {
+async function status(root: string, values: Values): Promise<void> {
     await withClient(async ({ client }) => {
-        const { reviews } = await client.request<{ reviews: { id: string; number: number; title: string; author: string; project: string; syncedAt: string }[] }>('reviews.list');
+        const params = values.all === true ? {} : { root };
+        const { reviews } = await client.request<{ reviews: { id: string; number: number; title: string; author: string; project: string; syncedAt: string }[] }>('reviews.list', params);
         if (!reviews.length) {
-            writers.out(tr('ревью ещё не открывались', 'no reviews opened yet'));
+            writers.out(tr('в этом проекте ревью ещё не открывались', 'no reviews opened in this project yet'));
             return;
         }
         for (const item of reviews) writers.out(reviewLine(item));

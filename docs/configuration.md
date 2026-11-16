@@ -17,6 +17,9 @@ output:
 review:
   agents: 3
   roles: [correctness, architecture, tests]
+context:
+  sources: [docs/AppContext.md]   # application profile, not review rules
+  maxBytes: 30000
 rules:
   sources: [AGENTS.md]
   map:
@@ -71,6 +74,59 @@ output:
 Explicit CLI arguments (`--platform`, `--project`, `--host`) take precedence over the config, and the
 config takes precedence over the git remote. This way, tampering with `.git/config` cannot redirect the
 review to a different project.
+
+## Project identity
+
+A project is a repository. Its key is `platform:host/project`, normalized for comparison (host and
+path are lower-cased; the original values are kept for display). One repository can have several
+working-copy roots, but they are one project.
+
+The key is derived from `provider` (or the git remote) and stored in the daemon registry. There is no
+`kind` field: "api", "web" or "mobile" are not project types, and a project does not need them. A
+review always uses the config and rules from its own working-copy root, so several roots of the same
+project do not mix their rules.
+
+```bash
+revdeck projects                 # list projects, review counts and roots
+revdeck projects add /path/repo  # register a project before its first review
+```
+
+The UI and agent scope are described in [architecture.md](architecture.md) and
+[capabilities](capabilities.md#project-scopes).
+
+## Features and contracts
+
+Features are not `.revdeck.yml` settings: they are local daemon records created by a human in the UI
+or CLI. A feature has a title, a Markdown **brief**, a separate **contract** (Markdown or OpenAPI) and
+an ordered set of reviews. Put the task goal, non-goals, rollout order and acceptance criteria into the
+brief; put the API/event contract into the contract field. OpenAPI is parsed into operations and
+schemas, and the feature context marks which changed reviews mention each path. Each member review
+keeps its own `.revdeck.yml` and rules; the brief and contract never override them.
+
+Application profiles are background documents, not review criteria. Declare them per repository:
+
+```yaml
+context:
+  sources: [docs/AppContext.md, docs/API.md]
+  maxBytes: 30000
+```
+
+`maxBytes` is the aggregate limit for the project profile; `0` uses the feature-context budget. The
+feature context itself is capped by `revdeck feature context --max-bytes` (or the MCP `max_bytes`).
+Profile and note text is quoted and treated as data, not instructions.
+
+Feature notes/findings are stored on the feature and are never published. Publishing remains per
+review.
+
+```bash
+revdeck feature create "Checkout v2" --brief brief.md --contract openapi.yaml \
+  <review-id> <review-id>
+revdeck feature context ft-a1b2c3
+revdeck feature note ft-a1b2c3 --title "Contract gap" --body "Client is missing a header" --kind finding --level major
+```
+
+To start a feature-scoped agent session, run the MCP server from a repository that is a feature
+member with `REVDECK_FEATURE=<feature id>`. Project rules are still read from each member's own root.
 
 ## output
 
@@ -283,6 +339,7 @@ confirmation. Read-only reviews disable the runner. The MCP tool only shows the 
 | `REVDECK_DEV_CONTAINER=1` | do not start a local daemon; fail with a host-daemon hint instead |
 | `REVDECK_UI_HOST` | host used by `revdeck ui` from a container (for example `host.docker.internal`) |
 | `REVDECK_ROOT` | project root for the MCP server |
+| `REVDECK_FEATURE` | feature id for a feature-scoped MCP session; the current project must be a member |
 | `REVDECK_LANG` | CLI/MCP/daemon language: `ru` or `en` (default: system locale) |
 | `REVDECK_GLAB` | absolute path to `glab` when the daemon PATH does not contain it |
 | `REVDECK_GH` | absolute path to `gh` when the daemon PATH does not contain it |
@@ -291,3 +348,9 @@ confirmation. Read-only reviews disable the runner. The MCP tool only shows the 
 
 `revdeck config --json` shows the effective config, the path where it was found, and warnings.
 `revdeck rules --explain src/app.ts` shows which documents and sections were selected for the file.
+
+## Example configurations
+
+Runnable examples live in [examples](../examples/): `simple.yml`, `monorepo.yml` and
+`analytics-platform.yml`. The test suite parses every example, checks its path map and checks, and
+verifies that each example selects at least one check for a changed source file.

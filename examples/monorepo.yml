@@ -3,7 +3,7 @@ version: 1
 provider:
   type: gitlab
   host: gitlab.example.com
-  project: group/web-chat-core
+  project: acme/workspace
   base: develop
 rules:
   sources:

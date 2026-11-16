@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { readTextNoFollow, findConfigFile, findLocalConfigFile, findRepoRoot } from './paths.js';
+import { readTextNoFollow, readTextPrefixNoFollow, resolveInsideRoot, findConfigFile, findLocalConfigFile, findRepoRoot } from './paths.js';
 import { ConfigError } from './errors.js';
 import { parse as parseYaml } from 'yaml';
 import { existsSync } from 'node:fs';
@@ -34,6 +34,14 @@ export const reviewConfigSchema = z.object({
     output: z
         .object({
             language: z.enum(['auto', 'ru', 'en']).default('auto'),
+        })
+        .prefault({}),
+    context: z
+        .object({
+            /** Документы о приложении: архитектура, интерфейсы, деплой. Не правила оценки. */
+            sources: z.array(z.string().min(1)).default([]),
+            /** 0 — использовать бюджет feature-контекста; иначе предел профиля проекта. */
+            maxBytes: z.number().int().nonnegative().default(0),
         })
         .prefault({}),
     review: z
@@ -236,6 +244,24 @@ export function assertConfigPath(root: string, relative: string): string {
         throw new ConfigError(tr(`путь ${relative} выходит за пределы репозитория`, `path ${relative} escapes the repository`));
     }
     return resolved;
+}
+
+/** Читает файл конфигурации/документа, проверяя и лексический путь, и раскрытые symlink'и. */
+export async function readConfigFile(root: string, relative: string, maxBytes = 4 * 1024 * 1024): Promise<string> {
+    const resolved = assertConfigPath(root, relative);
+    const actual = await resolveInsideRoot(root, resolved);
+    return readTextNoFollow(actual, maxBytes);
+}
+
+/** Как readConfigFile, но обрезает большой документ вместо ошибки. */
+export async function readConfigPrefix(
+    root: string,
+    relative: string,
+    maxBytes = 4 * 1024 * 1024,
+): Promise<{ text: string; truncated: boolean }> {
+    const resolved = assertConfigPath(root, relative);
+    const actual = await resolveInsideRoot(root, resolved);
+    return readTextPrefixNoFollow(actual, maxBytes);
 }
 
 /** Какие проверки из конфига относятся к изменённым путям. */

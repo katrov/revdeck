@@ -41,7 +41,22 @@ authorization is enforced by the socket file's permissions.
 | Method | Parameters | Result |
 |---|---|---|
 | `ping` | — | version, protocol, pid |
-| `reviews.list` | — | saved reviews |
+| `projects.list` | — | registered projects with review counts and roots |
+| `projects.register` | `root` | project resolved from that working copy |
+| `reviews.list` | `project?` / `root?` | saved reviews, optionally scoped to one project |
+| `features.list` | `project?`, `includeArchived?` | feature summaries |
+| `features.get` | `feature` | feature with ordered members and roles |
+| `features.create` | `title`, `brief?`, `contract?`, `reviews?` | create a human feature |
+| `features.update` | `feature`, `title?`, `brief?`, `contract?`, `status?` | edit/archive a feature |
+| `features.addReviews` | `feature`, `reviews[{review, role?}]` | add/update members |
+| `features.removeReview` | `feature`, `review` | remove a member |
+| `features.reorder` | `feature`, `reviews[]` | set member order |
+| `features.delete` | `feature` | delete a feature (not its reviews) |
+| `features.addNote` | `feature`, `kind?`, `level?`, `title`, `body`, `author?` | non-published feature note/finding |
+| `features.updateNote` | `feature`, `note`, `kind?`, `level?`, `title?`, `body?` | update a note |
+| `features.deleteNote` | `feature`, `note` | delete a note |
+| `features.forReview` | `review` | features containing a review |
+| `features.context` | `feature`, `maxBytes?` | combined brief + review context |
 | `reviews.remoteList` | `root`, `scope`, `limit` | open reviews from the platform |
 | `reviews.open` | `root`, `input`/`platform`/`project`/`host`/`branch` | review snapshot |
 | `reviews.refresh` | `review` | refreshed snapshot |
@@ -69,6 +84,39 @@ authorization is enforced by the socket file's permissions.
 | `checks.run` | `review`, `allowRun`, `ids[]` | check results |
 | `audit.tail` | `limit` | latest actions |
 
+## Project scope
+
+A project is a repository, identified by `platform:host/project`. `projects.list` returns the
+registry (`key`, display fields, `roots`, review count, last activity). `reviews.list` with `project`
+or `root` returns only that project's reviews; without either it returns everything (for humans and
+debugging).
+
+This filter is an API convenience, not a security boundary: the daemon serves one local user. The
+isolation for agents is enforced by the MCP server, which resolves its project from the working copy
+at startup, passes `project` on every list and rejects a review id/URL from another project. The MCP
+tools do not accept `root` or project overrides.
+
+## Feature scope
+
+A feature is a human-created bundle of reviews (`features`, `feature_reviews`) with a title, brief, a
+separate Markdown/OpenAPI contract, application profiles from `context.sources`, and non-published
+notes/findings. `features.context` returns a Markdown document with the brief, parsed contract (or raw
+Markdown), profiles, notes, an overview matrix and one section per member review, using each review's
+own rules. It is read-only.
+
+The MCP server has two scopes:
+
+- **Project session** (default): lists reviews of one project and features that include it; a foreign
+  review id/URL is rejected. `revdeck_feature` can read a feature's combined context, but review tools
+  write only in the current project.
+- **Feature session** (`REVDECK_FEATURE=<feature id>`): the current repository must be a member. The
+  scope covers only members; review tools may write drafts to any member. Publishing remains per
+  review and requires the usual human approval. Feature notes are writable only in a feature session,
+  and MCP can change only notes authored by an agent.
+
+The daemon does not enforce the MCP scope; it is a local single-user service. The MCP server is the
+isolation boundary. Feature membership is the only explicit cross-project door.
+
 ## Approval
 
 1. `publish.preview` builds `items` — the exact bodies, paths, lines, and resolve flags — and
@@ -88,7 +136,9 @@ in the CLI with `--yes`.
 | GET | `/` | SPA; `?t=<token>` sets the cookie and redirects |
 | GET | `/assets/*` | static build assets |
 | GET | `/api/health` | liveness |
-| GET | `/api/reviews` | review list |
+| GET | `/api/projects` | registered projects |
+| GET | `/api/reviews?project=` | review list, optionally scoped |
+| POST | `/api/projects/register` | register the project of a working copy |
 | GET | `/api/state?review=` | snapshot for the UI |
 | GET | `/api/diff?review=&file=` | file hunks |
 | GET | `/api/rules?review=` | rules |

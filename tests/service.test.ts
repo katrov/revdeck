@@ -472,4 +472,75 @@ rules: { sources: [AGENTS.md] }
         expect(items).toHaveLength(1);
         expect(items[0]!.project).toBe('group/proj');
     });
+
+    it('builds a feature context with contract, profiles and notes', async () => {
+        await writeFile(path.join(root, 'docs', 'AppContext.md'), '# App profile\n\nRefunds service.\n');
+        await writeFile(
+            path.join(root, '.revdeck.yml'),
+            `version: 1
+provider: { type: gitlab }
+context:
+  sources: [docs/AppContext.md]
+rules:
+  sources: [AGENTS.md]
+`,
+        );
+        const api = await open();
+        const web = await service.openReview(root, { input: 'https://gitlab.com/group/other/-/merge_requests/9' });
+        const feature = service.createFeature({
+            title: 'Checkout v2',
+            brief: 'Goal: idempotent refunds.',
+            contract: `openapi: 3.1.0
+info: { title: Refunds API, version: '1' }
+paths:
+  /refunds:
+    post:
+      operationId: createRefund
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string } }
+      responses:
+        '200': { description: ok }
+`,
+            reviews: [
+                { review: api.id, role: 'api' },
+                { review: web.id, role: 'ui' },
+            ],
+        });
+        expect(feature.reviews).toBe(2);
+        expect(feature.projects).toHaveLength(2);
+        expect(service.listFeatures('gitlab:gitlab.com/group/proj').map((item) => item.id)).toEqual([feature.id]);
+        expect(service.listFeatures('gitlab:gitlab.com/group/other').map((item) => item.id)).toEqual([feature.id]);
+
+        const featureEvents: string[] = [];
+        service.events.on('feature', (event: { featureId: string }) => featureEvents.push(event.featureId));
+        service.addFeatureNote(feature.id, { kind: 'finding', level: 'major', title: 'Contract gap', body: 'Client header.' });
+        expect(featureEvents).toContain(feature.id);
+        const context = await service.featureContext(feature.id);
+        expect(context.markdown).toContain('# Фича: Checkout v2');
+        expect(context.markdown).toContain('Goal: idempotent refunds.');
+        expect(context.markdown).toContain('POST /refunds');
+        expect(context.markdown).toContain('Idempotency-Key');
+        expect(context.markdown).toContain('Профили приложений');
+        expect(context.markdown).toContain('Refunds service.');
+        expect(context.markdown).toContain('Contract gap');
+        expect(context.markdown).toContain('group/proj');
+        expect(context.markdown).toContain('group/other');
+        expect(context.markdown).toContain('api');
+        expect(context.markdown).toContain('ui');
+        const compact = await service.featureContext(feature.id, { maxBytes: 1200 });
+        expect(compact.markdown.length).toBeLessThanOrEqual(1200);
+        expect(() => service.removeReview(api.id)).toThrow(/фич/);
+    });
+
+    it('rejects a review URL from another configured project', async () => {
+        await writeFile(
+            path.join(root, '.revdeck.yml'),
+            `version: 1
+provider: { type: gitlab, host: gitlab.com, project: group/proj }
+`,
+        );
+        await expect(
+            service.openReview(root, { input: 'https://gitlab.com/group/other/-/merge_requests/9' }),
+        ).rejects.toThrow(/рабочая копия|working copy/);
+    });
 });

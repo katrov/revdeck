@@ -41,7 +41,22 @@
 | Метод | Параметры | Результат |
 |---|---|---|
 | `ping` | — | версия, протокол, pid |
-| `reviews.list` | — | сохранённые ревью |
+| `projects.list` | — | зарегистрированные проекты с числом ревью и root'ами |
+| `projects.register` | `root` | проект, определённый по рабочей копии |
+| `reviews.list` | `project?` / `root?` | сохранённые ревью, опционально в скоупе проекта |
+| `features.list` | `project?`, `includeArchived?` | сводки фич |
+| `features.get` | `feature` | фича с упорядоченными участниками и ролями |
+| `features.create` | `title`, `brief?`, `contract?`, `reviews?` | создать фичу (человек) |
+| `features.update` | `feature`, `title?`, `brief?`, `contract?`, `status?` | редактировать/архивировать фичу |
+| `features.addReviews` | `feature`, `reviews[{review, role?}]` | добавить/обновить участников |
+| `features.removeReview` | `feature`, `review` | убрать участника |
+| `features.reorder` | `feature`, `reviews[]` | задать порядок |
+| `features.delete` | `feature` | удалить фичу (не ревью) |
+| `features.addNote` | `feature`, `kind?`, `level?`, `title`, `body`, `author?` | непубликуемая заметка/находка фичи |
+| `features.updateNote` | `feature`, `note`, `kind?`, `level?`, `title?`, `body?` | обновить заметку |
+| `features.deleteNote` | `feature`, `note` | удалить заметку |
+| `features.forReview` | `review` | фичи, содержащие ревью |
+| `features.context` | `feature`, `maxBytes?` | общий контекст: бриф + ревью |
 | `reviews.remoteList` | `root`, `scope`, `limit` | открытые ревью с платформы |
 | `reviews.open` | `root`, `input`/`platform`/`project`/`host`/`branch` | снимок ревью |
 | `reviews.refresh` | `review` | обновлённый снимок |
@@ -69,6 +84,38 @@
 | `checks.run` | `review`, `allowRun`, `ids[]` | результаты проверок |
 | `audit.tail` | `limit` | последние действия |
 
+## Скоуп проекта
+
+Проект — это репозиторий с ключом `platform:host/project`. `projects.list` возвращает реестр
+(`key`, отображаемые поля, `roots`, число ревью, последнюю активность). `reviews.list` с `project`
+или `root` возвращает только ревью этого проекта; без них — всё (для человека и отладки).
+
+Этот фильтр — удобство API, а не security boundary: демон обслуживает одного локального
+пользователя. Изоляцию для агента обеспечивает MCP-сервер: он определяет проект по рабочей копии
+при старте, передаёт `project` во всех списках и отклоняет id/URL чужого ревью. MCP-инструменты не
+принимают `root` и override проекта.
+
+## Скоуп фичи
+
+Фича — созданный человеком набор ревью (`features`, `feature_reviews`) с названием, брифом,
+отдельным контрактом Markdown/OpenAPI, профилями приложений из `context.sources` и непубликуемыми
+заметками/находками. `features.context` возвращает Markdown с брифом, разобранным контрактом (или
+сырым Markdown), профилями, заметками, матрицей обзора и секцией на каждое ревью-член с его
+собственными правилами. Только чтение.
+
+У MCP-сервера два скоупа:
+
+- **Project session** (по умолчанию): показывает ревью одного проекта и фичи, куда он входит; чужой
+  id/URL ревью отклоняется. `revdeck_feature` читает общий контекст фичи, но инструменты записи
+  работают только в текущем проекте.
+- **Feature session** (`REVDECK_FEATURE=<id>`): текущий репозиторий должен быть участником. Скоуп
+  ограничен участниками; черновики можно писать в любого. Публикация остаётся по каждому ревью и
+  требует обычного подтверждения человеком. Заметки фичи можно писать только в feature-сессии;
+  через MCP можно менять только заметки, созданные агентом.
+
+Демон не проверяет MCP-скоуп: это локальный сервис одного пользователя. Граница изоляции — MCP-сервер.
+Членство в фиче — единственная явная кросс-проектная дверь.
+
 ## Approval
 
 1. `publish.preview` строит `items` — точные тела, пути, строки, флаги резолва — и
@@ -88,7 +135,9 @@
 | GET | `/` | SPA; `?t=<token>` ставит cookie и редиректит |
 | GET | `/assets/*` | статика сборки |
 | GET | `/api/health` | живость |
-| GET | `/api/reviews` | список ревью |
+| GET | `/api/projects` | зарегистрированные проекты |
+| GET | `/api/reviews?project=` | список ревью, опционально в скоупе |
+| POST | `/api/projects/register` | зарегистрировать проект рабочей копии |
 | GET | `/api/state?review=` | снимок для UI |
 | GET | `/api/diff?review=&file=` | hunks файла |
 | GET | `/api/rules?review=` | правила |
