@@ -15,8 +15,8 @@
 
 - Replacing GitLab/GitHub's native diff viewer. The UI is optimized for triage and approval.
 - Built-in static analysis. Checks are delegated to the project's linter, types, and tests.
-- A multi-user server. The model is one user, several reviews, and a
-  [daemon on the host](adr/0001-daemon-first.md).
+- A multi-user server. The model is one user, several repositories and reviews, and a
+  [daemon on the host](capabilities.md#daemon-first).
 
 ## Components
 
@@ -26,14 +26,14 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
                    SQLite + UI ◀── human
 ```
 
-- `src/core` — pure functions and models: unified diff parser, rules, finding fingerprints,
+- `src/core` — pure functions and models: project identity and keys, unified diff parser, rules, finding fingerprints,
   [publication sanitizer](threat-model.md), secret redaction, safe process execution.
 - `src/providers` — the only place that knows about platforms. `Provider` normalizes MR/PR, diff,
   threads, replies, resolution, and comment creation.
 - `src/daemon/service.ts` — orchestrator: review refresh, drafts, decisions, publication plan,
   approval, idempotent writes, background sync.
-- `src/daemon/store.ts` — SQLite (`node:sqlite`): reviews, diff/thread snapshot, drafts, findings,
-  decisions, comments, approvals, audit.
+- `src/daemon/store.ts` — SQLite (`node:sqlite`): projects and their roots, reviews, diff/thread snapshot,
+  drafts, findings, decisions, comments, approvals, audit.
 - `src/daemon/rpc.ts` — [JSON-RPC](protocol.md) over a Unix socket (0600) for the CLI and MCP.
 - `src/daemon/bridge.ts` — an additional RPC socket in a stable home-based directory for devcontainers.
 - `src/daemon/http.ts` — UI and `/api/*`, SSE events, cookie session with a one-time token.
@@ -43,7 +43,7 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
 
 ## Data flow
 
-1. `revdeck open 42` → RPC `reviews.open` with the working copy `root`.
+1. `revdeck open 42` → RPC `reviews.open` with the working copy `root`; the project is resolved from the config/remote and registered.
 2. The daemon determines the platform/host/project (arguments → config → git remote), creates a
    provider, reads the MR, diff, and threads, and saves a snapshot and synthetic drafts.
 3. The agent requests `revdeck_context`: the daemon assembles effective rules (documents and sections
@@ -55,6 +55,10 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
 
 ## Data model
 
+- `Project` — a repository: `key = platform:host/project` (normalized for comparison), display values,
+  and one or more working-copy roots. Reviews carry the same `projectKey`.
+- `Feature` — an explicit bundle of reviews with a brief, contract and notes; `FeatureReview` adds a
+  role and order; `FeatureNote` holds non-published cross-project notes/findings.
 - `ReviewRef` — platform, host, project, number. `reviewId` — `platform:host/project!number`.
 - `DiffFile`/`Hunk`/`DiffLine` — line numbers in the old and new versions; a finding's `line` always
   refers to the new file.
@@ -63,6 +67,47 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
   (`draft`, `accepted`, `rejected`, `published`, `fixed`, `stale`).
 - `Approval` — a one-time id tied to `hash = sha256(canonicalJson({reviewId, kind, items}))`,
   with a 10-minute TTL.
+
+## Projects and isolation
+
+One daemon serves several repositories. A **project** is one repository, identified by
+`platform:host/project`; a review stores its project key and its own working-copy root. The daemon
+registry (`projects`, `project_roots`) is populated when a review is opened or when a project is
+registered explicitly (`revdeck projects add <path>`).
+
+- The UI selects one project at a time: a switcher, a projects home, and a review queue scoped to the
+  selection. The selection is kept in the URL and in local storage.
+- The MCP server is the isolation point. It resolves its project from `REVDECK_ROOT` (or the current
+  directory), lists only that project, and rejects review ids/URLs from other projects. The agent gets
+  no `root` or project overrides.
+- `reviews.list` accepts `project` or `root`; this is a filter for the UI/CLI, not a security boundary.
+  One daemon and one database remain; a process with access to the user's home can read the database.
+- Cross-project work is not implicit. A human-created feature links reviews from several projects; a
+  foreign review is rejected outside it. See [capabilities](capabilities.md#project-scopes) and [Features](#features).
+
+## Features
+
+A **feature** is a human-created bundle of reviews across projects. It is not a project and not a
+permanent project link: projects appear in it only while at least one of their reviews is a member.
+The `features` table holds the title, Markdown brief, a separate Markdown/OpenAPI contract, status
+and human/agent feature notes; `feature_reviews` holds membership, a free-form role and order. Several
+reviews from one project are allowed. OpenAPI contracts are parsed into operations and schemas, and
+the context marks which changed reviews mention each operation. Application profiles are background
+documents declared in `context.sources` of each repository (`context.maxBytes` caps them).
+
+- The UI and CLI create/edit features; MCP exposes read-only discovery/context and, in a feature session,
+  `revdeck_feature_note` for agent-authored notes (never published).
+- A **project session** sees features that include its project, may read the combined context, and
+  writes only in its project.
+- A **feature session** is explicit (`REVDECK_FEATURE=<id>`): the current repository must be a member,
+  the scope covers only members, and drafts may be written to any member. Publishing remains per
+  review and requires human approval.
+- The combined context contains the brief, the contract (parsed OpenAPI or raw Markdown), application
+  profiles, feature notes, an overview matrix and one section per review with its own project rules.
+  Rules are never merged. The budget is split across reviews.
+- There is no feature-level publish. Findings and summaries belong to reviews; feature notes/findings
+  are a non-published cross-project scratchpad. The feature aggregates reviews for navigation. See
+  [capabilities](capabilities.md#features).
 
 ## Idempotency and concurrency
 

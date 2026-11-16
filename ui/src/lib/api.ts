@@ -8,6 +8,11 @@ export class ApiError extends Error {
     }
 }
 
+export async function rpc<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    const data = await api<{ result: T }>('/api/rpc', { body: { method, params } });
+    return data.result;
+}
+
 export async function api<T>(path: string, options: { method?: 'GET' | 'POST'; body?: unknown } = {}): Promise<T> {
     const response = await fetch(path, {
         method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
@@ -31,7 +36,15 @@ export async function api<T>(path: string, options: { method?: 'GET' | 'POST'; b
 export const getState = (review: string) =>
     api<{ review: import('./types').ReviewView; reviews: import('./types').ReviewListItem[] }>(`/api/state?review=${encodeURIComponent(review)}`);
 
-export const getReviews = () => api<{ reviews: import('./types').ReviewListItem[] }>('/api/reviews');
+export const getProjects = () => api<{ projects: import('./types').ProjectSummary[] }>('/api/projects');
+
+export const getReviews = (project?: string) =>
+    api<{ reviews: import('./types').ReviewListItem[] }>(`/api/reviews${project ? `?project=${encodeURIComponent(project)}` : ''}`);
+
+export const registerProject = (root: string) =>
+    api<{ project: import('./types').ProjectSummary | null; projects: import('./types').ProjectSummary[] }>('/api/projects/register', {
+        body: { root },
+    });
 
 export const getDiff = (review: string, file: string) =>
     api<{ file: import('./types').DiffPayload }>(`/api/diff?review=${encodeURIComponent(review)}&file=${encodeURIComponent(file)}`);
@@ -170,3 +183,52 @@ export const approvePublish = (review: string, kind: 'reply' | 'finding' | 'note
 
 export const commitPublish = (review: string, approvalId: string) =>
     api<{ result: import('./types').PublishResult }>('/api/publish/commit', { body: { review, approvalId } });
+
+export const getFeatures = (project?: string, includeArchived = false) =>
+    rpc<{ features: import('./types').FeatureSummary[] }>('features.list', {
+        ...(project ? { project } : {}),
+        includeArchived,
+    });
+
+export const getFeature = (feature: string) =>
+    rpc<{ feature: import('./types').FeatureDetail }>('features.get', { feature });
+
+export const createFeature = (input: { title: string; brief?: string; contract?: string; reviews?: { review: string; role?: string }[] }) =>
+    rpc<{ feature: import('./types').FeatureDetail }>('features.create', input);
+
+export const updateFeature = (feature: string, patch: { title?: string; brief?: string; contract?: string; status?: 'open' | 'archived' }) =>
+    rpc<{ feature: import('./types').FeatureDetail }>('features.update', { feature, ...patch });
+
+export const addFeatureReviews = (feature: string, reviews: { review: string; role?: string }[]) =>
+    rpc<{ feature: import('./types').FeatureDetail }>('features.addReviews', { feature, reviews });
+
+export const removeFeatureReview = (feature: string, review: string) =>
+    rpc<{ feature: import('./types').FeatureDetail }>('features.removeReview', { feature, review });
+
+export const getFeatureContext = (feature: string, maxBytes?: number) =>
+    rpc<{ feature: import('./types').FeatureDetail; markdown: string }>('features.context', {
+        feature,
+        ...(maxBytes ? { maxBytes } : {}),
+    });
+
+export const getFeaturesForReview = (review: string) =>
+    rpc<{ features: import('./types').FeatureSummary[] }>('features.forReview', { review });
+
+export const addFeatureNote = (
+    feature: string,
+    input: { kind?: 'note' | 'finding'; level?: string; title: string; body: string; author?: 'human' | 'agent' },
+) => rpc<{ note: import('./types').FeatureNote }>('features.addNote', { feature, ...input });
+
+export const updateFeatureNote = (
+    feature: string,
+    note: string,
+    patch: { kind?: 'note' | 'finding'; level?: string; title?: string; body?: string },
+) => rpc<{ note: import('./types').FeatureNote }>('features.updateNote', { feature, note, ...patch });
+
+export const deleteFeatureNote = (feature: string, note: string) =>
+    rpc<{ ok: true }>('features.deleteNote', { feature, note });
+
+export const reorderFeature = (feature: string, reviews: string[]) =>
+    rpc<{ feature: import('./types').FeatureDetail }>('features.reorder', { feature, reviews });
+
+export const deleteFeature = (feature: string) => rpc<{ ok: true }>('features.delete', { feature });

@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { constants, existsSync } from 'node:fs';
 import { lstat, mkdir, open, readFile, realpath, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -118,9 +118,46 @@ export async function readTextNoFollow(file: string, maxBytes = 4 * 1024 * 1024)
     if (info.isSymbolicLink()) throw new Error(`${path.basename(file)}: symbolic link, read refused`);
     if (!info.isFile()) throw new Error(`${path.basename(file)}: not a regular file`);
     if (info.size > maxBytes) throw new Error(`${path.basename(file)}: file is larger than ${Math.round(maxBytes / 1024)} KB`);
-    const handle = await open(file, 'r');
+    const flags = process.platform === 'win32' ? 'r' : constants.O_RDONLY | constants.O_NOFOLLOW;
+    const handle = await open(file, flags);
     try {
         return await handle.readFile({ encoding: 'utf8' });
+    } finally {
+        await handle.close();
+    }
+}
+
+/**
+ * Канонический путь внутри root. Проверяет уже раскрытые ссылки, поэтому
+ * промежуточный symlink (`docs -> /etc`) не позволяет выйти за репозиторий.
+ */
+export async function resolveInsideRoot(root: string, target: string): Promise<string> {
+    const realRoot = await realpath(path.resolve(root));
+    const realTarget = await realpath(path.resolve(target));
+    if (!isInside(realRoot, realTarget)) {
+        throw new Error(`${path.basename(target)}: path escapes the repository`);
+    }
+    return realTarget;
+}
+
+/** Читает не больше maxBytes из файла, не идя по ссылкам; возвращает признак обрезки. */
+export async function readTextPrefixNoFollow(
+    file: string,
+    maxBytes = 4 * 1024 * 1024,
+): Promise<{ text: string; truncated: boolean }> {
+    const info = await lstat(file);
+    if (info.isSymbolicLink()) throw new Error(`${path.basename(file)}: symbolic link, read refused`);
+    if (!info.isFile()) throw new Error(`${path.basename(file)}: not a regular file`);
+    const limit = Math.max(1, Math.min(Math.floor(maxBytes), 16 * 1024 * 1024));
+    const flags = process.platform === 'win32' ? 'r' : constants.O_RDONLY | constants.O_NOFOLLOW;
+    const handle = await open(file, flags);
+    try {
+        const buffer = Buffer.allocUnsafe(limit + 1);
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+        return {
+            text: buffer.subarray(0, Math.min(bytesRead, limit)).toString('utf8'),
+            truncated: bytesRead > limit,
+        };
     } finally {
         await handle.close();
     }

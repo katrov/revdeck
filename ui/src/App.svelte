@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { app, applyRoute, bootstrap, flushPendingReload, loadReview, loadReviews, notify, setTab, subscribe } from './lib/state.svelte';
+    import { app, applyRoute, bootstrap, flushPendingReload, loadFeature, loadFeatures, loadProjects, loadReview, loadReviews, notify, setActiveProject, setTab, showFeaturesHome, showProjectsHome, subscribe, writeHash } from './lib/state.svelte';
     import { removeReview as removeReviewApi } from './lib/api';
     import type { ReviewListItem } from './lib/types';
     import type { Tab } from './lib/types';
@@ -14,12 +14,20 @@
     import PublishDialog from './components/PublishDialog.svelte';
     import CommandPalette from './components/CommandPalette.svelte';
     import OpenReviewDialog from './components/OpenReviewDialog.svelte';
+    import ProjectSwitcher from './components/ProjectSwitcher.svelte';
+    import ProjectsHome from './components/ProjectsHome.svelte';
+    import FeatureView from './components/FeatureView.svelte';
+    import FeatureList from './components/FeatureList.svelte';
+    import AddToFeatureDialog from './components/AddToFeatureDialog.svelte';
+    import { projectColor, projectLabel } from './lib/projects';
 
     let paletteOpen = $state(false);
     let openDialog = $state(false);
+    let addToFeatureOpen = $state(false);
     let sidebarOpen = $state(true);
     const SIDEBAR_KEY = 'revdeck.sidebar';
 
+    const currentProject = $derived(app.projects.find((project) => project.key === app.activeProject) ?? null);
     const openThreads = $derived(app.review ? app.review.threads.filter((thread) => !thread.resolved).length : 0);
     const draftFindings = $derived(
         app.review ? app.review.findings.filter((finding) => finding.status !== 'published' && finding.status !== 'stale').length : 0,
@@ -69,7 +77,9 @@
         try {
             await removeReviewApi(item.id);
             const wasCurrent = app.review?.id === item.id;
+            await loadProjects();
             await loadReviews();
+            await loadFeatures();
             if (!wasCurrent) {
                 notify(t('Ревью убрано из списка', 'Review removed from the list'), 'ok');
                 return;
@@ -82,7 +92,7 @@
                 app.focus = null;
                 app.diffFocus = null;
                 app.diffFile = null;
-                history.replaceState(null, '', `${location.pathname}${location.search}`);
+                writeHash(false);
             }
             notify(t('Ревью убрано из списка', 'Review removed from the list'), 'ok');
         } catch (error) {
@@ -117,6 +127,7 @@
         if (event.key === 'Escape') {
             paletteOpen = false;
             openDialog = false;
+            app.projectSwitcher = false;
             app.publishing = null;
             return;
         }
@@ -132,8 +143,9 @@
             openDialog = true;
         } else if (event.key === '?') {
             paletteOpen = true;
-        } else if (event.key === 'p' && publishTarget) {
-            app.publishing = publishTarget;
+        } else if (event.key === 'p') {
+            if (publishTarget) app.publishing = publishTarget;
+            else app.projectSwitcher = !app.projectSwitcher;
         }
     }
 
@@ -146,7 +158,6 @@
             sidebarOpen = !narrow;
         }
         void bootstrap();
-        void loadReviews();
         const unsubscribe = subscribe();
         window.addEventListener('keydown', onKeydown);
         window.addEventListener('popstate', applyRoute);
@@ -182,6 +193,28 @@
                 ‹
             </button>
         </div>
+        <div class="project-switch">
+            <div class="project-switch-label">{t('ПРОЕКТ', 'PROJECT')}</div>
+            <button
+                class="project-switch-button"
+                type="button"
+                aria-expanded={app.projectSwitcher}
+                onclick={() => (app.projectSwitcher = !app.projectSwitcher)}
+            >
+                <span class="project-dot" style={`--project-color:${currentProject ? projectColor(currentProject.key) : 'var(--muted)'}`}></span>
+                <span class="project-switch-text">
+                    <span class="project-switch-name">{currentProject ? projectLabel(currentProject, app.projects) : t('Выбрать проект', 'Choose project')}</span>
+                    <span class="project-switch-path">{currentProject ? `${currentProject.host}/${currentProject.project}` : t('Нет проекта', 'No project')}</span>
+                </span>
+                <span class="project-switch-chev">⌄</span>
+            </button>
+        </div>
+        {#if app.projectSwitcher}
+            <ProjectSwitcher
+                onclose={() => (app.projectSwitcher = false)}
+                onselect={(key) => void setActiveProject(key)}
+            />
+        {/if}
         <div class="sidebar-actions">
             <button class="btn" type="button" onclick={() => (openDialog = true)}>{t('+ Открыть ревью', '+ Open review')}</button>
         </div>
@@ -195,10 +228,29 @@
                     <button class="review-remove" type="button" title={t('Удалить из списка', 'Remove from list')} aria-label={t('Удалить из списка', 'Remove from list')} onclick={() => void removeReview(review)}>×</button>
                 </div>
             {:else}
-                <p class="muted small" style="padding: 8px">{t('Ревью ещё не открывались.', 'No reviews opened yet.')}</p>
+                <p class="muted small" style="padding: 8px">{app.activeProject ? t('В проекте пока нет ревью.', 'No reviews in this project yet.') : t('Выберите проект.', 'Choose a project.')}</p>
             {/each}
         </div>
+        <div class="sidebar-features">
+            <div class="sidebar-feature-head">
+                <span>{t('ФИЧИ', 'FEATURES')}</span>
+                <span>{app.features.length}</span>
+            </div>
+            {#each app.features as item (item.id)}
+                <button class="sidebar-feature-row" class:active={app.feature?.id === item.id} type="button" onclick={() => void loadFeature(item.id)}>
+                    <span class="f-icon">◇</span>
+                    <span class="sidebar-feature-title">{item.title}</span>
+                    <span class="sidebar-feature-count">{item.reviews}</span>
+                </button>
+            {:else}
+                <p class="muted small" style="padding: 2px 8px">{t('Фич пока нет.', 'No features yet.')}</p>
+            {/each}
+            <button class="sidebar-feature-all" type="button" onclick={() => void showFeaturesHome()}>{t('Все фичи', 'All features')}</button>
+        </div>
         <div class="sidebar-footer">
+            <div class="sidebar-project-summary">
+                {app.projects.length} {plural(app.projects.length, ['проект', 'проекта', 'проектов'], ['project', 'projects'])} · {app.reviews.length} {plural(app.reviews.length, ['ревью', 'ревью', 'ревью'], ['review', 'reviews'])}
+            </div>
             {#if app.review}
                 {app.review.files.length} {plural(app.review.files.length, ['файл', 'файла', 'файлов'], ['file', 'files'])} · {app.review.threads.length} {plural(app.review.threads.length, ['тред', 'треда', 'тредов'], ['thread', 'threads'])}
             {:else}
@@ -212,9 +264,21 @@
     </aside>
 
     <main class="main" aria-busy={app.loading}>
+        {#if !app.review && !sidebarOpen}
+            <button class="btn mobile-sidebar-toggle" type="button" onclick={toggleSidebar} title={t('Открыть меню', 'Open menu')} aria-label={t('Открыть меню', 'Open menu')}>
+                ☰ {t('Меню', 'Menu')}
+            </button>
+        {/if}
         {#if app.review}
             {@const review = app.review}
             <header class="header">
+                <div class="breadcrumbs">
+                    <button class="breadcrumb-link" type="button" onclick={() => showProjectsHome()}>{t('Проекты', 'Projects')}</button>
+                    <span class="sep">/</span>
+                    <span>{currentProject ? projectLabel(currentProject, app.projects) : review.info.ref.project}</span>
+                    <span class="sep">/</span>
+                    <span class="cur">#{review.info.ref.number}</span>
+                </div>
                 <div class="title-row">
                     <div style="min-width: 0; flex: 1">
                         <h1>{review.info.title}</h1>
@@ -225,6 +289,12 @@
                             <span>{review.info.state}{review.info.draft ? ' · draft' : ''}</span>
                             <span>+{review.stats.additions} −{review.stats.deletions}</span>
                             {#if review.stale}<span class="badge">{t('устарело', 'stale')}</span>{/if}
+                        </div>
+                        <div class="review-feature-badges">
+                            {#each app.reviewFeatures as item (item.id)}
+                                <button class="feature-badge" type="button" onclick={() => void loadFeature(item.id)}>◇ {item.title}</button>
+                            {/each}
+                            <button class="feature-add" type="button" onclick={() => (addToFeatureOpen = true)}>+ {t('В фичу', 'To feature')}</button>
                         </div>
                     </div>
                     <div class="header-actions">
@@ -287,16 +357,25 @@
                     <Rules />
                 {/if}
             </section>
+        {:else if app.feature}
+            {#key app.feature.id}
+                <FeatureView />
+            {/key}
+        {:else if app.featuresHome}
+            <FeatureList />
+        {:else if app.projectsHome || !app.projects.length}
+            <ProjectsHome onselect={(key) => void setActiveProject(key)} onopen={() => (openDialog = true)} />
         {:else}
             <div class="empty">
                 <div class="row" style="justify-content: center; margin-bottom: 12px">
-                    {#if !sidebarOpen}
-                        <button class="btn" type="button" onclick={toggleSidebar} title={t('Показать сайдбар (s)', 'Show sidebar (s)')}>☰ {t('Показать сайдбар', 'Show sidebar')}</button>
-                    {/if}
                     <button class="btn primary" type="button" onclick={() => (openDialog = true)}>{t('Открыть ревью', 'Open review')}</button>
                 </div>
-                <h2>revdeck</h2>
-                <p>{t('Откройте ревью из терминала — оно появится здесь и останется в списке.', 'Open a review from the terminal; it will appear here and stay in the list.')}</p>
+                <h2>{currentProject ? projectLabel(currentProject, app.projects) : 'revdeck'}</h2>
+                <p>
+                    {currentProject
+                        ? t('В этом проекте пока нет ревью. Откройте MR/PR — он появится здесь.', 'No reviews in this project yet. Open an MR/PR and it will appear here.')
+                        : t('Выберите проект или откройте ревью.', 'Choose a project or open a review.')}
+                </p>
                 <pre>revdeck open 42
 revdeck open https://gitlab.com/group/project/-/merge_requests/42</pre>
                 {#if app.error}<div class="alert error">{app.error}</div>{/if}
@@ -304,6 +383,10 @@ revdeck open https://gitlab.com/group/project/-/merge_requests/42</pre>
         {/if}
     </main>
 </div>
+
+{#if addToFeatureOpen && app.review}
+    <AddToFeatureDialog review={app.review.id} onclose={() => (addToFeatureOpen = false)} />
+{/if}
 
 {#if app.publishing}
     <PublishDialog kind={app.publishing.kind} ids={app.publishing.ids} onclose={() => (app.publishing = null)} />

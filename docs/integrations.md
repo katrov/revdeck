@@ -75,6 +75,8 @@ For Claude Code, add the tools to `.claude/settings.local.json` (personal) or `.
       "mcp__revdeck__revdeck_diff",
       "mcp__revdeck__revdeck_rules",
       "mcp__revdeck__revdeck_notes",
+      "mcp__revdeck__revdeck_feature",
+      "mcp__revdeck__revdeck_feature_note",
       "mcp__revdeck__revdeck_set_summary",
       "mcp__revdeck__revdeck_draft_findings",
       "mcp__revdeck__revdeck_draft_reply",
@@ -172,6 +174,39 @@ Fallbacks:
 1. `REVDECK_URL=http://host.docker.internal:<port>` and `REVDECK_TOKEN=<token>` — the HTTP transport,
    with the daemon started on the host with `--host 0.0.0.0`.
 2. `revdeck export <N>` on the host and `revdeck import <N>` in the container — a file bridge.
+
+## Several projects and devcontainers
+
+Each repository is its own project. A `.mcp.json` (or `.cursor/mcp.json`) inside the repository pins
+the MCP server to that repository; the server resolves the project from its root and lists only that
+project's reviews. With one devcontainer per repository, each container mounts the same host daemon
+bridge and stays scoped to its own working copy.
+
+For a multi-root workspace with several repositories, add one MCP server entry per project with an
+explicit `REVDECK_ROOT` and a unique server name. The server does not accept a `root` or project
+override from the agent, so one session cannot open another project's review. `revdeck projects`
+lists the registry; `revdeck projects add <path>` registers a repository before its first review.
+
+Cross-project work goes through an explicit feature (above); outside a feature a foreign review is
+rejected with a hint to open a separate session. See [capabilities](capabilities.md#features).
+
+## Feature sessions
+
+A project session is scoped to one repository. To let one agent review a feature that spans several
+projects, start the MCP server from a repository that is a feature member with:
+
+```bash
+REVDECK_FEATURE=ft-a1b2c3 revdeck mcp
+```
+
+In an MCP config this is the `REVDECK_FEATURE` value in the `revdeck` server's `env`. The server
+validates that the current project is a member and expands the scope only to the feature's reviews. Drafts may be written to any member; publishing still needs a separate human approval for
+each review. Feature membership is created by the human in the UI or CLI, never by the agent.
+
+In a devcontainer the same rule applies: the container's repository must be a feature member, and the
+server talks to the host daemon over the same bridge. The combined context is review data plus the
+declared `context.sources` profile files from member checkouts; symlinked paths outside a member root
+are rejected. Arbitrary source trees of other repositories are not read.
 
 ## Verification
 

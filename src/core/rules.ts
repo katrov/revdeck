@@ -2,9 +2,8 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 import type { EffectiveRules, RuleDocument, RuleScope } from './types.js';
 import type { ReviewConfig } from './config.js';
-import { assertConfigPath, checksForPaths } from './config.js';
+import { assertConfigPath, checksForPaths, readConfigFile } from './config.js';
 import { classifyFile, globToRegExp } from './glob.js';
-import { readTextNoFollow } from './paths.js';
 import { redactLine } from './redact.js';
 import type { Locale } from './locale.js';
 
@@ -65,7 +64,7 @@ export async function buildEffectiveRules(options: BuildRulesOptions): Promise<E
             } else {
                 try {
                     const readLimit = Number.isFinite(documentLimit) ? Math.max(documentLimit * 2, 4096) : MAX_READ_BYTES;
-                    const raw = await readTextNoFollow(resolved, readLimit);
+                    const raw = await readConfigFile(root, relative, readLimit);
                     const truncated = Number.isFinite(documentLimit) && raw.length > documentLimit;
                     cached = { exists: true, text: truncated ? raw.slice(0, documentLimit) : raw, truncated };
                 } catch (error) {

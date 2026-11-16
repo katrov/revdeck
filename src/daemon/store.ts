@@ -14,13 +14,17 @@ import type {
     Thread,
     User,
 } from '../core/types.js';
+import { randomBytes } from 'node:crypto';
 import { reviewId as makeReviewId } from '../core/refs.js';
+import { projectKey, projectTitle, type ProjectRef } from '../core/projects.js';
+import { tr } from '../core/locale.js';
 
 export interface ReviewRow {
     id: string;
     platform: string;
     host: string;
     project: string;
+    project_key: string;
     number: number;
     title: string;
     author: string;
@@ -63,6 +67,7 @@ export interface ReviewListItem {
     platform: string;
     host: string;
     project: string;
+    projectKey: string;
     number: number;
     title: string;
     author: string;
@@ -71,6 +76,55 @@ export interface ReviewListItem {
     updatedAt: string;
     syncedAt: string;
     root: string;
+}
+
+export interface ProjectSummary {
+    key: string;
+    platform: string;
+    host: string;
+    project: string;
+    title: string;
+    roots: string[];
+    reviews: number;
+    createdAt: string;
+    updatedAt: string;
+    lastActivity: string;
+}
+
+export interface FeatureSummary {
+    id: string;
+    title: string;
+    brief: string;
+    contract: string;
+    status: 'open' | 'archived';
+    createdAt: string;
+    updatedAt: string;
+    reviews: number;
+    projects: { key: string; platform: string; host: string; project: string; title: string }[];
+}
+
+export interface FeatureMember {
+    review: ReviewListItem;
+    role: string;
+    sortOrder: number;
+    addedAt: string;
+}
+
+export interface FeatureNote {
+    id: string;
+    featureId: string;
+    kind: 'note' | 'finding';
+    level: string;
+    title: string;
+    body: string;
+    author: 'human' | 'agent';
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface FeatureDetail extends FeatureSummary {
+    members: FeatureMember[];
+    notes: FeatureNote[];
 }
 
 export interface ApprovalRecord {
@@ -101,6 +155,24 @@ function json<T>(row: Row, key: string, fallback: T): T {
     }
 }
 
+function reviewItem(row: Row): ReviewListItem {
+    return {
+        id: text(row, 'id'),
+        platform: text(row, 'platform'),
+        host: text(row, 'host'),
+        project: text(row, 'project'),
+        projectKey: text(row, 'project_key'),
+        number: Number(row.number),
+        title: text(row, 'title'),
+        author: text(row, 'author'),
+        state: text(row, 'state'),
+        webUrl: text(row, 'web_url'),
+        updatedAt: text(row, 'updated_at'),
+        syncedAt: text(row, 'synced_at'),
+        root: text(row, 'root'),
+    };
+}
+
 export class Store {
     readonly db: DatabaseSync;
 
@@ -124,6 +196,7 @@ export class Store {
                 platform TEXT NOT NULL,
                 host TEXT NOT NULL,
                 project TEXT NOT NULL,
+                project_key TEXT NOT NULL DEFAULT '',
                 number INTEGER NOT NULL,
                 title TEXT NOT NULL,
                 author TEXT NOT NULL,
@@ -233,6 +306,51 @@ export class Store {
                 detail TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS audit_review ON audit(review_id, at);
+            CREATE TABLE IF NOT EXISTS projects (
+                key TEXT PRIMARY KEY,
+                platform TEXT NOT NULL,
+                host TEXT NOT NULL,
+                project TEXT NOT NULL,
+                title TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS project_roots (
+                project_key TEXT NOT NULL REFERENCES projects(key) ON DELETE CASCADE,
+                root TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                PRIMARY KEY (project_key, root)
+            );
+            CREATE TABLE IF NOT EXISTS features (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                brief TEXT NOT NULL DEFAULT '',
+                contract TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'open',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS feature_reviews (
+                feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE,
+                review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+                role TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                added_at TEXT NOT NULL,
+                PRIMARY KEY (feature_id, review_id)
+            );
+            CREATE INDEX IF NOT EXISTS feature_reviews_review ON feature_reviews(review_id);
+            CREATE TABLE IF NOT EXISTS feature_notes (
+                id TEXT PRIMARY KEY,
+                feature_id TEXT NOT NULL REFERENCES features(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL DEFAULT 'note',
+                level TEXT NOT NULL DEFAULT '',
+                title TEXT NOT NULL,
+                body TEXT NOT NULL,
+                author TEXT NOT NULL DEFAULT 'human',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS feature_notes_feature ON feature_notes(feature_id, created_at);
             CREATE TABLE IF NOT EXISTS review_versions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
@@ -256,24 +374,89 @@ export class Store {
         if (!dataColumns.some((column) => text(column, 'name') === 'user_json')) {
             this.db.exec("ALTER TABLE review_data ADD COLUMN user_json TEXT NOT NULL DEFAULT 'null'");
         }
+        const reviewColumns = this.db.prepare('PRAGMA table_info(reviews)').all() as Row[];
+        if (!reviewColumns.some((column) => text(column, 'name') === 'project_key')) {
+            this.db.exec("ALTER TABLE reviews ADD COLUMN project_key TEXT NOT NULL DEFAULT ''");
+        }
+        const featureColumns = this.db.prepare('PRAGMA table_info(features)').all() as Row[];
+        if (!featureColumns.some((column) => text(column, 'name') === 'contract')) {
+            this.db.exec("ALTER TABLE features ADD COLUMN contract TEXT NOT NULL DEFAULT ''");
+        }
+        this.db.exec('CREATE INDEX IF NOT EXISTS reviews_project ON reviews(project_key, updated_at DESC, number DESC)');
+        // Заполняем project_key и реестр проектов для баз, созданных до разделения.
+        this.transaction(() => {
+            const missing = this.db
+                .prepare("SELECT id, platform, host, project FROM reviews WHERE project_key = ''")
+                .all() as Row[];
+            const updateKey = this.db.prepare('UPDATE reviews SET project_key = ? WHERE id = ?');
+            for (const row of missing) {
+                updateKey.run(
+                    projectKey({
+                        platform: text(row, 'platform') as ProjectRef['platform'],
+                        host: text(row, 'host'),
+                        project: text(row, 'project'),
+                    }),
+                    text(row, 'id'),
+                );
+            }
+            const groups = this.db
+                .prepare(
+                    `SELECT project_key, platform, host, project,
+                            MIN(synced_at) AS first_seen, MAX(synced_at) AS last_seen, MAX(updated_at) AS last_updated
+                     FROM reviews GROUP BY project_key`,
+                )
+                .all() as Row[];
+            const insertProject = this.db.prepare(
+                `INSERT INTO projects (key, platform, host, project, title, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(key) DO UPDATE SET updated_at = excluded.updated_at`,
+            );
+            for (const row of groups) {
+                const project = text(row, 'project');
+                insertProject.run(
+                    text(row, 'project_key'),
+                    text(row, 'platform'),
+                    text(row, 'host'),
+                    project,
+                    projectTitle(project),
+                    text(row, 'first_seen') || text(row, 'last_updated'),
+                    text(row, 'last_updated') || text(row, 'last_seen'),
+                );
+            }
+            const roots = this.db
+                .prepare(
+                    `SELECT project_key, root, MAX(synced_at) AS last_seen
+                     FROM reviews GROUP BY project_key, root`,
+                )
+                .all() as Row[];
+            const insertRoot = this.db.prepare(
+                `INSERT INTO project_roots (project_key, root, last_seen_at)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT(project_key, root) DO UPDATE SET last_seen_at = excluded.last_seen_at`,
+            );
+            for (const row of roots) insertRoot.run(text(row, 'project_key'), text(row, 'root'), text(row, 'last_seen'));
+        });
     }
 
     saveReview(info: ReviewInfo, root: string, syncedAt = new Date().toISOString()): string {
         const id = makeReviewId(info.ref);
+        this.registerProject(info.ref, root, syncedAt);
         this.db
             .prepare(
-                `INSERT INTO reviews (id, platform, host, project, number, title, author, state, web_url, updated_at, synced_at, root, info_json)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `INSERT INTO reviews (id, platform, host, project, project_key, number, title, author, state, web_url, updated_at, synced_at, root, info_json)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(id) DO UPDATE SET
                    title = excluded.title, author = excluded.author, state = excluded.state,
                    web_url = excluded.web_url, updated_at = excluded.updated_at,
-                   synced_at = excluded.synced_at, root = excluded.root, info_json = excluded.info_json`,
+                   synced_at = excluded.synced_at, root = excluded.root, project_key = excluded.project_key,
+                   info_json = excluded.info_json`,
             )
             .run(
                 id,
                 info.ref.platform,
                 info.ref.host,
                 info.ref.project,
+                projectKey(info.ref),
                 info.ref.number,
                 info.title,
                 info.author,
@@ -285,6 +468,295 @@ export class Store {
                 JSON.stringify(info),
             );
         return id;
+    }
+
+    /** Регистрирует проект и его рабочую копию; вызывается при открытии ревью. */
+    registerProject(ref: ProjectRef, root: string, seenAt = new Date().toISOString()): string {
+        const key = projectKey(ref);
+        this.db
+            .prepare(
+                `INSERT INTO projects (key, platform, host, project, title, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(key) DO UPDATE SET updated_at = excluded.updated_at`,
+            )
+            .run(key, ref.platform, ref.host, ref.project, projectTitle(ref.project), seenAt, seenAt);
+        this.db
+            .prepare(
+                `INSERT INTO project_roots (project_key, root, last_seen_at)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT(project_key, root) DO UPDATE SET last_seen_at = excluded.last_seen_at`,
+            )
+            .run(key, root, seenAt);
+        return key;
+    }
+
+    listProjects(): ProjectSummary[] {
+        const rows = this.db
+            .prepare(
+                `SELECT p.*,
+                        (SELECT COUNT(*) FROM reviews r WHERE r.project_key = p.key) AS reviews,
+                        (SELECT MAX(r.synced_at) FROM reviews r WHERE r.project_key = p.key) AS last_activity
+                 FROM projects p
+                 ORDER BY COALESCE(last_activity, p.updated_at) DESC, p.key ASC`,
+            )
+            .all() as Row[];
+        const roots = this.db.prepare('SELECT project_key, root FROM project_roots ORDER BY last_seen_at DESC, root ASC').all() as Row[];
+        const rootsByProject = new Map<string, string[]>();
+        for (const row of roots) {
+            const key = text(row, 'project_key');
+            const list = rootsByProject.get(key) ?? [];
+            list.push(text(row, 'root'));
+            rootsByProject.set(key, list);
+        }
+        return rows.map((row) => {
+            const key = text(row, 'key');
+            return {
+                key,
+                platform: text(row, 'platform'),
+                host: text(row, 'host'),
+                project: text(row, 'project'),
+                title: text(row, 'title') || projectTitle(text(row, 'project')),
+                roots: rootsByProject.get(key) ?? [],
+                reviews: Number(row.reviews ?? 0),
+                createdAt: text(row, 'created_at'),
+                updatedAt: text(row, 'updated_at'),
+                lastActivity: text(row, 'last_activity') || text(row, 'updated_at'),
+            };
+        });
+    }
+
+    getProject(key: string): ProjectSummary | null {
+        return this.listProjects().find((project) => project.key === key) ?? null;
+    }
+
+    // ---------------------------------------------------------------- features
+
+    private featureMembers(id: string): FeatureMember[] {
+        const rows = this.db
+            .prepare(
+                `SELECT fr.role, fr.sort_order, fr.added_at, r.*
+                 FROM feature_reviews fr
+                 JOIN reviews r ON r.id = fr.review_id
+                 WHERE fr.feature_id = ?
+                 ORDER BY fr.sort_order ASC, fr.added_at ASC, r.number ASC`,
+            )
+            .all(id) as Row[];
+        return rows.map((row) => ({
+            review: reviewItem(row),
+            role: text(row, 'role'),
+            sortOrder: Number(row.sort_order),
+            addedAt: text(row, 'added_at'),
+        }));
+    }
+
+    private featureSummary(row: Row, members: FeatureMember[]): FeatureSummary {
+        const projects = new Map<string, FeatureSummary['projects'][number]>();
+        for (const member of members) {
+            const project = member.review;
+            if (!projects.has(project.projectKey)) {
+                projects.set(project.projectKey, {
+                    key: project.projectKey,
+                    platform: project.platform,
+                    host: project.host,
+                    project: project.project,
+                    title: projectTitle(project.project),
+                });
+            }
+        }
+        return {
+            id: text(row, 'id'),
+            title: text(row, 'title'),
+            brief: text(row, 'brief'),
+            contract: text(row, 'contract'),
+            status: text(row, 'status') === 'archived' ? 'archived' : 'open',
+            createdAt: text(row, 'created_at'),
+            updatedAt: text(row, 'updated_at'),
+            reviews: members.length,
+            projects: [...projects.values()],
+        };
+    }
+
+    listFeatures(project?: string, includeArchived = false): FeatureSummary[] {
+        const clauses = [includeArchived ? '1 = 1' : "f.status = 'open'"];
+        const args: string[] = [];
+        if (project) {
+            clauses.push('EXISTS (SELECT 1 FROM feature_reviews fr JOIN reviews r ON r.id = fr.review_id WHERE fr.feature_id = f.id AND r.project_key = ?)');
+            args.push(project);
+        }
+        const rows = this.db
+            .prepare(`SELECT f.* FROM features f WHERE ${clauses.join(' AND ')} ORDER BY f.updated_at DESC, f.title ASC`)
+            .all(...args) as Row[];
+        return rows.map((row) => this.featureSummary(row, this.featureMembers(text(row, 'id'))));
+    }
+
+    featureNotes(featureId: string): FeatureNote[] {
+        const rows = this.db
+            .prepare('SELECT * FROM feature_notes WHERE feature_id = ? ORDER BY created_at ASC, rowid ASC')
+            .all(featureId) as Row[];
+        return rows.map((row) => ({
+            id: text(row, 'id'),
+            featureId: text(row, 'feature_id'),
+            kind: text(row, 'kind') === 'finding' ? 'finding' : 'note',
+            level: text(row, 'level'),
+            title: text(row, 'title'),
+            body: text(row, 'body'),
+            author: text(row, 'author') === 'agent' ? 'agent' : 'human',
+            createdAt: text(row, 'created_at'),
+            updatedAt: text(row, 'updated_at'),
+        }));
+    }
+
+    getFeature(id: string): FeatureDetail | null {
+        const row = this.db.prepare('SELECT * FROM features WHERE id = ?').get(id) as Row | undefined;
+        if (!row) return null;
+        const members = this.featureMembers(id);
+        return { ...this.featureSummary(row, members), members, notes: this.featureNotes(id) };
+    }
+
+    addFeatureNote(
+        featureId: string,
+        input: { kind?: 'note' | 'finding'; level?: string; title: string; body: string; author?: 'human' | 'agent' },
+        now = new Date().toISOString(),
+    ): string {
+        if (!this.getFeature(featureId)) throw new Error(tr(`фича ${featureId} не найдена`, `feature ${featureId} not found`));
+        const title = input.title.trim();
+        if (!title) throw new Error(tr('заголовок заметки не может быть пустым', 'note title cannot be empty'));
+        let id = `fn-${randomBytes(4).toString('hex')}`;
+        while (this.db.prepare('SELECT 1 FROM feature_notes WHERE id = ?').get(id)) id = `fn-${randomBytes(4).toString('hex')}`;
+        this.db
+            .prepare(
+                `INSERT INTO feature_notes (id, feature_id, kind, level, title, body, author, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(id, featureId, input.kind === 'finding' ? 'finding' : 'note', input.level ?? '', title, input.body, input.author ?? 'human', now, now);
+        this.touchFeature(featureId, now);
+        return id;
+    }
+
+    updateFeatureNote(
+        featureId: string,
+        noteId: string,
+        patch: { kind?: 'note' | 'finding'; level?: string; title?: string; body?: string },
+        now = new Date().toISOString(),
+    ): void {
+        const row = this.db.prepare('SELECT * FROM feature_notes WHERE id = ? AND feature_id = ?').get(noteId, featureId) as Row | undefined;
+        if (!row) throw new Error(tr(`заметка ${noteId} не найдена`, `note ${noteId} not found`));
+        const title = patch.title !== undefined ? patch.title.trim() : text(row, 'title');
+        if (!title) throw new Error(tr('заголовок заметки не может быть пустым', 'note title cannot be empty'));
+        this.db
+            .prepare('UPDATE feature_notes SET kind = ?, level = ?, title = ?, body = ?, updated_at = ? WHERE id = ? AND feature_id = ?')
+            .run(
+                patch.kind ?? (text(row, 'kind') as 'note' | 'finding'),
+                patch.level ?? text(row, 'level'),
+                title,
+                patch.body ?? text(row, 'body'),
+                now,
+                noteId,
+                featureId,
+            );
+        this.touchFeature(featureId, now);
+    }
+
+    deleteFeatureNote(featureId: string, noteId: string, now = new Date().toISOString()): void {
+        this.db.prepare('DELETE FROM feature_notes WHERE id = ? AND feature_id = ?').run(noteId, featureId);
+        this.touchFeature(featureId, now);
+    }
+
+    featuresForReview(reviewId: string): FeatureSummary[] {
+        const rows = this.db
+            .prepare(
+                `SELECT f.* FROM features f
+                 JOIN feature_reviews fr ON fr.feature_id = f.id
+                 WHERE fr.review_id = ?
+                 ORDER BY f.updated_at DESC, f.title ASC`,
+            )
+            .all(reviewId) as Row[];
+        return rows.map((row) => this.featureSummary(row, this.featureMembers(text(row, 'id'))));
+    }
+
+    private touchFeature(id: string, now: string): void {
+        this.db.prepare('UPDATE features SET updated_at = ? WHERE id = ?').run(now, id);
+    }
+
+    createFeature(input: { title: string; brief?: string; contract?: string; reviews?: { review: string; role?: string }[] }, now = new Date().toISOString()): string {
+        const title = input.title.trim();
+        if (!title) throw new Error(tr('название фичи не может быть пустым', 'feature title cannot be empty'));
+        const reviews = input.reviews ?? [];
+        let id = `ft-${randomBytes(4).toString('hex')}`;
+        while (this.db.prepare('SELECT 1 FROM features WHERE id = ?').get(id)) id = `ft-${randomBytes(4).toString('hex')}`;
+        this.transaction(() => {
+            this.db
+                .prepare('INSERT INTO features (id, title, brief, contract, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                .run(id, title, input.brief ?? '', input.contract ?? '', 'open', now, now);
+            this.insertFeatureReviews(id, reviews, now);
+            this.touchFeature(id, now);
+        });
+        return id;
+    }
+
+    private insertFeatureReviews(featureId: string, reviews: { review: string; role?: string }[], now: string): void {
+        let order = this.db.prepare('SELECT COALESCE(MAX(sort_order), -1) AS max_order FROM feature_reviews WHERE feature_id = ?').get(featureId) as Row;
+        let next = Number(order.max_order ?? -1) + 1;
+        const existingRole = this.db.prepare('SELECT role FROM feature_reviews WHERE feature_id = ? AND review_id = ?');
+        const insert = this.db.prepare(
+            `INSERT INTO feature_reviews (feature_id, review_id, role, sort_order, added_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(feature_id, review_id) DO UPDATE SET role = excluded.role`,
+        );
+        for (const item of reviews) {
+            if (!this.getReview(item.review)) throw new Error(tr(`ревью ${item.review} не найдено`, `review ${item.review} not found`));
+            const previous = existingRole.get(featureId, item.review) as Row | undefined;
+            const role = item.role !== undefined ? item.role : previous ? text(previous, 'role') : '';
+            insert.run(featureId, item.review, role, next++, now);
+        }
+    }
+
+    addFeatureReviews(featureId: string, reviews: { review: string; role?: string }[], now = new Date().toISOString()): void {
+        if (!this.getFeature(featureId)) throw new Error(tr(`фича ${featureId} не найдена`, `feature ${featureId} not found`));
+        this.transaction(() => {
+            this.insertFeatureReviews(featureId, reviews, now);
+            this.touchFeature(featureId, now);
+        });
+    }
+
+    removeFeatureReview(featureId: string, reviewId: string, now = new Date().toISOString()): void {
+        if (!this.getFeature(featureId)) throw new Error(tr(`фича ${featureId} не найдена`, `feature ${featureId} not found`));
+        this.db.prepare('DELETE FROM feature_reviews WHERE feature_id = ? AND review_id = ?').run(featureId, reviewId);
+        this.touchFeature(featureId, now);
+    }
+
+    reorderFeature(featureId: string, reviewIds: string[], now = new Date().toISOString()): void {
+        const feature = this.getFeature(featureId);
+        if (!feature) throw new Error(tr(`фича ${featureId} не найдена`, `feature ${featureId} not found`));
+        const current = new Set(feature.members.map((member) => member.review.id));
+        if (reviewIds.length !== current.size || new Set(reviewIds).size !== current.size || reviewIds.some((id) => !current.has(id))) {
+            throw new Error(tr('порядок должен содержать все ревью фичи', 'the order must contain every review of the feature'));
+        }
+        this.transaction(() => {
+            const update = this.db.prepare('UPDATE feature_reviews SET sort_order = ? WHERE feature_id = ? AND review_id = ?');
+            reviewIds.forEach((reviewId, index) => update.run(index, featureId, reviewId));
+            this.touchFeature(featureId, now);
+        });
+    }
+
+    updateFeature(
+        featureId: string,
+        patch: { title?: string; brief?: string; contract?: string; status?: 'open' | 'archived' },
+        now = new Date().toISOString(),
+    ): void {
+        if (!this.getFeature(featureId)) throw new Error(tr(`фича ${featureId} не найдена`, `feature ${featureId} not found`));
+        const current = this.db.prepare('SELECT * FROM features WHERE id = ?').get(featureId) as Row;
+        const title = patch.title !== undefined ? patch.title.trim() : text(current, 'title');
+        if (!title) throw new Error(tr('название фичи не может быть пустым', 'feature title cannot be empty'));
+        const status = patch.status ?? (text(current, 'status') as 'open' | 'archived');
+        if (status !== 'open' && status !== 'archived') throw new Error(tr('некорректный статус фичи', 'invalid feature status'));
+        this.db
+            .prepare('UPDATE features SET title = ?, brief = ?, contract = ?, status = ?, updated_at = ? WHERE id = ?')
+            .run(title, patch.brief ?? text(current, 'brief'), patch.contract ?? text(current, 'contract'), status, now, featureId);
+    }
+
+    deleteFeature(featureId: string): void {
+        this.db.prepare('DELETE FROM features WHERE id = ?').run(featureId);
     }
 
     saveSnapshot(id: string, snapshot: ReviewSnapshot): void {
@@ -311,22 +783,11 @@ export class Store {
         this.db.prepare('UPDATE reviews SET synced_at = ? WHERE id = ?').run(snapshot.syncedAt, id);
     }
 
-    listReviews(): ReviewListItem[] {
-        const rows = this.db.prepare('SELECT * FROM reviews ORDER BY updated_at DESC, number DESC').all() as Row[];
-        return rows.map((row) => ({
-            id: text(row, 'id'),
-            platform: text(row, 'platform'),
-            host: text(row, 'host'),
-            project: text(row, 'project'),
-            number: Number(row.number),
-            title: text(row, 'title'),
-            author: text(row, 'author'),
-            state: text(row, 'state'),
-            webUrl: text(row, 'web_url'),
-            updatedAt: text(row, 'updated_at'),
-            syncedAt: text(row, 'synced_at'),
-            root: text(row, 'root'),
-        }));
+    listReviews(project?: string): ReviewListItem[] {
+        const rows = project
+            ? (this.db.prepare('SELECT * FROM reviews WHERE project_key = ? ORDER BY updated_at DESC, number DESC').all(project) as Row[])
+            : (this.db.prepare('SELECT * FROM reviews ORDER BY updated_at DESC, number DESC').all() as Row[]);
+        return rows.map(reviewItem);
     }
 
     getReview(id: string): { row: ReviewRow; snapshot: ReviewSnapshot } | null {
@@ -340,6 +801,7 @@ export class Store {
                 platform: text(row, 'platform'),
                 host: text(row, 'host'),
                 project: text(row, 'project'),
+                project_key: text(row, 'project_key'),
                 number: Number(row.number),
                 title: text(row, 'title'),
                 author: text(row, 'author'),

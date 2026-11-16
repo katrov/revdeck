@@ -179,15 +179,20 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                     connection: 'keep-alive',
                 });
                 res.write(`event: hello\ndata: ${JSON.stringify({ at: new Date().toISOString() })}\n\n`);
-                const listener = (event: { reviewId: string; at: string }) => {
+                const reviewListener = (event: { reviewId: string; at: string }) => {
                     res.write(`event: review\ndata: ${JSON.stringify(event)}\n\n`);
                 };
-                service.events.on('review', listener);
+                const featureListener = (event: { featureId: string; at: string }) => {
+                    res.write(`event: feature\ndata: ${JSON.stringify(event)}\n\n`);
+                };
+                service.events.on('review', reviewListener);
+                service.events.on('feature', featureListener);
                 const heartbeat = setInterval(() => res.write(': ping\n\n'), 25_000);
                 heartbeat.unref?.();
                 req.on('close', () => {
                     clearInterval(heartbeat);
-                    service.events.off('review', listener);
+                    service.events.off('review', reviewListener);
+                    service.events.off('feature', featureListener);
                 });
                 return;
             }
@@ -200,8 +205,13 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                 reply(res, 200, { ok: true, version: options.version ?? 'dev', reviews: service.listReviews().length });
                 return;
             }
+            if (req.method === 'GET' && url.pathname === '/api/projects') {
+                reply(res, 200, { ok: true, projects: service.listProjects() });
+                return;
+            }
             if (req.method === 'GET' && url.pathname === '/api/reviews') {
-                reply(res, 200, { ok: true, reviews: service.listReviews() });
+                const project = url.searchParams.get('project');
+                reply(res, 200, { ok: true, reviews: project ? service.listReviews(project) : service.listReviews() });
                 return;
             }
             if (req.method === 'GET' && url.pathname === '/api/state') {
@@ -267,6 +277,13 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                 const body = await readBody(req);
                 const review = String(body.review ?? '');
                 switch (url.pathname) {
+                    case '/api/projects/register': {
+                        const root = String(body.root ?? '');
+                        if (!root) throw Object.assign(new Error('нужен root рабочей копии'), { status: 400 });
+                        const project = await service.registerProject(root);
+                        reply(res, 200, { ok: true, project, projects: service.listProjects() });
+                        return;
+                    }
                     case '/api/reviews/open': {
                         const root = String(body.root ?? '');
                         if (!root) throw Object.assign(new Error('нужен root рабочей копии'), { status: 400 });

@@ -147,11 +147,61 @@ export interface ReviewView {
     stale: boolean;
 }
 
+export interface ProjectSummary {
+    key: string;
+    platform: Platform;
+    host: string;
+    project: string;
+    title: string;
+    roots: string[];
+    reviews: number;
+    createdAt: string;
+    updatedAt: string;
+    lastActivity: string;
+}
+
+export interface FeatureSummary {
+    id: string;
+    title: string;
+    brief: string;
+    contract: string;
+    status: 'open' | 'archived';
+    createdAt: string;
+    updatedAt: string;
+    reviews: number;
+    projects: { key: string; platform: Platform; host: string; project: string; title: string }[];
+}
+
+export interface FeatureMember {
+    review: ReviewListItem;
+    role: string;
+    sortOrder: number;
+    addedAt: string;
+}
+
+export interface FeatureNote {
+    id: string;
+    featureId: string;
+    kind: 'note' | 'finding';
+    level: string;
+    title: string;
+    body: string;
+    author: 'human' | 'agent';
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface FeatureDetail extends FeatureSummary {
+    members: FeatureMember[];
+    notes: FeatureNote[];
+}
+
 export interface ReviewListItem {
     id: string;
     platform: Platform;
     host: string;
     project: string;
+    projectKey: string;
     number: number;
     title: string;
     author: string;

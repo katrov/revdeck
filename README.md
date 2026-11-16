@@ -25,7 +25,11 @@ and a web UI. Platform tokens stay on the host.
 - **Tokens never reach the agent.** The daemon calls `glab`/`gh` on the host and scrubs platform tokens
   from child environments. A sandboxed agent only gets an RPC.
 - **GitLab and GitHub.** One model: MR/PR, threads, diff, resolve, reactions, line comments, attachments.
-- **Many reviews.** The daemon keeps them in SQLite; the UI is a triage queue with keyboard shortcuts.
+- **Many projects, separated contexts.** A project is a repository. The UI switches between projects and
+  shows only the current one's reviews; an MCP server is scoped to its repository.
+- **Explicit cross-project features.** A human bundles MRs from several projects into a feature with a
+  brief and contract. A project session reads the combined context; a feature session can draft across its
+  members. Publishing stays per review and per human approval.
 - **Any harness.** MCP tools for MCP clients, the same capabilities over CLI, and a skill that carries
   the review procedure.
 
@@ -104,7 +108,9 @@ Russian READMEs live in this repository; translation fixes are welcome.
 | `revdeck eject [--yes]` | remove revdeck-owned config, adapters and MCP entry |
 | `revdeck devcontainer [--write]` | mount the host daemon socket/state into a devcontainer |
 | `revdeck doctor` | environment, `glab`/`gh` auth, daemon, adapters |
-| `revdeck list [--remote]` | tracked reviews or open ones from the platform |
+| `revdeck projects [add <path>]` | projects, their roots and review counts; register a repository |
+| `revdeck list [--all] [--remote]` | reviews of the current project, or all projects with `--all` |
+| `revdeck feature …` | list/create/add/remove/context/update/archive/delete features |
 | `revdeck open <N\|URL>` | load a review |
 | `revdeck context <N>` | agent context: rules, files, threads, findings |
 | `revdeck diff <N> [--file]` | files and hunks |
@@ -122,10 +128,52 @@ Russian READMEs live in this repository; translation fixes are welcome.
 | `revdeck daemon <start\|stop\|restart\|status\|logs\|install\|uninstall>` | daemon lifecycle |
 | `revdeck mcp` | MCP server over stdio |
 
-Common flags: `--json`, `--root`, `--review`, `--platform`, `--project`, `--host`, `--lang ru|en`.
+Common flags: `--json`, `--root`, `--review`, `--platform`, `--project`, `--host`, `--all`, `--lang ru|en`.
+
+## Projects
+
+A project is a repository. revdeck keeps a project registry (`projects`, `project_roots`) and a
+`projectKey` on every review, so the UI can switch between projects and show only the current one's
+reviews. The daemon still runs as one process with one SQLite database; project separation is about
+context, not tenants.
+
+Each repository's MCP server resolves its project from the working copy and lists only that project.
+An id or URL from another project is rejected with a hint to open a separate session. Devcontainers and
+separate agent sessions work naturally: each container mounts the same host daemon bridge and stays
+scoped to its repository.
+
+An agent never sees another project implicitly. Cross-project work goes through a human-created
+feature (below), which is the only explicit door. See [capabilities](docs/capabilities.md#project-scopes) and
+[architecture](docs/architecture.md#projects-and-isolation).
+
+## Features
+
+A feature is a named bundle of MRs from one or more projects, with a Markdown brief, a separate
+contract (Markdown or OpenAPI), and a free-form role per review. OpenAPI is parsed into operations and
+schemas; the context marks which changed reviews mention each path. Application profiles come from
+`context.sources` in each repository. Feature notes/findings are a non-published cross-project
+scratchpad. Projects are not linked permanently; a project appears in the feature only while one of
+its MRs is a member.
+
+```bash
+# open the MRs first (in their projects), then:
+revdeck feature create "Checkout v2" --brief brief.md --contract openapi.yaml \
+  gitlab:gitlab.com/acme/api!1 \
+  gitlab:gitlab.com/acme/web!2
+revdeck feature context ft-a1b2c3
+revdeck feature note ft-a1b2c3 --title "Contract gap" --body "Web sends no Idempotency-Key" --kind finding --level major
+```
+
+In the UI, add a review from its header, or open **All features**, choose a feature and add tracked
+reviews; reorder and delete are on the feature page. A project session sees features that include its
+project and can read the combined context, but writes only in its own project. To let one agent write across a feature's
+members, start the MCP server from a member repository with `REVDECK_FEATURE=<feature id>`; publishing
+still needs approval per review. Feature notes written by the agent stay local and are never published.
+See [capabilities](docs/capabilities.md#features).
 
 UI shortcuts: `1`–`5` switch tabs, `o` opens a review, `r` refreshes, `s` hides/shows the
-sidebar, `p` opens publishing, `?` opens the command palette. The sidebar choice is stored in
+sidebar, `p` opens the project switcher (or publishing when a plan is ready), `?` opens the command
+palette. The sidebar and the active project are stored in
 `localStorage`.
 
 The UI shows the MR/PR description, supports deep links to threads, findings and diff lines (with
@@ -243,11 +291,12 @@ otherwise it can start a second daemon inside the container.
 
 Tools: `revdeck_status`, `revdeck_list`, `revdeck_open`, `revdeck_context`, `revdeck_threads`,
 `revdeck_diff`, `revdeck_rules`, `revdeck_draft_reply`, `revdeck_draft_findings`,
-`revdeck_set_summary`, `revdeck_notes`, `revdeck_publish_preview`, `revdeck_publish`.
+`revdeck_set_summary`, `revdeck_notes`, `revdeck_feature`, `revdeck_feature_note`,
+`revdeck_publish_preview`, `revdeck_publish`.
 
 Publishing requires an `approval_id` that only a human can create (UI or CLI `--yes`). The MCP tool
-does not create one. Prompts `review-mr` and `close-feedback` are available in clients that support
-MCP prompts.
+does not create one. Prompts `review-mr`, `close-feedback` and `review-feature` are available in
+clients that support MCP prompts.
 
 Harness matrix and slash commands: [docs/integrations.md](docs/integrations.md).
 
@@ -316,7 +365,7 @@ read the CLI configuration — isolate the agent.
 | `skills/revdeck` | review procedures (SKILL, Review, Feedback, Criteria, Rules, Sources, `agents/openai.yaml`) |
 
 More: [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protocol.md),
-[ADR-0001](docs/adr/0001-daemon-first.md).
+[capabilities](docs/capabilities.md#daemon-first).
 
 ## Development
 

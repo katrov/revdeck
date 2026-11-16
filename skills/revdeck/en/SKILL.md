@@ -8,7 +8,7 @@ description: "Review a merge/pull request with the local revdeck. Two scenarios:
 The skill is platform-agnostic: revdeck normalizes GitLab and GitHub into a single model.
 Rules come from the repository, procedures come from this skill.
 
-Supporting files (`Review.md`, `Feedback.md`, `Criteria.md`, `Rules.md`, `Sources.md`) live in
+Supporting files (`Review.md`, `Feedback.md`, `Feature.md`, `Criteria.md`, `Rules.md`, `Sources.md`) live in
 `.agents/skills/revdeck/`. If this file is opened through a symlink (for example
 `.claude/skills/revdeck/SKILL.md`), resolve those names in `.agents/skills/revdeck/`.
 
@@ -28,12 +28,25 @@ capabilities.
 | Summary | `revdeck_set_summary` | `revdeck summary` (via `context`) |
 | Line comments | `revdeck_notes` | `revdeck notes <N> ...` |
 | Publish plan | `revdeck_publish_preview` | `revdeck publish <N> --dry-run` |
+| Features | `revdeck_feature` | `revdeck feature list\|get\|context` |
+| Feature notes | `revdeck_feature_note` | `revdeck feature note ...` |
+
+## Project scope
+
+This MCP server is scoped to one repository project unless the human started it with
+`REVDECK_FEATURE=<id>`. In a project session `revdeck_status`, `revdeck_list` and `revdeck_open` see
+only the current project; a review from another project is rejected. A human-created feature is the
+only explicit bridge: `revdeck_feature` lets you read its combined context, but writes stay in the
+current project. Feature notes are read-only here; only a feature session may write them. In a feature session the scope covers only the feature's members, and drafts may go
+to any member; publishing is still per review after human approval. Never bypass either scope with a
+raw `root`, another server, the daemon database, or the CLI `--all` flag.
 
 ## Workflow
 
 1. Determine the scenario. If the request is unclear, ask one question:
    - **Findings on your own MR** — `Feedback.md`.
    - **Reviewing someone else's MR, branch, or diff** — `Review.md`.
+   - **A feature spanning several projects** — `Feature.md`; call `revdeck_feature` first.
 2. Open the review and get the context: `revdeck_open`, then `revdeck_context`.
    The context already contains the summary, files, **effective project rules** (documents and
    sections selected for the changed paths), threads, existing findings, and comments from the
@@ -41,6 +54,9 @@ capabilities.
    context.
 3. Run the procedure of the chosen scenario.
 4. Record findings and reply drafts with the tools. **Do not publish.**
+
+For a feature, first read the brief and contract, then every member review with its own rules; keep
+findings on their owning review. The full procedure is in `Feature.md`.
 
 ## Multi-agent review
 
