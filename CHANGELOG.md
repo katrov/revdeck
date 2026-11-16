@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-16
+
 ### Added
 
 - Cross-project features: human-created bundles of reviews with a Markdown brief/contract, roles and
