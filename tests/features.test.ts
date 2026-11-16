@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { setLocale } from '../src/core/locale.js';
 import { Store } from '../src/daemon/store.js';
 import { parseUnifiedDiff } from '../src/core/diff.js';
 import type { ReviewInfo } from '../src/core/types.js';
+
+setLocale('ru');
 
 const PATCH = `diff --git a/src/app.ts b/src/app.ts
 --- a/src/app.ts
