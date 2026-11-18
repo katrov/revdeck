@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { applyEdits, modify, parse as parseJsonc } from 'jsonc-parser';
 import {
@@ -37,26 +36,18 @@ export interface DevcontainerOptions {
 }
 
 /**
- * Путь рабочей копии на хосте в форме devcontainer.json. Только через
- * `${localEnv:...}`, чтобы общий файл не содержал абсолютный домашний путь.
- * `null` — репозиторий вне домашнего каталога: путь придётся задать вручную.
+ * Хост-путь рабочей копии. `${localWorkspaceFolder}` раскрывает клиент
+ * devcontainer на машине разработчика, поэтому общий файл не содержит
+ * личного пути и работает у всех, кто клонировал репозиторий в другое место.
  */
-export function hostRootExpression(
-    root: string,
-    home = process.env.HOME || process.env.USERPROFILE || os.homedir(),
-): string | null {
-    const relative = path.relative(home, path.resolve(root));
-    if (path.isAbsolute(relative) || relative.startsWith('..')) return null;
-    const suffix = relative ? `/${relative.split(path.sep).join('/')}` : '';
-    return `\${localEnv:HOME}\${localEnv:USERPROFILE}${suffix}`;
-}
+export const HOST_ROOT_EXPRESSION = '${localWorkspaceFolder}';
 
 /**
  * Патч devcontainer: сокет и state моста демона хоста монтируются в контейнер.
- * В JSON попадают только ${localEnv:...}, чтобы общий файл не содержал путь
- * конкретного пользователя.
+ * В JSON попадают только ${localEnv:...}/${localWorkspaceFolder:...}, чтобы
+ * общий файл не содержал путь конкретного пользователя.
  */
-export function devcontainerPatch(hostRoot?: string | null): DevcontainerPatch {
+export function devcontainerPatch(): DevcontainerPatch {
     const bridge = '${localEnv:HOME}${localEnv:USERPROFILE}/.local/state/revdeck/devcontainer';
     return {
         mounts: [
@@ -68,14 +59,14 @@ export function devcontainerPatch(hostRoot?: string | null): DevcontainerPatch {
             REVDECK_STATE_DIR: CONTAINER_STATE_DIR,
             REVDECK_DEV_CONTAINER: '1',
             REVDECK_UI_HOST: CONTAINER_UI_HOST,
-            ...(hostRoot ? { REVDECK_HOST_ROOT: hostRoot } : {}),
+            REVDECK_HOST_ROOT: HOST_ROOT_EXPRESSION,
         },
         remoteEnv: {
             REVDECK_RUNTIME_DIR: CONTAINER_RUNTIME_DIR,
             REVDECK_STATE_DIR: CONTAINER_STATE_DIR,
             REVDECK_DEV_CONTAINER: '1',
             REVDECK_UI_HOST: CONTAINER_UI_HOST,
-            ...(hostRoot ? { REVDECK_HOST_ROOT: hostRoot } : {}),
+            REVDECK_HOST_ROOT: HOST_ROOT_EXPRESSION,
         },
         runArgs: [`--add-host=${CONTAINER_UI_HOST}:host-gateway`],
     };
@@ -145,8 +136,7 @@ export function applyDevcontainerPatch(text: string, patch: DevcontainerPatch): 
 
 export async function runDevcontainer(rootInput: string, options: DevcontainerOptions): Promise<void> {
     const root = findRepoRoot(rootInput);
-    const hostRoot = hostRootExpression(root);
-    const patch = devcontainerPatch(hostRoot);
+    const patch = devcontainerPatch();
     await ensureDir(devcontainerRunDir());
     await ensureDir(devcontainerStateDir());
     const dir = path.join(root, '.devcontainer');
@@ -155,16 +145,7 @@ export async function runDevcontainer(rootInput: string, options: DevcontainerOp
     writers.out(tr('Мост revdeck для контейнера:', 'revdeck bridge for the container:'));
     writers.out(`  ${tr('сокет', 'socket')}: ${devcontainerRunDir()} -> ${CONTAINER_RUNTIME_DIR}`);
     writers.out(`  ${tr('состояние', 'state')}: ${devcontainerStateDir()} -> ${CONTAINER_STATE_DIR} (${tr('только чтение', 'read-only')})`);
-    if (hostRoot) {
-        writers.out(`  ${tr('рабочая копия хоста', 'host working copy')}: ${hostRoot}`);
-    } else {
-        writers.err(
-            tr(
-                '! репозиторий вне домашнего каталога: задайте REVDECK_HOST_ROOT=<путь на хосте> в devcontainer.json вручную, иначе демон не увидит .revdeck.yml',
-                '! the repository is outside the home directory: set REVDECK_HOST_ROOT=<host path> in devcontainer.json manually, otherwise the daemon will not see .revdeck.yml',
-            ),
-        );
-    }
+    writers.out(`  ${tr('рабочая копия хоста', 'host working copy')}: ${HOST_ROOT_EXPRESSION}`);
     if (!existsSync(devcontainerSocketPath())) {
         writers.err(
             tr(

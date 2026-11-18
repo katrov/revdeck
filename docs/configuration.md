@@ -353,7 +353,7 @@ reviews disable the runner. The agent can only show the plan; the bridge returns
 | `REVDECK_RUNTIME_DIR` | socket directory (default `$XDG_RUNTIME_DIR/revdeck`) |
 | `REVDECK_URL` + `REVDECK_TOKEN` | connect to the daemon over HTTP (container/port forwarding); the token is agent-scoped, not the UI token |
 | `REVDECK_DEV_CONTAINER=1` | do not start a local daemon; fail with a host-daemon hint instead |
-| `REVDECK_HOST_ROOT` | host path of the worktree mounted into a devcontainer; the container client maps its root to it before RPC |
+| `REVDECK_HOST_ROOT` | host path of the worktree mounted into a devcontainer; `revdeck devcontainer --write` sets `${localWorkspaceFolder}`, and the container client maps its root to it before RPC |
 | `REVDECK_UI_HOST` | host used by `revdeck ui` from a container (for example `host.docker.internal`) |
 | `REVDECK_ROOT` | project root for the MCP server |
 | `REVDECK_FEATURE` | feature id for a feature-scoped MCP session; the current project must be a member |

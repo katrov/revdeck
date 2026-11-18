@@ -14,14 +14,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- Devcontainer path mapping: `revdeck devcontainer --write` records `REVDECK_HOST_ROOT` (the host
-  working-copy path as a `${localEnv:HOME}` expression) in `containerEnv` and `remoteEnv`. The CLI and
-  MCP server in the container map their worktree path to the host path before `reviews.open`,
-  `reviews.remoteList` and `projects.register`, so the host daemon reads `.revdeck.yml`, rule
-  documents, checks and local diff bases instead of falling back to auto-discovery. Reviews opened
-  before the mapping keep the old root and must be reopened; a config root that is not visible to the
-  reader now produces an actionable warning. `revdeck eject` removes the variable and the help/docs
-  describe the mapping.
+- Devcontainer path mapping: `revdeck devcontainer --write` records `REVDECK_HOST_ROOT` as
+  `${localWorkspaceFolder}` in `containerEnv` and `remoteEnv`. The devcontainer tooling expands it per
+  developer, so the shared file contains no user-specific path. The CLI and MCP server in the
+  container map their worktree path to the host path before `reviews.open`, `reviews.remoteList` and
+  `projects.register`, so the host daemon reads `.revdeck.yml`, rule documents, checks and local diff
+  bases instead of falling back to auto-discovery. Reviews opened before the mapping keep the old root
+  and must be reopened; a config root that is not visible to the reader now produces an actionable
+  warning. `revdeck eject` removes the variable and the help/docs describe the mapping.
 
 ## [0.7.0] - 2026-11-18
 
