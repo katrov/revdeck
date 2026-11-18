@@ -279,6 +279,15 @@ info `daemon.json` without the UI token), and sets `REVDECK_RUNTIME_DIR`, `REVDE
 home path, so the same `.devcontainer/devcontainer.json` works for every developer. Comments and
 foreign keys in an existing JSONC file are preserved.
 
+The daemon runs on the host and cannot read the container workspace path (`/workspaces/...`), so the
+same command also writes `REVDECK_HOST_ROOT` — the host working-copy path, again as
+`${localEnv:HOME}...` — into `containerEnv` and `remoteEnv` (the MCP server inherits it from the
+container). The CLI and MCP
+server inside the container replace their worktree path with that host path before calling the daemon;
+`.revdeck.yml`, rule documents, checks and local diff bases then come from the host checkout. If the
+repository is outside `$HOME`, set `REVDECK_HOST_ROOT` manually. Reviews opened before this mapping
+still point at the container root: reopen them after updating the devcontainer.
+
 The daemon creates the bridge socket on startup, so on the host run `revdeck daemon restart`, then
 rebuild the container. Inside the container revdeck never starts a local daemon, so `gh`/`glab` are
 never invoked there; if the host socket is missing it fails with a clear `DEVCONTAINER` error.

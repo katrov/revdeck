@@ -2,8 +2,35 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseConfig, readConfigFile, readConfigPrefix } from '../src/core/config.js';
+import { loadConfig, parseConfig, readConfigFile, readConfigPrefix } from '../src/core/config.js';
+import { toHostRoot } from '../src/core/paths.js';
 import { buildEffectiveRules } from '../src/core/rules.js';
+
+describe('devcontainer root mapping', () => {
+    const container = path.resolve('/workspaces/app');
+    const host = path.resolve('/home/dev/app');
+
+    it('maps a container worktree to the host worktree', () => {
+        expect(toHostRoot(container, host, container)).toBe(host);
+        expect(toHostRoot(path.join(container, 'src/main.ts'), host, container)).toBe(path.join(host, 'src/main.ts'));
+    });
+
+    it('leaves paths outside the container worktree unchanged', () => {
+        expect(toHostRoot(path.resolve('/workspaces/other'), host, container)).toBe(path.resolve('/workspaces/other'));
+        expect(toHostRoot(container, undefined, container)).toBe(container);
+    });
+
+    it('makes the host config visible through the mapped root', async () => {
+        const root = await mkdtemp(path.join(tmpdir(), 'revdeck-host-'));
+        try {
+            await writeFile(path.join(root, '.revdeck.yml'), 'version: 1\n');
+            const loaded = await loadConfig(toHostRoot(container, root, container));
+            expect(loaded.path).toBe(path.join(root, '.revdeck.yml'));
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+});
 
 describe('config file reads', () => {
     it.skipIf(process.platform === 'win32')('refuses a symlinked directory that escapes the root', async () => {

@@ -201,7 +201,8 @@ the agent process and containers would still need a host process. File exchange 
 
 Consequences: daemon lifecycle, socket permissions, a bridge for containers, version-matched clients,
 background sync and SSE. One daemon serves several repositories; `root` is passed on open and config is
-read from that root.
+read from that root. A devcontainer client passes the host worktree path (`REVDECK_HOST_ROOT`) instead
+of the container mount path, so the host daemon reads the project config and rules.
 
 ### Project scopes
 
