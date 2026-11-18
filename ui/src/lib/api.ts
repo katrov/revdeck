@@ -46,6 +46,16 @@ export const registerProject = (root: string) =>
         body: { root },
     });
 
+export const updateProject = (project: string, patch: { title?: string; roots?: string[] }) =>
+    api<{ project: import('./types').ProjectSummary | null; projects: import('./types').ProjectSummary[] }>('/api/projects/update', {
+        body: { project, ...patch },
+    });
+
+export const removeProject = (project: string) =>
+    api<{ removedReviews: number; projects: import('./types').ProjectSummary[] }>('/api/projects/remove', {
+        body: { project },
+    });
+
 export const getDiff = (review: string, file: string) =>
     api<{ file: import('./types').DiffPayload }>(`/api/diff?review=${encodeURIComponent(review)}&file=${encodeURIComponent(file)}`);
 

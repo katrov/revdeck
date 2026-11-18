@@ -8,10 +8,13 @@ import { messageOf } from '../core/errors.js';
 import type { ReviewService } from './service.js';
 import type { PublishKind } from '../core/types.js';
 import { dispatch } from './rpc.js';
+import { AGENT_POLICY, HUMAN_POLICY } from './capabilities.js';
 
 export interface HttpOptions {
     service: ReviewService;
     token: string;
+    /** Ограниченный токен для /api/rpc; UI-эндпоинты требуют основной токен. */
+    agentToken?: string;
     uiDir: string;
     port?: number;
     host?: string;
@@ -112,9 +115,25 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
             reply(res, 403, { ok: false, error: 'недопустимый Origin' });
             return;
         }
-        const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
-        const jar = cookies(req.headers.cookie);
-        const authorized = safeEqual(String(jar[COOKIE] ?? ''), token);
+        let url: URL;
+        let jar: Record<string, string>;
+        try {
+            url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
+            jar = cookies(req.headers.cookie);
+        } catch {
+            reply(res, 400, { ok: false, error: 'некорректный запрос' });
+            return;
+        }
+        const presented = String(jar[COOKIE] ?? '');
+        const isHuman = safeEqual(presented, token);
+        const isAgent = Boolean(options.agentToken) && safeEqual(presented, options.agentToken!);
+        const authorized = isHuman || isAgent;
+        const isRpc = req.method === 'POST' && url.pathname === '/api/rpc';
+        // Агентский HTTP-токен даёт только /api/rpc; UI-эндпоинты — human-only.
+        if (authorized && !isHuman && !isRpc) {
+            reply(res, 403, { ok: false, error: 'агентский токен: доступен только /api/rpc' });
+            return;
+        }
 
         try {
             if (req.method === 'GET' && url.pathname === '/') {
@@ -185,14 +204,19 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                 const featureListener = (event: { featureId: string; at: string }) => {
                     res.write(`event: feature\ndata: ${JSON.stringify(event)}\n\n`);
                 };
+                const projectListener = (event: { key: string; at: string }) => {
+                    res.write(`event: project\ndata: ${JSON.stringify(event)}\n\n`);
+                };
                 service.events.on('review', reviewListener);
                 service.events.on('feature', featureListener);
+                service.events.on('project', projectListener);
                 const heartbeat = setInterval(() => res.write(': ping\n\n'), 25_000);
                 heartbeat.unref?.();
                 req.on('close', () => {
                     clearInterval(heartbeat);
                     service.events.off('review', reviewListener);
                     service.events.off('feature', featureListener);
+                    service.events.off('project', projectListener);
                 });
                 return;
             }
@@ -282,6 +306,23 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                         if (!root) throw Object.assign(new Error('нужен root рабочей копии'), { status: 400 });
                         const project = await service.registerProject(root);
                         reply(res, 200, { ok: true, project, projects: service.listProjects() });
+                        return;
+                    }
+                    case '/api/projects/update': {
+                        const project = String(body.project ?? '');
+                        if (!project) throw Object.assign(new Error('нужен ключ проекта'), { status: 400 });
+                        const updated = service.updateProject(project, {
+                            ...(typeof body.title === 'string' ? { title: body.title } : {}),
+                            ...(Array.isArray(body.roots) ? { roots: body.roots.map(String) } : {}),
+                        });
+                        reply(res, 200, { ok: true, project: updated, projects: service.listProjects() });
+                        return;
+                    }
+                    case '/api/projects/remove': {
+                        const project = String(body.project ?? '');
+                        if (!project) throw Object.assign(new Error('нужен ключ проекта'), { status: 400 });
+                        const removedReviews = service.removeProject(project);
+                        reply(res, 200, { ok: true, removedReviews, projects: service.listProjects() });
                         return;
                     }
                     case '/api/reviews/open': {
@@ -396,7 +437,12 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                         return;
                     }
                     case '/api/rpc': {
-                        const result = await dispatch(service, String(body.method ?? ''), (body.params ?? {}) as Record<string, unknown>);
+                        const result = await dispatch(
+                            service,
+                            String(body.method ?? ''),
+                            (body.params ?? {}) as Record<string, unknown>,
+                            isHuman ? HUMAN_POLICY : AGENT_POLICY,
+                        );
                         reply(res, 200, { ok: true, result });
                         return;
                     }

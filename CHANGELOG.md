@@ -4,7 +4,46 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0] - 2026-11-18
+
+### Security
+
+- The devcontainer bridge is agent-scoped: only `read`/`draft` RPC methods are allowed; `publish.approve`,
+  `publish.commit`, `checks.run`, decisions, platform writes, review removal and feature/project
+  administration return `CAPABILITY`. The bridge info file contains an agent-scoped token, never the
+  UI token; HTTP `/api/rpc` accepts it with read/draft only, and all UI `/api/*` endpoints reject it.
+  The CLI refuses `--run --yes` and `--yes` for publish inside a devcontainer. Bridge protocol is
+  now version 2.
+- Rule and `context.sources` documents must be git-tracked, have a safe extension and are denied for
+  local secrets (`.env*`, `.git/**`, `.npmrc`, `.revdeck.local.*`, keys). A tracked
+  `.revdeck.local.yml` is ignored as a repository file. File reads verify the opened fd's realpath
+  inside the repository, closing a parent-symlink TOCTOU.
+- Feature note authors are set by the server: the bridge always writes `agent` notes and may change or
+  delete only agent-authored notes; `notes.update` ignores server-only publication fields on the
+  bridge.
+- The checks confirmation in the UI shows the full argv; `revdeck checks` prints the commands before
+  execution.
+- Malformed Cookie headers and request targets now return `400` instead of terminating the daemon.
+- Documentation (English and Russian) is updated for capabilities, bridge tokens, human-only checks,
+  document policy, project management and the command reference.
+
+### Added
+
+- `revdeck init --provider gitlab|github|auto`; generated configs now use the git-remote platform and
+  fall back to `gitlab` when the host is not recognized (default for self-hosted GitLab).
+- Project management in the UI: add a project from the projects home or switcher, edit its display
+  title and working-copy roots, and delete a project with its cached reviews (`projects.update`,
+  `projects.remove`, `/api/projects/update`, `/api/projects/remove`, `project` SSE event). Deleting
+  never touches the platform.
+- Command reference page (`#/help`): searchable CLI commands, examples, common flags and UI
+  shortcuts with click-to-copy; reachable from the sidebar, the command palette and `h`.
+
+### Fixed
+
+- The sidebar can be reopened from every view when it was collapsed before a review was selected;
+  the floating menu button is no longer mobile-only.
+- The projects header no longer leaves “Open review” on its own wrapped line: search and actions stay
+  together, and the whole action group moves below the intro at narrow widths.
 
 ## [0.6.0] - 2026-11-16
 

@@ -160,7 +160,8 @@ export function devcontainerHint(): string {
     return [
         'демон revdeck не найден на хосте',
         'на хосте: revdeck daemon start',
-        `проверьте mounts из revdeck devcontainer --write: ${runtime} и ${state}`,
+        `проверьте mount сокета из revdeck devcontainer --write: ${runtime} (state: ${state})`,
+        'UI-токен в контейнер не передаётся; мост даёт только агентские методы',
         'gh/glab должны оставаться на хосте: внутри контейнера их запускать не нужно',
     ].join('; ');
 }
@@ -168,9 +169,9 @@ export function devcontainerHint(): string {
 async function devcontainerHttpClient(): Promise<{ client: DaemonClient | null; error: string }> {
     const { info, error } = await daemonInfoRead();
     if (!info) return { client: null, error: `${daemonInfoPath()}: ${error}` };
-    if (!info.port || !info.token) return { client: null, error: `${daemonInfoPath()}: нет port/token` };
+    if (!info.port || !info.agentToken) return { client: null, error: `${daemonInfoPath()}: нет port/agentToken` };
     const host = process.env.REVDECK_UI_HOST ?? 'host.docker.internal';
-    return { client: new HttpClient(`http://${host}:${info.port}`, info.token), error: '' };
+    return { client: new HttpClient(`http://${host}:${info.port}`, info.agentToken), error: '' };
 }
 
 export async function ensureDaemon(options: { autoStart?: boolean; daemonArgs?: string[] } = {}): Promise<{ client: DaemonClient; started: boolean }> {
@@ -184,6 +185,8 @@ export async function ensureDaemon(options: { autoStart?: boolean; daemonArgs?: 
         return { client: await connectSocket(), started: false };
     } catch (error) {
         if (isDevContainer()) {
+            // Основной UI-токен в контейнер не передаётся. Fallback — только agent-scoped
+            // токен из info-файла моста; он даёт только read/draft через /api/rpc.
             const http = await devcontainerHttpClient();
             if (http.client) {
                 try {
@@ -193,11 +196,11 @@ export async function ensureDaemon(options: { autoStart?: boolean; daemonArgs?: 
                     throw new RpcError(
                         `devcontainer HTTP: ${(httpError as Error).message}`,
                         'DEVCONTAINER',
-                        'проверьте, что демон на хосте запущен; на macOS достаточно revdeck daemon restart; на Linux при недоступном сокете — --host 0.0.0.0',
+                        'проверьте, что демон на хосте запущен; для HTTP-проброса используйте REVDECK_URL + REVDECK_TOKEN',
                     );
                 }
             }
-            throw new RpcError(`devcontainer: ${http.error || devcontainerHint()}`, 'DEVCONTAINER', 'проверьте права на devcontainer/state/daemon.json и mounts');
+            throw new RpcError(`devcontainer: ${http.error || devcontainerHint()}`, 'DEVCONTAINER', 'проверьте mount сокета /run/revdeck');
         }
         if (options.autoStart === false) throw error;
     }

@@ -32,6 +32,7 @@ const OPTIONS = {
     review: { type: 'string' },
     root: { type: 'string' },
     platform: { type: 'string' },
+    provider: { type: 'string' },
     project: { type: 'string' },
     host: { type: 'string' },
     branch: { type: 'string' },
@@ -90,7 +91,7 @@ function parse(argv: string[]): { values: Values; positionals: string[] } {
 
 const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для людей и агентов
 
-  revdeck init            настроить проект: .revdeck.yml, адаптеры, MCP
+  revdeck init            настроить проект: .revdeck.yml, адаптеры, MCP [--provider gitlab|github|auto]
   revdeck eject           удалить revdeck из проекта (--yes; --keep-config)
   revdeck devcontainer    подключить devcontainer к демону хоста (--write)
   revdeck doctor          проверить окружение и доступы
@@ -114,17 +115,18 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
   revdeck attach <N> --file <путь>               загрузить картинку/видео в платформу
   revdeck publish <N> [--kind reply|finding|note] [--ids a,b] [--yes]
   revdeck rules [<N>] [--explain <путь>]
-  revdeck checks <N> [--run --yes]
+  revdeck checks <N> [--run --yes]   проверки: только человек на хосте/в UI
   revdeck export <N> [--dir .revdeck]   выгрузка в старый файловый формат
   revdeck import <N> [--dir .revdeck]   импорт из старого формата
   revdeck config [--json]                 эффективный конфиг проекта
   revdeck mcp                             запустить MCP-сервер (stdio)
 
 Общие флаги: --json, --root <путь>, --review <id>, --lang ru|en, --help.
-Публикация без --yes никогда не выполняется: сначала показывается план.`;
+Публикация, checks и администрирование — human-only: мост агента получает CAPABILITY, CLI в
+контейнере отказывает --run/--yes. Публикация без --yes никогда не выполняется.`;
 const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for humans and agents
 
-  revdeck init            set up a project: .revdeck.yml, adapters, MCP
+  revdeck init            set up a project: .revdeck.yml, adapters, MCP [--provider gitlab|github|auto]
   revdeck eject           remove revdeck from the project (--yes; --keep-config)
   revdeck devcontainer    connect a devcontainer to the host daemon (--write)
   revdeck doctor          check the environment and access
@@ -148,14 +150,15 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
   revdeck attach <N> --file <path>               upload an image/video to the platform
   revdeck publish <N> [--kind reply|finding|note] [--ids a,b] [--yes]
   revdeck rules [<N>] [--explain <path>]
-  revdeck checks <N> [--run --yes]
+  revdeck checks <N> [--run --yes]   checks run by a human on the host/UI only
   revdeck export <N> [--dir .revdeck]   export to the legacy file format
   revdeck import <N> [--dir .revdeck]   import from the legacy format
   revdeck config [--json]                 effective project config
   revdeck mcp                             start the MCP server (stdio)
 
 Common flags: --json, --root <path>, --review <id>, --lang ru|en, --help.
-Publishing never happens without --yes: the plan is shown first.`;
+Publishing, checks and administration are human-only: the agent bridge gets CAPABILITY and the
+container CLI refuses --run/--yes. Publishing never happens without --yes.`;
 const helpText = (): string => tr(HELP_RU, HELP_EN);
 
 async function main(): Promise<void> {
@@ -180,9 +183,53 @@ async function main(): Promise<void> {
     }
     const root = String(values.root ?? findRepoRoot());
 
+    // В контейнере CLI ходит через мост с агентскими правами. Публикация, checks и
+    // администрирование — действия человека на хосте/в UI; даём понятную ошибку
+    // раньше, чем RPC вернёт CAPABILITY.
+    if (isDevContainer()) {
+        const featureAction = command === 'feature' ? (positionals[0] ?? 'list') : '';
+        const projectAction = command === 'projects' ? (positionals[0] ?? 'list') : '';
+        if (command === 'checks' && values.run === true) {
+            fail(
+                tr('checks запускает человек на хосте или в UI: агент не может подтвердить запуск', 'checks are run by a human on the host or in the UI: an agent cannot confirm execution'),
+                tr('покажите план проверок человеку; запуск — в UI или `revdeck checks --run --yes` на хосте', 'show the checks plan to the human; run it in the UI or `revdeck checks --run --yes` on the host'),
+            );
+        }
+        if ((command === 'publish' || command === 'reply') && values.yes === true && values['dry-run'] !== true) {
+            fail(
+                tr('публикация — действие человека: используйте UI на хосте', 'publishing is a human action: use the UI on the host'),
+                tr('из контейнера агент может только показать план (--dry-run)', 'from a container an agent can only show the plan (--dry-run)'),
+            );
+        }
+        if (command === 'feature' && ['create', 'update', 'archive', 'delete', 'add', 'remove', 'reorder', 'note', 'note-delete'].includes(featureAction)) {
+            fail(
+                tr('администрирование фич — действие человека на хосте/в UI', 'feature administration is a human action on the host/UI'),
+                tr('в контейнере доступны только чтение фич и feature-заметки через MCP', 'in a container only feature reading and feature notes via MCP are available'),
+            );
+        }
+        if (command === 'projects' && ['update', 'remove', 'delete'].includes(projectAction)) {
+            fail(
+                tr('администрирование проектов — действие человека на хосте/в UI', 'project administration is a human action on the host/UI'),
+                tr('в контейнере доступен только список проектов', 'in a container only the project list is available'),
+            );
+        }
+    }
+
     switch (command) {
-        case 'init':
-            return runInit(root, { force: values.force === true, adapters: parseList(values.adapters as string), noService: values['no-service'] === true, locale: values.lang === 'ru' || values.lang === 'en' ? values.lang : detectLocale(), outputLanguage: values.lang === 'ru' || values.lang === 'en' ? values.lang : 'auto' });
+        case 'init': {
+            const provider = values.provider === undefined ? undefined : String(values.provider);
+            if (provider && provider !== 'auto' && provider !== 'gitlab' && provider !== 'github') {
+                fail(tr(`неизвестный провайдер: ${provider}`, `unknown provider: ${provider}`), tr('допустимо: auto, gitlab, github', 'allowed: auto, gitlab, github'));
+            }
+            return runInit(root, {
+                force: values.force === true,
+                adapters: parseList(values.adapters as string),
+                noService: values['no-service'] === true,
+                locale: values.lang === 'ru' || values.lang === 'en' ? values.lang : detectLocale(),
+                outputLanguage: values.lang === 'ru' || values.lang === 'en' ? values.lang : 'auto',
+                ...(provider ? { provider: provider as 'auto' | 'gitlab' | 'github' } : {}),
+            });
+        }
         case 'eject':
             return runEject(root, { yes: values.yes === true && values['dry-run'] !== true, keepConfig: values['keep-config'] === true });
         case 'devcontainer':
@@ -605,6 +652,12 @@ async function ui(arg: string | undefined, values: Values): Promise<void> {
     });
     const info = await daemonInfo();
     if (!info) fail(tr('демон не запущен', 'the daemon is not running'), 'revdeck daemon start');
+    if (!info.token) {
+        fail(
+            tr('UI-токен доступен только на хосте: в контейнере он не передаётся', 'the UI token is available on the host only: it is not passed into the container'),
+            tr('откройте `revdeck ui` на хосте', 'run `revdeck ui` on the host'),
+        );
+    }
     const url = `${uiBaseUrl(info)}/?t=${info.token}`;
     writers.out(url);
     if (values.open) openBrowser(url);
@@ -613,14 +666,17 @@ async function ui(arg: string | undefined, values: Values): Promise<void> {
 function printUi(reviewId: string | undefined, values: Values): void {
     const info = daemonInfoSync();
     if (!info) return writers.err(tr('демон не запущен: revdeck daemon start', 'the daemon is not running: revdeck daemon start'));
+    if (!info.token) {
+        return writers.err(tr('UI-токен доступен только на хосте: откройте `revdeck ui` на хосте', 'the UI token is available on the host only: run `revdeck ui` on the host'));
+    }
     const url = `${uiBaseUrl(info)}/?t=${info.token}${reviewId ? `&review=${encodeURIComponent(reviewId)}` : ''}`;
     writers.out(`UI: ${url}`);
     if (values.open) openBrowser(url);
 }
 
-function daemonInfoSync(): { url: string; token: string; port: number } | null {
+function daemonInfoSync(): { url: string; token?: string; port: number } | null {
     try {
-        return JSON.parse(readFileSync(daemonInfoPath(), 'utf8')) as { url: string; token: string; port: number };
+        return JSON.parse(readFileSync(daemonInfoPath(), 'utf8')) as { url: string; token?: string; port: number };
     } catch {
         return null;
     }
@@ -1074,6 +1130,18 @@ async function checks(root: string, arg: string | undefined, values: Values): Pr
     await withClient(async ({ client }) => {
         const { review } = await resolveReview(client, root, reviewArg(values, arg), values);
         if (values.run && !values.yes) fail(tr('запуск проверок меняет окружение: добавьте --yes, чтобы подтвердить', 'running checks changes the environment: add --yes to confirm'));
+        if (!values.json) {
+            const { rules: plan } = await client.request<{ rules: { checks: { id: string; name: string; argv: string[]; matched: boolean }[] } }>('rules.get', {
+                review: review.id,
+            });
+            const ids = values.ids ? parseList(values.ids as string) : null;
+            const selected = plan.checks.filter((check) => (ids ? ids.includes(check.id) : check.matched));
+            if (selected.length) {
+                writers.out(tr('Команды проверок:', 'Check commands:'));
+                for (const check of selected) writers.out(`  ${check.id}: ${check.argv.join(' ')}`);
+                writers.out('');
+            }
+        }
         const { results } = await client.request<{ results: { id: string; status: string; output: string }[] }>('checks.run', {
             review: review.id,
             allowRun: values.run === true && values.yes === true,

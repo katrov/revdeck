@@ -147,8 +147,30 @@ describe('project store', () => {
         }
     });
 
-    it('backfills an old database without project_key', async () => {
-        const dir = await mkdtemp(path.join(tmpdir(), 'revdeck-projects-'));
+    it('updates a project title and roots, then removes it with its reviews', () => {
+        const store = new Store(':memory:');
+        try {
+            const first = store.saveReview(info('group/one', 1), '/work/one', '2026-01-01T00:00:00Z');
+            store.saveReview(info('group/one', 2), '/work/one', '2026-01-02T00:00:00Z');
+            const key = 'gitlab:gitlab.com/group/one';
+
+            const updated = store.updateProject(key, { title: '  Service One  ', roots: [' /work/a ', '/work/a', ''] }, '2026-01-03T00:00:00Z');
+            expect(updated).toMatchObject({ title: 'Service One', roots: ['/work/a'], reviews: 2 });
+
+            // Переименование не сбрасывается повторной регистрацией (например, при открытии ревью).
+            store.registerProject({ platform: 'gitlab', host: 'gitlab.com', project: 'group/one' }, '/work/a', '2026-01-04T00:00:00Z');
+            expect(store.getProject(key)?.title).toBe('Service One');
+
+            expect(store.removeProject(key)).toBe(2);
+            expect(store.getProject(key)).toBeNull();
+            expect(store.listReviews()).toHaveLength(0);
+            expect(store.getReview(first)).toBeNull();
+        } finally {
+            store.close();
+        }
+    });
+
+    it('backfills an old database without project_key', async () => {        const dir = await mkdtemp(path.join(tmpdir(), 'revdeck-projects-'));
         cleanup.push(dir);
         const file = path.join(dir, 'revdeck.sqlite3');
         const legacy = new DatabaseSync(file);
@@ -224,6 +246,13 @@ describe('project service', () => {
             expect(project).toMatchObject({ key: 'gitlab:gitlab.com/group/proj', title: 'proj', roots: [dir], reviews: 0 });
             expect(service.listReviews('gitlab:gitlab.com/group/proj')).toEqual([]);
             expect(service.listProjects()).toHaveLength(1);
+
+            expect(service.updateProject('gitlab:gitlab.com/group/proj', { title: 'Project', roots: ['/work/one'] })).toMatchObject({
+                title: 'Project',
+                roots: ['/work/one'],
+            });
+            expect(service.removeProject('gitlab:gitlab.com/group/proj')).toBe(0);
+            expect(service.listProjects()).toEqual([]);
         } finally {
             service.close();
         }

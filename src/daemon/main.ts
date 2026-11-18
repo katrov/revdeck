@@ -19,6 +19,8 @@ export interface DaemonInfo {
     pid: number;
     port: number;
     token: string;
+    /** Ограниченный токен для агентского HTTP-транспорта; не даёт publish/checks/admin. */
+    agentToken: string;
     url: string;
     socket: string;
     startedAt: string;
@@ -69,6 +71,7 @@ async function main(): Promise<void> {
         return;
     }
     const token = (await import('node:crypto')).randomBytes(32).toString('hex');
+    const agentToken = (await import('node:crypto')).randomBytes(32).toString('hex');
     const store = new Store(databasePath());
     const service = new ReviewService({
         store,
@@ -80,6 +83,7 @@ async function main(): Promise<void> {
     const http = await startHttpServer({
         service,
         token,
+        agentToken,
         uiDir,
         ...(values.port ? { port: Number(values.port) } : {}),
         ...(values.host ? { host: String(values.host) } : {}),
@@ -92,6 +96,7 @@ async function main(): Promise<void> {
         pid: process.pid,
         port: http.port,
         token,
+        agentToken,
         url: http.url,
         socket,
         startedAt: new Date().toISOString(),

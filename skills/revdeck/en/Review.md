@@ -63,8 +63,9 @@ of findings. The human publishes them.
    - first see whether the diff changes `package.json`, the lock file, `.npmrc`, lint/test/build
      configs, or CI. Such changes execute the branch's code, so in someone else's MR run checks only
      after explicit confirmation from the human; always state the result in the final output;
-   - run checks from `rules.checks` (the "Checks" section of the context) only with confirmation:
-     `revdeck checks <N> --run --yes`. Report the result as is;
+   - do not run `--run --yes` from the sandbox: the bridge denies `checks.run`. Show the exact
+     `rules.checks` commands to the human and ask them to run the checks in the UI or on the host;
+     report the result they return as is;
    - if the branch is not checked out, state that checks were not performed and types were not
      verified.
 7. Discard what is not proven. Only a finding with a specific `file:line` and a scenario of how it

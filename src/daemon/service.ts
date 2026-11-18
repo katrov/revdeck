@@ -7,6 +7,7 @@ import { redact } from '../core/redact.js';
 import { messageOf } from '../core/errors.js';
 import { findRepoRoot, findConfigFile } from '../core/paths.js';
 import { loadConfig, readConfigFile, readConfigPrefix } from '../core/config.js';
+import { assertSafeDocument } from '../core/doc-policy.js';
 import { gitRemote } from '../core/git.js';
 import { buildEffectiveRules, renderRules } from '../core/rules.js';
 import { DEFAULT_REVIEW_ROLES, effectiveRoleIds, resolveReviewRole, type ResolvedReviewRole } from '../core/review-roles.js';
@@ -444,7 +445,34 @@ export class ReviewService {
         const loaded = await loadConfig(root);
         const context = await projectContext(root, loaded.config);
         const key = this.store.registerProject(context, root, this.now().toISOString());
+        this.store.audit(null, 'project.register', { key, root });
+        this.events.emit('project', { key, at: this.now().toISOString() });
         return this.store.getProject(key);
+    }
+
+    updateProject(
+        keyInput: string,
+        patch: { title?: string; roots?: string[] },
+    ): ReturnType<Store['getProject']> {
+        const key = keyInput.trim();
+        if (!this.store.getProject(key)) throw new Error(tr(`проект ${key} не найден`, `project ${key} not found`));
+        const project = this.store.updateProject(key, patch, this.now().toISOString());
+        this.store.audit(null, 'project.update', {
+            key,
+            ...(patch.title === undefined ? {} : { title: patch.title }),
+            ...(patch.roots === undefined ? {} : { roots: patch.roots.length }),
+        });
+        this.events.emit('project', { key, at: this.now().toISOString() });
+        return project;
+    }
+
+    removeProject(keyInput: string): number {
+        const key = keyInput.trim();
+        if (!this.store.getProject(key)) throw new Error(tr(`проект ${key} не найден`, `project ${key} not found`));
+        const reviews = this.store.removeProject(key);
+        this.store.audit(null, 'project.remove', { key, reviews });
+        this.events.emit('project', { key, at: this.now().toISOString() });
+        return reviews;
     }
 
     async projectForRoot(rootInput: string): Promise<string> {
@@ -656,6 +684,7 @@ export class ReviewService {
                             break;
                         }
                         try {
+                            await assertSafeDocument(member.review.root, source, 'profile');
                             const content = await readConfigPrefix(member.review.root, source, remaining);
                             const profileText = content.text.trim().slice(0, remaining);
                             remaining -= profileText.length;

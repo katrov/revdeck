@@ -7,6 +7,7 @@ import { PROTOCOL_VERSION, VERSION } from '../version.js';
 import { resolveExecutable } from '../core/exec.js';
 import type { ReviewService } from './service.js';
 import type { PublishKind } from '../core/types.js';
+import { HUMAN_POLICY, type RpcPolicy } from './capabilities.js';
 
 export interface RpcServerHandle {
     path: string;
@@ -31,11 +32,45 @@ function featureReviewInput(value: unknown): { review: string; role?: string } {
     };
 }
 
-export async function dispatch(service: ReviewService, method: string, params: Record<string, unknown>): Promise<unknown> {
+/** Агент может менять только собственные feature-заметки; автор ставится сервером. */
+function assertAgentFeatureNote(service: ReviewService, featureId: string, noteId: string, policy: RpcPolicy): void {
+    if (policy.name !== 'agent') return;
+    const note = service.getFeature(featureId).notes.find((item) => item.id === noteId);
+    if (!note || note.author !== 'agent') {
+        throw new MrReviewError(
+            'агент может изменять только свои feature-заметки',
+            'CAPABILITY',
+            'заметки человека редактирует и удаляет человек в UI/CLI',
+        );
+    }
+}
+
+export async function dispatch(
+    service: ReviewService,
+    method: string,
+    params: Record<string, unknown>,
+    policy: RpcPolicy = HUMAN_POLICY,
+): Promise<unknown> {
+    if (!policy.allows(method)) {
+        throw new MrReviewError(
+            `метод ${method} недоступен этому клиенту`,
+            'CAPABILITY',
+            policy.name === 'agent'
+                ? 'публикация, checks, решения и администрирование выполняются человеком в UI или CLI на хосте'
+                : undefined,
+        );
+    }
     switch (method) {
         case 'ping': {
             const [glab, gh, git] = await Promise.all(['glab', 'gh', 'git'].map((name) => resolveExecutable(name)));
-            return { ok: true, version: VERSION, protocol: PROTOCOL_VERSION, pid: process.pid, binaries: { glab, gh, git } };
+            return {
+                ok: true,
+                version: VERSION,
+                protocol: PROTOCOL_VERSION,
+                pid: process.pid,
+                capabilities: [...policy.capabilities],
+                binaries: { glab, gh, git },
+            };
         }
         case 'projects.list':
             return { projects: service.listProjects() };
@@ -44,6 +79,23 @@ export async function dispatch(service: ReviewService, method: string, params: R
             if (!root) throw new MrReviewError('нужен root рабочей копии');
             const project = await service.registerProject(root);
             return { project, projects: service.listProjects() };
+        }
+        case 'projects.update': {
+            const project = String(params.project ?? '');
+            if (!project) throw new MrReviewError('нужен ключ проекта');
+            return {
+                project: service.updateProject(project, {
+                    ...(typeof params.title === 'string' ? { title: params.title } : {}),
+                    ...(Array.isArray(params.roots) ? { roots: params.roots.map(String) } : {}),
+                }),
+                projects: service.listProjects(),
+            };
+        }
+        case 'projects.remove': {
+            const project = String(params.project ?? '');
+            if (!project) throw new MrReviewError('нужен ключ проекта');
+            const removedReviews = service.removeProject(project);
+            return { removedReviews, projects: service.listProjects() };
         }
         case 'features.list': {
             const project = typeof params.project === 'string' && params.project.trim() ? params.project.trim() : undefined;
@@ -85,28 +137,42 @@ export async function dispatch(service: ReviewService, method: string, params: R
                     Array.isArray(params.reviews) ? params.reviews.map(String) : [],
                 ),
             };
-        case 'features.addNote':
+        case 'features.addNote': {
+            const featureId = String(params.feature ?? '');
             return {
-                note: service.addFeatureNote(String(params.feature ?? ''), {
+                note: service.addFeatureNote(featureId, {
                     ...(params.kind === 'finding' || params.kind === 'note' ? { kind: params.kind } : {}),
                     ...(typeof params.level === 'string' ? { level: params.level } : {}),
                     title: String(params.title ?? ''),
                     body: String(params.body ?? ''),
-                    ...(params.author === 'agent' || params.author === 'human' ? { author: params.author } : {}),
+                    author: policy.name === 'agent'
+                        ? 'agent'
+                        : params.author === 'agent' || params.author === 'human'
+                          ? params.author
+                          : 'human',
                 }),
             };
-        case 'features.updateNote':
+        }
+        case 'features.updateNote': {
+            const featureId = String(params.feature ?? '');
+            const noteId = String(params.note ?? '');
+            assertAgentFeatureNote(service, featureId, noteId, policy);
             return {
-                note: service.updateFeatureNote(String(params.feature ?? ''), String(params.note ?? ''), {
+                note: service.updateFeatureNote(featureId, noteId, {
                     ...(params.kind === 'finding' || params.kind === 'note' ? { kind: params.kind } : {}),
                     ...(typeof params.level === 'string' ? { level: params.level } : {}),
                     ...(typeof params.title === 'string' ? { title: params.title } : {}),
                     ...(typeof params.body === 'string' ? { body: params.body } : {}),
                 }),
             };
-        case 'features.deleteNote':
-            service.deleteFeatureNote(String(params.feature ?? ''), String(params.note ?? ''));
+        }
+        case 'features.deleteNote': {
+            const featureId = String(params.feature ?? '');
+            const noteId = String(params.note ?? '');
+            assertAgentFeatureNote(service, featureId, noteId, policy);
+            service.deleteFeatureNote(featureId, noteId);
             return { ok: true };
+        }
         case 'features.delete':
             service.deleteFeature(String(params.feature ?? ''));
             return { ok: true };
@@ -210,8 +276,17 @@ export async function dispatch(service: ReviewService, method: string, params: R
                     toAgent: params.toAgent !== false,
                 }),
             };
-        case 'notes.update':
-            return { note: service.updateNote(String(params.review ?? ''), String(params.noteId ?? ''), (params.patch ?? {}) as Record<string, never>) };
+        case 'notes.update': {
+            const patch = { ...((params.patch ?? {}) as Record<string, unknown>) };
+            if (policy.name === 'agent') {
+                // Серверные поля публикации агенту недоступны: он не может «пометить» комментарий опубликованным.
+                delete patch.posted;
+                delete patch.discussionId;
+                delete patch.noteId;
+                delete patch.error;
+            }
+            return { note: service.updateNote(String(params.review ?? ''), String(params.noteId ?? ''), patch as never) };
+        }
         case 'notes.delete':
             service.deleteNote(String(params.review ?? ''), String(params.noteId ?? ''));
             return { ok: true };
@@ -251,7 +326,7 @@ export async function dispatch(service: ReviewService, method: string, params: R
 export async function startRpcServer(
     service: ReviewService,
     socketFile: string,
-    options: { mode?: number; dirMode?: number } = {},
+    options: { mode?: number; dirMode?: number; policy?: RpcPolicy } = {},
 ): Promise<RpcServerHandle> {
     await ensureDir(pathDirname(socketFile), options.dirMode ?? 0o700);
     await unlink(socketFile).catch(() => undefined);
@@ -274,7 +349,7 @@ export async function startRpcServer(
                     const request = parseRequest(line);
                     queue = queue.then(async () => {
                         if (!request) return;
-                        const response = await respond(service, request);
+                        const response = await respond(service, request, options.policy ?? HUMAN_POLICY);
                         if (!socket.destroyed) socket.write(`${JSON.stringify(response)}\n`);
                     });
                 }
@@ -315,11 +390,11 @@ function parseRequest(line: string): RpcRequest | null {
     }
 }
 
-async function respond(service: ReviewService, request: RpcRequest): Promise<Record<string, unknown>> {
+async function respond(service: ReviewService, request: RpcRequest, policy: RpcPolicy): Promise<Record<string, unknown>> {
     const id = request.id ?? null;
     if (typeof request.method !== 'string') return { id, error: { message: 'не указан method' } };
     try {
-        const result = await dispatch(service, request.method, request.params ?? {});
+        const result = await dispatch(service, request.method, request.params ?? {}, policy);
         return { id, result };
     } catch (error) {
         return {

@@ -25,16 +25,17 @@
 
 | Threat | Mitigation | Residual risk |
 |---|---|---|
-| The agent extracts a platform token | The token is never read: `glab`/`gh` take it from their own configuration. The agent gets only RPC; tokens are scrubbed from child process env and redacted in logs/errors | A process that can read the user's `$HOME` can read the CLI config. That is why agent isolation is required |
+| The agent extracts a platform token | The token is never read: `glab`/`gh` take it from their own configuration. The agent gets only RPC with read/draft capabilities; tokens are scrubbed from child process env and redacted in logs/errors | A process that can read the user's `$HOME` can read the CLI config. That is why agent isolation is required |
 | Spoofing the project/host via `.git/config` | Explicit `host`/`project` in the config and arguments take precedence over the remote; `glab`/`gh` are invoked with a `cwd` outside the working copy | If the project is not pinned, the remote is used — the UI shows the project for verification |
 | Prompt injection from comments/diff | Instructions in the text are marked as data; the agent does not publish on its own; publishing requires human approval; the sanitizer blocks hidden characters and quick actions | The model can still propose harmful text — a human sees it in the plan |
 | Accidental publication of the wrong text | A plan with the exact bodies and a hash; `approve` verifies the hash; `commit` executes only the plan items; a repeat send is skipped | A human may approve without looking — the UI shows the full text |
-| Cross-site requests to loopback (DNS rebinding, CSRF) | Only `127.0.0.1`/`localhost` in `Host`; an `Origin` check for POST; `HttpOnly`, `SameSite=Strict` cookies; a one-time token in the launch link; CSP | A local process of another user with access to the socket is out of scope (permissions 0600/0700) |
-| Symlink/TOCTOU in the working directory | State is stored in a private directory, writes are atomic; repository files are read only inside the root, without following symlinks in its own paths | A race on repository files is possible but does not grant publish rights |
-| A malicious `.revdeck.yml` executes code | `checks.argv` is an array without a shell; execution only with `--run --yes`; MCP cannot run checks | A user may approve running a malicious command from someone else's MR — read the plan |
+| Cross-site requests to loopback (DNS rebinding, CSRF) | Only `127.0.0.1`/`localhost` in `Host`; an `Origin` check for POST; `HttpOnly`, `SameSite=Strict` cookies; a launch token; CSP | A local process of another user with access to the socket is out of scope (permissions 0600/0700) |
+| Symlink/TOCTOU in the working directory | State is stored in a private directory, writes are atomic; rules/profiles are read only from git-tracked safe documents; the opened fd's realpath is checked inside the root on Linux (`/proc/self/fd`); macOS/Windows use a path + inode comparison | macOS/Windows keep a narrow path/inode race; it does not grant publish rights |
+| Local secrets via rules/profiles | `rules.sources`/`context.sources` must be git-tracked, have a safe extension and are denied for `.env*`, `.git/**`, `.npmrc`, `.revdeck.local.*` and key files; a tracked `.revdeck.local.yml` is ignored | A tracked document can still contain secrets committed to the repository — that is the MR content, not the reviewer's local file |
+| A malicious `.revdeck.yml` executes code | The bridge denies `checks.run` (`CAPABILITY`); checks are run by a human in the UI or the host CLI, which shows the full argv; the CLI refuses `--run` inside a devcontainer | A human may still run a malicious command from someone else's MR in the UI/host CLI — read the argv; host checks are not sandboxed yet |
 | Leakage through logs/errors | Redaction of tokens, ANSI and control characters; length limits; logs in a private directory | Comment text may contain secrets — do not publish it |
 | Supply chain | Minimal dependencies, lockfile, esbuild/Vite build, provenance on npm publish | The same as for any npm package |
-| Approval theft | An approval is 16 random bytes, TTL 10 minutes, single-use, bound to review+hash, stored only in SQLite on the host | Socket access = RPC access; protected by file permissions |
+| Approval theft | An approval is 16 random bytes, TTL 10 minutes, single-use, bound to review+hash, stored only in SQLite on the host; `publish.approve`/`commit` are human-only on the bridge | The host CLI/UI token is still local authority; a process that can mount the host state or use the primary socket has it |
 
 ## Project isolation
 
@@ -44,9 +45,10 @@ review id/URL from another project; the agent gets no `root` or project override
 filters are convenience, not authorization.
 
 Residual risk: an agent with shell access to the user's home can read the daemon's database or call
-the RPC socket directly, just as it could read other repositories. For hard isolation, run a separate
-daemon with its own `REVDECK_STATE_DIR` under a separate user/container; that is outside this model
-and breaks cross-project review.
+the primary RPC socket directly, just as it could read other repositories. The devcontainer bridge is
+agent-scoped (no publish/checks/admin), but read/draft methods still see the local database. For hard
+isolation, run a separate daemon with its own `REVDECK_STATE_DIR` under a separate user/container; that
+is outside this model and breaks cross-project review.
 
 ## Features
 

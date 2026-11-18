@@ -3,7 +3,7 @@
     import { projectColor, projectLabel, sortProjects } from '../lib/projects';
     import { t } from '../lib/i18n.svelte';
 
-    let { onclose, onselect }: { onclose: () => void; onselect: (key: string) => void } = $props();
+    let { onclose, onselect, onadd }: { onclose: () => void; onselect: (key: string) => void; onadd: () => void } = $props();
 
     let query = $state('');
     let input: HTMLInputElement | undefined = $state();
@@ -69,8 +69,11 @@
     </div>
 
     <div class="project-popover-sep"></div>
+    <button class="project-popover-action" type="button" onclick={() => { onadd(); }}>
+        {t('+ Добавить проект', '+ Add project')}
+    </button>
     <button class="project-popover-action" type="button" onclick={() => { showProjectsHome(); onclose(); }}>
         {t('Все проекты', 'All projects')}
     </button>
-    <p class="project-popover-hint">{t('Добавить: revdeck projects add <путь>', 'Add: revdeck projects add <path>')}</p>
+    <p class="project-popover-hint">{t('Изменить или удалить проект — на экране «Все проекты».', 'Edit or delete a project on the “All projects” screen.')}</p>
 </div>

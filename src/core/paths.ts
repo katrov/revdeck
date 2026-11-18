@@ -1,5 +1,5 @@
 import { constants, existsSync } from 'node:fs';
-import { lstat, mkdir, open, readFile, realpath, rename, unlink } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, realpath, rename, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -138,6 +138,53 @@ export async function resolveInsideRoot(root: string, target: string): Promise<s
         throw new Error(`${path.basename(target)}: path escapes the repository`);
     }
     return realTarget;
+}
+
+/**
+ * Открывает файл и проверяет, что уже открытый inode находится внутри root.
+ * Проверка по `/proc/self/fd/<fd>` (Linux) или `/dev/fd/<fd>` (macOS) закрывает
+ * TOCTOU: подмена родительского каталога на symlink между realpath и open не
+ * уводит чтение за корень. На Windows остаётся realpath-проверка без fd.
+ */
+type OpenedFile = Awaited<ReturnType<typeof open>>;
+
+export async function openInsideRoot(root: string, target: string): Promise<OpenedFile> {
+    const resolvedTarget = path.resolve(target);
+    const realRoot = await realpath(path.resolve(root));
+    let handle: OpenedFile;
+    try {
+        handle = await open(resolvedTarget, process.platform === 'win32' ? 'r' : constants.O_RDONLY | constants.O_NOFOLLOW);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ELOOP') {
+            throw new Error(`${path.basename(target)}: path escapes the repository`);
+        }
+        throw error;
+    }
+    try {
+        const info = await handle.stat();
+        if (!info.isFile()) throw new Error(`${path.basename(target)}: not a regular file`);
+        if (process.platform === 'linux') {
+            // authoritative: path of the already opened inode
+            const actual = await realpath(`/proc/self/fd/${handle.fd}`);
+            if (!isInside(realRoot, actual)) {
+                throw new Error(`${path.basename(target)}: path escapes the repository`);
+            }
+        } else {
+            // macOS/Windows: path + inode comparison; a narrow race remains (documented).
+            const actual = await realpath(resolvedTarget);
+            if (!isInside(realRoot, actual)) {
+                throw new Error(`${path.basename(target)}: path escapes the repository`);
+            }
+            const onDisk = await stat(actual);
+            if (onDisk.dev !== info.dev || onDisk.ino !== info.ino) {
+                throw new Error(`${path.basename(target)}: path changed during read`);
+            }
+        }
+        return handle;
+    } catch (error) {
+        await handle.close();
+        throw error;
+    }
 }
 
 /** Читает не больше maxBytes из файла, не идя по ссылкам; возвращает признак обрезки. */

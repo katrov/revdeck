@@ -131,8 +131,8 @@ revdeck devcontainer          # print the mounts and environment
 revdeck devcontainer --write  # merge them into .devcontainer/devcontainer.json
 ```
 
-`--write` mounts the stable bridge `~/.local/state/revdeck/devcontainer/run` (socket) and
-`~/.local/state/revdeck/devcontainer/state` (read-only `daemon.json`) and sets:
+`--write` mounts the stable bridge `~/.local/state/revdeck/devcontainer/run` (agent-scoped socket) and
+`~/.local/state/revdeck/devcontainer/state` (read-only info `daemon.json`: capabilities and an agent-scoped token, no UI token) and sets:
 
 ```json
 {
@@ -153,26 +153,29 @@ the container. Inside the container `revdeck` never starts its own daemon: if th
 it fails with a `DEVCONTAINER` error and a hint. `revdeck doctor` does not look for `glab`/`gh` in the
 container.
 
-On macOS with Docker Desktop the host Unix socket is not proxied. The bridge `daemon.json` is readable
-by the container user (`run`/`state` are `0755`, the file is `0644`, while the private parent stays
-`0700`), and the loopback HTTP server accepts `Host: host.docker.internal`; `revdeck daemon restart` is
-enough. On Linux, if the socket is not reachable, use `revdeck daemon restart --host 0.0.0.0` (or
-`revdeck daemon install --host 0.0.0.0` for a service); this exposes the HTTP port to the network, so
-use it only on a trusted network. The container reads `daemon.json`, falls back to HTTP with the same
-session token, and no token is written to the repository.
+On macOS with Docker Desktop the host Unix socket is not proxied. The bridge is agent-scoped: it allows
+`read`/`draft` only, and its `daemon.json` contains no UI token. The UI is opened on the host; the
+container uses the mounted socket. If the socket is not reachable, set `REVDECK_URL` +
+`REVDECK_TOKEN` from the user's environment (an agent-scoped token); there is no automatic HTTP
+fallback with the UI token.
+
+On Linux, if the socket is not reachable, the same `REVDECK_URL` + `REVDECK_TOKEN` path applies. Do not
+expose the UI token to the container; `--host 0.0.0.0` is for a browser on another trusted machine,
+not for giving the agent more rights.
 
 `revdeck devcontainer --write` adds the `REVDECK_*` variables to the `revdeck` MCP server in `.mcp.json`
 and `.cursor/mcp.json` inside the repository. A user-level MCP configuration outside the repository
 needs the same variables manually, otherwise it may start a second daemon in the container.
 
-The container user must be able to connect to the host socket (normally the same UID; the socket is
-0600). To open the UI from the container, start the host daemon with `revdeck daemon start --host
-0.0.0.0` and use `host.docker.internal`; otherwise open the UI on the host.
+The container user must be able to connect to the host bridge socket (the bridge socket is `0666`
+inside the mounted directory `0755`; its methods are limited by the `read`/`draft` capability). The UI
+is opened on the host with `revdeck ui`; the UI token is not passed to the container.
 
 Fallbacks:
 
-1. `REVDECK_URL=http://host.docker.internal:<port>` and `REVDECK_TOKEN=<token>` — the HTTP transport,
-   with the daemon started on the host with `--host 0.0.0.0`.
+1. `REVDECK_URL=http://host.docker.internal:<port>` and `REVDECK_TOKEN=<agent-scoped-token>` — the
+   HTTP transport, with the daemon started on the host with `--host 0.0.0.0`; the token is
+   agent-scoped and must not be the UI token.
 2. `revdeck export <N>` on the host and `revdeck import <N>` in the container — a file bridge.
 
 ## Several projects and devcontainers

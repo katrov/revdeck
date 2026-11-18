@@ -15,6 +15,8 @@ export interface InitOptions {
     noService: boolean;
     locale: Locale;
     outputLanguage: 'auto' | 'ru' | 'en';
+    /** Явный провайдер; иначе платформа remote'а, иначе GitLab. */
+    provider?: 'auto' | 'gitlab' | 'github';
 }
 
 interface McpConfig {
@@ -26,6 +28,15 @@ interface McpConfig {
 function mcpServer(locale: Locale): McpConfig {
     // npx работает и без глобальной установки; версия подтягивается при первом запуске.
     return { command: 'npx', args: ['-y', 'revdeck', 'mcp'], env: { REVDECK_LANG: locale } };
+}
+
+/**
+ * Провайдер для нового конфига. Явный флаг важнее remote'а, а GitLab — безопасный
+ * дефолт для self-hosted GitLab, который не распознаётся по имени хоста.
+ */
+function initProvider(remote: 'gitlab' | 'github' | null, requested: InitOptions['provider']): 'gitlab' | 'github' | 'auto' {
+    if (requested && requested !== 'auto') return requested;
+    return remote ?? 'gitlab';
 }
 
 export async function runInit(rootInput: string, options: InitOptions): Promise<void> {
@@ -47,7 +58,7 @@ export async function runInit(rootInput: string, options: InitOptions): Promise<
             tr('# Конфигурация revdeck. Схема: docs/configuration.md', '# revdeck configuration. Schema: docs/configuration.md'),
             'version: 1',
             'provider:',
-            `  type: ${remote?.platform ?? 'auto'}`,
+            `  type: ${initProvider(remote?.platform ?? null, options.provider)}`,
             ...(remote ? [`  host: ${remote.host}`, `  project: ${remote.project}`] : ['  # host: gitlab.example.com', '  # project: group/project']),
             'output:',
             tr('  # auto — язык описания MR/обсуждений, либо явно ru/en', '  # auto — MR/thread language, or explicit ru/en'),

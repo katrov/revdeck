@@ -21,9 +21,14 @@ and a web UI. Platform tokens stay on the host.
   sections (`AGENTS.md`, architecture, style guides, ADRs). The agent gets a deterministic, size-limited
   context instead of generic “review this PR” instructions.
 - **Humans publish.** The agent writes drafts. The UI shows exactly what will be posted; publishing is
-  bound to a hash of the plan and is idempotent. There is no “agent approved its own comment” path.
+  bound to a hash of the plan and is idempotent. The devcontainer bridge has no `publish.approve` or
+  `publish.commit`: only the human UI or the host CLI can create and execute an approval.
 - **Tokens never reach the agent.** The daemon calls `glab`/`gh` on the host and scrubs platform tokens
-  from child environments. A sandboxed agent only gets an RPC.
+  from child environments. A sandboxed agent only gets an RPC with read/draft capabilities; the UI
+  token is not mounted into the container.
+- **Documents are repository files, not local secrets.** Rule and profile documents must be tracked by
+  git, have a safe extension and are not read from `.env`, `.git/config`, `.npmrc` or
+  `.revdeck.local.yml`.
 - **GitLab and GitHub.** One model: MR/PR, threads, diff, resolve, reactions, line comments, attachments.
 - **Many projects, separated contexts.** A project is a repository. The UI switches between projects and
   shows only the current one's reviews; an MCP server is scoped to its repository.
@@ -67,7 +72,9 @@ revdeck open 42       # load an MR/PR
 revdeck ui            # open the local UI
 ```
 
-`init` never overwrites an existing config without `--force`, and it merges `.mcp.json` instead of
+`init` writes `provider.type` from the git remote and falls back to `gitlab` when the host is not
+recognized (typical for self-hosted GitLab). Override it with `--provider gitlab|github|auto`.
+It never overwrites an existing config without `--force`, and it merges `.mcp.json` instead of
 replacing it. `revdeck eject` is the inverse: it removes the config, installed skills and command files,
 the `revdeck` MCP entry and the local `.revdeck/` cache, leaving foreign files and other MCP servers
 untouched. It only shows the plan by default; add `--yes` to apply (`--keep-config` keeps
@@ -104,7 +111,7 @@ Russian READMEs live in this repository; translation fixes are welcome.
 
 | Command | What it does |
 |---|---|
-| `revdeck init` | config, harness adapters, MCP |
+| `revdeck init [--provider gitlab/github/auto]` | config, harness adapters, MCP |
 | `revdeck eject [--yes]` | remove revdeck-owned config, adapters and MCP entry |
 | `revdeck devcontainer [--write]` | mount the host daemon socket/state into a devcontainer |
 | `revdeck doctor` | environment, `glab`/`gh` auth, daemon, adapters |
@@ -136,6 +143,11 @@ A project is a repository. revdeck keeps a project registry (`projects`, `projec
 `projectKey` on every review, so the UI can switch between projects and show only the current one's
 reviews. The daemon still runs as one process with one SQLite database; project separation is about
 context, not tenants.
+
+Projects are managed in the projects home: **Add project** registers a working copy
+(`revdeck projects add <path>` works too), **Edit** changes the display title and the list of
+working-copy roots, and **Delete** removes the project and its cached reviews from revdeck. Deleting
+never touches MRs/PRs or comments on the platform.
 
 Each repository's MCP server resolves its project from the working copy and lists only that project.
 An id or URL from another project is rejected with a hint to open a separate session. Devcontainers and
@@ -173,8 +185,9 @@ See [capabilities](docs/capabilities.md#features).
 
 UI shortcuts: `1`–`5` switch tabs, `o` opens a review, `r` refreshes, `s` hides/shows the
 sidebar, `p` opens the project switcher (or publishing when a plan is ready), `?` opens the command
-palette. The sidebar and the active project are stored in
-`localStorage`.
+palette, `h` opens the command reference. The sidebar has a **Command reference** link (`#/help`) with
+searchable CLI usage, common flags and UI shortcuts; click a command to copy it. The sidebar and the
+active project are stored in `localStorage`.
 
 The UI shows the MR/PR description, supports deep links to threads, findings and diff lines (with
 working browser Back/Forward), and keeps a per-review "viewed" state and file filter in the diff.
@@ -253,9 +266,9 @@ revdeck devcontainer --write  # merge them into .devcontainer/devcontainer.json
 ```
 
 The command mounts the stable host bridge `~/.local/state/revdeck/devcontainer/run` at `/run/revdeck`
-(socket) and `~/.local/state/revdeck/devcontainer/state` at `/var/lib/revdeck` (read-only
-`daemon.json`), and sets `REVDECK_RUNTIME_DIR`, `REVDECK_STATE_DIR`, `REVDECK_DEV_CONTAINER=1` and
-`REVDECK_UI_HOST`. The JSON uses `${localEnv:HOME}${localEnv:USERPROFILE}` instead of an absolute
+(agent-scoped socket) and `~/.local/state/revdeck/devcontainer/state` at `/var/lib/revdeck` (read-only
+info `daemon.json` without the UI token), and sets `REVDECK_RUNTIME_DIR`, `REVDECK_STATE_DIR`,
+`REVDECK_DEV_CONTAINER=1` and `REVDECK_UI_HOST`. The JSON uses `${localEnv:HOME}${localEnv:USERPROFILE}` instead of an absolute
 home path, so the same `.devcontainer/devcontainer.json` works for every developer. Comments and
 foreign keys in an existing JSONC file are preserved.
 
@@ -294,8 +307,9 @@ Tools: `revdeck_status`, `revdeck_list`, `revdeck_open`, `revdeck_context`, `rev
 `revdeck_set_summary`, `revdeck_notes`, `revdeck_feature`, `revdeck_feature_note`,
 `revdeck_publish_preview`, `revdeck_publish`.
 
-Publishing requires an `approval_id` that only a human can create (UI or CLI `--yes`). The MCP tool
-does not create one. Prompts `review-mr`, `close-feedback` and `review-feature` are available in
+Publishing requires an `approval_id` created by the human UI or the host CLI. The agent bridge has no
+`publish.approve`, and the MCP tool does not create one. Prompts `review-mr`, `close-feedback` and
+`review-feature` are available in
 clients that support MCP prompts.
 
 Harness matrix and slash commands: [docs/integrations.md](docs/integrations.md).
@@ -303,8 +317,9 @@ Harness matrix and slash commands: [docs/integrations.md](docs/integrations.md).
 ## Rules
 
 `.revdeck.yml` at the repository root; personal overrides go to `.revdeck.local.yml` (ignored by git and
-added by `init`). Local objects merge recursively, local arrays replace, and a base `review.readOnly`
-cannot be disabled locally.
+added by `init`). If `.revdeck.local.yml` is tracked by git, it came from the repository and is ignored
+as personal overrides. Local objects merge recursively, local arrays replace, and a base
+`review.readOnly` cannot be disabled locally.
 
 ```yaml
 version: 1
@@ -340,10 +355,19 @@ found. Full schema: [docs/configuration.md](docs/configuration.md).
 
 ## Security
 
-- The daemon listens on loopback and a unix socket (0600). The UI uses a one-time launch token, an
-  `HttpOnly`/`SameSite=Strict` cookie, `Host`/`Origin` checks and CSP.
+- The daemon listens on loopback and a unix socket (0600). The devcontainer bridge exposes only the
+  `read`/`draft` capability set; `publish.*`, `checks.run`, decisions, platform writes and
+  feature/project administration return `CAPABILITY`. The UI token stays on the host and is not
+  mounted into the container.
+- The UI uses a launch token (rotated with the daemon), an `HttpOnly`/`SameSite=Strict` cookie,
+  `Host`/`Origin` checks and CSP.
 - `glab`/`gh` run without a shell, with `cwd` outside the working copy and a scrubbed environment;
   secrets are redacted from logs and errors.
+- Rule/profile documents must be git-tracked, have a safe extension and are denied for local secrets
+  (`.env*`, `.git/**`, `.npmrc`, `.revdeck.local.*`, keys); `.revdeck.local.yml` tracked by git is
+  ignored as a repository file. Reads use an opened-fd realpath check to close symlink TOCTOU.
+- Checks are planned by the agent and run by a human in the UI or the host CLI. The bridge denies
+  `checks.run`; the CLI refuses `--run --yes` inside a devcontainer.
 - Comments are checked for GitLab quick actions, HTML, hidden/bidi characters, mass mentions and
   external images (only uploads from the platform host are allowed).
 - Review text is untrusted data; agent instructions say so explicitly.
@@ -384,7 +408,7 @@ Provider tests use recorded CLI responses and need no network. See [CONTRIBUTING
 
 - Publishing uses regular comments; native drafts (GitLab draft notes, GitHub pending review) are not
   used yet, though the provider interface is ready.
-- Project checks are planned by the agent; running them requires `revdeck checks --run --yes`.
+- Project checks are planned by the agent; a human runs them in the UI or the host CLI (`revdeck checks --run --yes`); the bridge denies `checks.run`.
 - The UI opens a review from the **Open review** dialog; the working-copy root is required so the daemon
   can read `.revdeck.yml`.
 - Thread resolution is in the thread card; the **Close thread** button records the resolve intent and

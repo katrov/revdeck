@@ -529,6 +529,40 @@ export class Store {
         return this.listProjects().find((project) => project.key === key) ?? null;
     }
 
+    /** Переименование проекта и явное управление root'ами рабочих копий. */
+    updateProject(
+        key: string,
+        patch: { title?: string; roots?: string[] },
+        now = new Date().toISOString(),
+    ): ProjectSummary | null {
+        const current = this.getProject(key);
+        if (!current) return null;
+        const title = (patch.title ?? current.title).trim();
+        if (!title) throw new Error(tr('название проекта не может быть пустым', 'project title cannot be empty'));
+        const roots = patch.roots === undefined ? null : [...new Set(patch.roots.map((root) => root.trim()).filter(Boolean))];
+        this.transaction(() => {
+            this.db.prepare('UPDATE projects SET title = ?, updated_at = ? WHERE key = ?').run(title.slice(0, 120), now, key);
+            if (roots !== null) {
+                this.db.prepare('DELETE FROM project_roots WHERE project_key = ?').run(key);
+                const insert = this.db.prepare('INSERT INTO project_roots (project_key, root, last_seen_at) VALUES (?, ?, ?)');
+                for (const root of roots) insert.run(key, root, now);
+            }
+        });
+        return this.getProject(key);
+    }
+
+    /** Удаляет проект вместе с его локальными ревью; платформа не затрагивается. */
+    removeProject(key: string): number {
+        const countRow = this.db.prepare('SELECT COUNT(*) AS count FROM reviews WHERE project_key = ?').get(key) as Row | undefined;
+        const reviews = Number(countRow?.count ?? 0);
+        this.transaction(() => {
+            this.db.prepare('DELETE FROM approvals WHERE review_id IN (SELECT id FROM reviews WHERE project_key = ?)').run(key);
+            this.db.prepare('DELETE FROM reviews WHERE project_key = ?').run(key);
+            this.db.prepare('DELETE FROM projects WHERE key = ?').run(key);
+        });
+        return reviews;
+    }
+
     // ---------------------------------------------------------------- features
 
     private featureMembers(id: string): FeatureMember[] {

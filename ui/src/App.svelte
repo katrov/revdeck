@@ -1,8 +1,8 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { app, applyRoute, bootstrap, flushPendingReload, loadFeature, loadFeatures, loadProjects, loadReview, loadReviews, notify, setActiveProject, setTab, showFeaturesHome, showProjectsHome, subscribe, writeHash } from './lib/state.svelte';
-    import { removeReview as removeReviewApi } from './lib/api';
-    import type { ReviewListItem } from './lib/types';
+    import { app, applyRoute, bootstrap, flushPendingReload, loadFeature, loadFeatures, loadProjects, loadReview, loadReviews, notify, setActiveProject, setTab, showFeaturesHome, showHelp, showProjectsHome, subscribe, writeHash } from './lib/state.svelte';
+    import { removeProject as removeProjectApi, removeReview as removeReviewApi } from './lib/api';
+    import type { ProjectSummary, ReviewListItem } from './lib/types';
     import type { Tab } from './lib/types';
     import { i18n, plural, setLocale, t } from './lib/i18n.svelte';
     import Overview from './components/Overview.svelte';
@@ -16,6 +16,9 @@
     import OpenReviewDialog from './components/OpenReviewDialog.svelte';
     import ProjectSwitcher from './components/ProjectSwitcher.svelte';
     import ProjectsHome from './components/ProjectsHome.svelte';
+    import AddProjectDialog from './components/AddProjectDialog.svelte';
+    import EditProjectDialog from './components/EditProjectDialog.svelte';
+    import Help from './components/Help.svelte';
     import FeatureView from './components/FeatureView.svelte';
     import FeatureList from './components/FeatureList.svelte';
     import AddToFeatureDialog from './components/AddToFeatureDialog.svelte';
@@ -24,6 +27,8 @@
     let paletteOpen = $state(false);
     let openDialog = $state(false);
     let addToFeatureOpen = $state(false);
+    let addProjectOpen = $state(false);
+    let editingProject = $state<ProjectSummary | null>(null);
     let sidebarOpen = $state(true);
     const SIDEBAR_KEY = 'revdeck.sidebar';
 
@@ -100,6 +105,40 @@
         }
     }
 
+    async function removeProject(item: ProjectSummary): Promise<void> {
+        const reviews = item.reviews
+            ? t(
+                  `Удалить проект «${item.title}» и ${item.reviews} ${plural(item.reviews, ['ревью', 'ревью', 'ревью'], ['review', 'reviews'])} из revdeck?`,
+                  `Delete project "${item.title}" and ${item.reviews} ${plural(item.reviews, ['ревью', 'ревью', 'ревью'], ['review', 'reviews'])} from revdeck?`,
+              )
+            : t(`Удалить проект «${item.title}» из revdeck?`, `Delete project "${item.title}" from revdeck?`);
+        if (!confirm(`${reviews}\n\n${t('На платформе MR/PR останутся без изменений.', 'MRs/PRs on the platform stay untouched.')}`)) return;
+        try {
+            const result = await removeProjectApi(item.key);
+            if (app.activeProject === item.key) {
+                app.review = null;
+                app.focus = null;
+                app.diffFocus = null;
+                app.diffFile = null;
+            }
+            await loadProjects();
+            await loadReviews();
+            await loadFeatures();
+            writeHash(false);
+            notify(
+                result.removedReviews
+                    ? t(
+                          `Проект удалён из revdeck · ревью: ${result.removedReviews}`,
+                          `Project removed from revdeck · reviews: ${result.removedReviews}`,
+                      )
+                    : t('Проект удалён из revdeck', 'Project removed from revdeck'),
+                'ok',
+            );
+        } catch (error) {
+            notify(error instanceof Error ? error.message : String(error), 'error');
+        }
+    }
+
     function refresh(): void {
         const id = app.review?.id;
         if (!id) return;
@@ -143,6 +182,8 @@
             openDialog = true;
         } else if (event.key === '?') {
             paletteOpen = true;
+        } else if (event.key === 'h') {
+            showHelp();
         } else if (event.key === 'p') {
             if (publishTarget) app.publishing = publishTarget;
             else app.projectSwitcher = !app.projectSwitcher;
@@ -213,6 +254,10 @@
             <ProjectSwitcher
                 onclose={() => (app.projectSwitcher = false)}
                 onselect={(key) => void setActiveProject(key)}
+                onadd={() => {
+                    app.projectSwitcher = false;
+                    addProjectOpen = true;
+                }}
             />
         {/if}
         <div class="sidebar-actions">
@@ -256,6 +301,9 @@
             {:else}
                 <span class="mono">revdeck open &lt;N&gt;</span>
             {/if}
+            <button class="sidebar-help" type="button" onclick={() => showHelp()} title={t('Справка по командам (h)', 'Command reference (h)')}>
+                <span class="sidebar-help-mark">?</span> {t('Справка по командам', 'Command reference')}
+            </button>
             <div class="lang-switch" aria-label={t('Язык интерфейса', 'Interface language')}>
                 <button class:on={i18n.locale === 'ru'} onclick={() => setLocale('ru')}>RU</button>
                 <button class:on={i18n.locale === 'en'} onclick={() => setLocale('en')}>EN</button>
@@ -265,11 +313,13 @@
 
     <main class="main" aria-busy={app.loading}>
         {#if !app.review && !sidebarOpen}
-            <button class="btn mobile-sidebar-toggle" type="button" onclick={toggleSidebar} title={t('Открыть меню', 'Open menu')} aria-label={t('Открыть меню', 'Open menu')}>
+            <button class="btn sidebar-reopen" type="button" onclick={toggleSidebar} title={t('Открыть меню', 'Open menu')} aria-label={t('Открыть меню', 'Open menu')}>
                 ☰ {t('Меню', 'Menu')}
             </button>
         {/if}
-        {#if app.review}
+        {#if app.help}
+            <Help />
+        {:else if app.review}
             {@const review = app.review}
             <header class="header">
                 <div class="breadcrumbs">
@@ -364,7 +414,13 @@
         {:else if app.featuresHome}
             <FeatureList />
         {:else if app.projectsHome || !app.projects.length}
-            <ProjectsHome onselect={(key) => void setActiveProject(key)} onopen={() => (openDialog = true)} />
+            <ProjectsHome
+                onselect={(key) => void setActiveProject(key)}
+                onopen={() => (openDialog = true)}
+                onadd={() => (addProjectOpen = true)}
+                onedit={(project) => (editingProject = project)}
+                onremove={(project) => void removeProject(project)}
+            />
         {:else}
             <div class="empty">
                 <div class="row" style="justify-content: center; margin-bottom: 12px">
@@ -396,6 +452,10 @@ revdeck open https://gitlab.com/group/project/-/merge_requests/42</pre>
     <CommandPalette
         onclose={() => (paletteOpen = false)}
         onpublish={() => publishTarget && (app.publishing = publishTarget)}
+        onaddproject={() => {
+            paletteOpen = false;
+            addProjectOpen = true;
+        }}
         onopen={() => {
             paletteOpen = false;
             openDialog = true;
@@ -405,6 +465,14 @@ revdeck open https://gitlab.com/group/project/-/merge_requests/42</pre>
 
 {#if openDialog}
     <OpenReviewDialog onclose={() => (openDialog = false)} />
+{/if}
+
+{#if addProjectOpen}
+    <AddProjectDialog onclose={() => (addProjectOpen = false)} />
+{/if}
+
+{#if editingProject}
+    <EditProjectDialog project={editingProject} onclose={() => (editingProject = null)} />
 {/if}
 
 {#if app.toast}
