@@ -20,6 +20,12 @@ describe('devcontainer root mapping', () => {
         expect(toHostRoot(container, undefined, container)).toBe(container);
     });
 
+    it('keeps a Windows host root intact inside a Linux container', () => {
+        expect(toHostRoot(path.join(container, 'src/main.ts'), 'C:\\Users\\dev\\app', container)).toBe(
+            'C:\\Users\\dev\\app\\src\\main.ts',
+        );
+    });
+
     it('makes the host config visible through the mapped root', async () => {
         const root = await mkdtemp(path.join(tmpdir(), 'revdeck-host-'));
         try {

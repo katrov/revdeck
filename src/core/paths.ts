@@ -19,6 +19,9 @@ export function findRepoRoot(start = process.cwd()): string {
  * Путь, который видит демон. В devcontainer рабочая копия смонтирована по
  * другому абсолютному пути, а демон живёт на хосте: клиент заменяет корень
  * контейнера на `REVDECK_HOST_ROOT` и сохраняет относительный путь внутри него.
+ *
+ * Путь хоста не нормализуется через `path.resolve`: клиент в Linux-контейнере
+ * не должен портить `C:\\Users\\...` от Docker Desktop на Windows.
  */
 export function toHostRoot(
     root: string,
@@ -29,9 +32,12 @@ export function toHostRoot(
     const target = hostRoot?.trim();
     if (!target) return resolved;
     const relative = path.relative(path.resolve(containerRoot), resolved);
-    if (relative === '') return path.resolve(target);
+    if (relative === '') return target;
     if (relative.startsWith('..') || path.isAbsolute(relative)) return resolved;
-    return path.join(path.resolve(target), relative);
+    const windows = /^[A-Za-z]:[\\/]/.test(target) || target.startsWith('\\\\');
+    const separator = windows ? '\\' : '/';
+    const prefix = target.replace(/[\\/]+$/, '');
+    return `${prefix}${separator}${relative.split(path.sep).join(separator)}`;
 }
 
 export const CONFIG_FILES = ['.revdeck.yml', '.revdeck.yaml'] as const;

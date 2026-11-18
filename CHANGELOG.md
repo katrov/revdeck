@@ -16,7 +16,8 @@ All notable changes to this project are documented here. The format is based on
 
 - Devcontainer path mapping: `revdeck devcontainer --write` records `REVDECK_HOST_ROOT` as
   `${localWorkspaceFolder}` in `containerEnv` and `remoteEnv`. The devcontainer tooling expands it per
-  developer, so the shared file contains no user-specific path. The CLI and MCP server in the
+  developer, so the shared file contains no user-specific path; a Windows host path from Docker Desktop
+  reaches the daemon without POSIX normalization. The CLI and MCP server in the
   container map their worktree path to the host path before `reviews.open`, `reviews.remoteList` and
   `projects.register`, so the host daemon reads `.revdeck.yml`, rule documents, checks and local diff
   bases instead of falling back to auto-discovery. Reviews opened before the mapping keep the old root
