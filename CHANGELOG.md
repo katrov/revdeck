@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- Server typechecking runs on the TypeScript 7 native compiler (`typescript-7` npm alias,
+  `typecheck:server`). `svelte-check` still requires TypeScript 5/6 as a peer, so the project keeps
+  `typescript@6` for the UI checker; `npm run typecheck` runs both.
+
 ### Fixed
 
 - Devcontainer path mapping: `revdeck devcontainer --write` records `REVDECK_HOST_ROOT` (the host

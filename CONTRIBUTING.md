@@ -28,13 +28,17 @@ If a change is intentionally undocumented, say why in the pull request.
 git clone https://github.com/katrov/revdeck.git
 cd revdeck
 npm ci
-npm run typecheck    # tsc + svelte-check
+npm run typecheck    # TypeScript 7 (server) + svelte-check (TS 6)
 npm test
 npm run build
 ```
 
 For manual testing, `npm run dev:daemon` starts the daemon from source; `npm run dev:ui` starts Vite.
 The daemon serves the built UI from `dist/ui`, so run `npm run build:ui` before checking the full app.
+
+Server code is checked with the TypeScript 7 native compiler (`typescript-7` npm alias,
+`typecheck:server`). `svelte-check` still declares TypeScript 5/6 as its peer, so the project keeps
+`typescript@6` for the UI checker; `npm run typecheck` runs both.
 
 `glab`/`gh` are optional for development: provider tests use recorded CLI responses. To test against a
 real platform, authenticate the CLI and run `revdeck doctor`.

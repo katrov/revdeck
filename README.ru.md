@@ -394,7 +394,7 @@ revdeck ищет `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` и `docs/*` и пр
 
 ```bash
 npm install
-npm run typecheck     # tsc + svelte-check
+npm run typecheck     # TypeScript 7 (сервер) + svelte-check (TS 6)
 npm test              # vitest
 npm run build         # dist/cli.js, dist/daemon.js, dist/mcp.js, dist/ui
 ```

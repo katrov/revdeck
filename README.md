@@ -411,7 +411,7 @@ More: [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/prot
 
 ```bash
 npm ci
-npm run typecheck     # tsc + svelte-check
+npm run typecheck     # TypeScript 7 (server) + svelte-check (TS 6)
 npm test              # vitest
 npm run build         # dist/cli.js, dist/daemon.js, dist/mcp.js, dist/ui
 npm run dev:daemon    # daemon from source
