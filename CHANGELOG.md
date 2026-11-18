@@ -27,6 +27,12 @@ All notable changes to this project are documented here. The format is based on
 - Documentation (English and Russian) is updated for capabilities, bridge tokens, human-only checks,
   document policy, project management and the command reference.
 
+### Changed
+
+- Development dependencies: Vite 8.3.8 and Playwright Core 1.65.1. TypeScript 7.0.2 from the
+  Dependabot development update is deferred: svelte-check 4.x requires TypeScript 5/6, so the bump
+  would break `npm run typecheck`; it needs the dual TS6/TS7 `--tsgo` setup separately.
+
 ### Added
 
 - `revdeck init --provider gitlab|github|auto`; generated configs now use the git-remote platform and
