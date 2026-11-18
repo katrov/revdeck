@@ -150,12 +150,14 @@ and the `REVDECK_*` keys are managed.
 
 `REVDECK_HOST_ROOT` closes the path gap between the two sides: the daemon reads `.revdeck.yml` and rule
 documents on the host, while the container sees the same worktree under `/workspaces/...`. `--write`
-derives it from the repository root as `${localEnv:HOME}/relative/path`; a repository outside `$HOME`
-needs the variable set manually. The CLI and MCP server in the container map their worktree path (and
-paths under it) to the host path before `reviews.open`, `reviews.remoteList` and `projects.register`.
-Without the mapping the review still opens (platform calls run on the host), but the UI shows
-auto-discovery and a "directory is not visible" warning instead of the project config. Reviews opened
-before the mapping keep the old container root; reopen them.
+writes `${localWorkspaceFolder}`, which the devcontainer tooling expands to the host path of the
+opened folder, so no user-specific path is committed. If the repository is a subfolder of the opened
+workspace, set `REVDECK_HOST_ROOT` manually (for example `${localWorkspaceFolder}/subdir`). The CLI and
+MCP server in the container map their worktree path (and paths under it) to the host path before
+`reviews.open`, `reviews.remoteList` and `projects.register`. Without the mapping the review still opens
+(platform calls run on the host), but the UI shows auto-discovery and a "directory is not visible"
+warning instead of the project config. Reviews opened before the mapping keep the old container root;
+reopen them.
 
 The daemon creates the bridge socket on startup. On the host run `revdeck daemon restart`, then rebuild
 the container. Inside the container `revdeck` never starts its own daemon: if the socket is unreachable
@@ -173,10 +175,11 @@ expose the UI token to the container; `--host 0.0.0.0` is for a browser on anoth
 not for giving the agent more rights.
 
 `revdeck devcontainer --write` adds the `REVDECK_*` variables to the `revdeck` MCP server in `.mcp.json`
-and `.cursor/mcp.json` inside the repository. `REVDECK_HOST_ROOT` is the exception: `${localEnv:...}` is
-expanded only in `devcontainer.json`, so it is set in `containerEnv`/`remoteEnv` and inherited by the MCP
-server. A user-level MCP configuration outside the repository needs the same variables manually (with
-an absolute `REVDECK_HOST_ROOT`), otherwise it may start a second daemon in the container.
+and `.cursor/mcp.json` inside the repository. `REVDECK_HOST_ROOT` is the exception: `${localEnv:...}`
+and `${localWorkspaceFolder}` are expanded only in `devcontainer.json`, so it is set in
+`containerEnv`/`remoteEnv` and inherited by the MCP server. A user-level MCP configuration outside the
+repository needs the same variables manually (with an absolute `REVDECK_HOST_ROOT`), otherwise it may
+start a second daemon in the container.
 
 The container user must be able to connect to the host bridge socket (the bridge socket is `0666`
 inside the mounted directory `0755`; its methods are limited by the `read`/`draft` capability). The UI

@@ -349,7 +349,7 @@ argv) или выполняет `revdeck checks <N> --run --yes` на хосте
 | `REVDECK_RUNTIME_DIR` | каталог сокета (по умолчанию `$XDG_RUNTIME_DIR/revdeck`) |
 | `REVDECK_URL` + `REVDECK_TOKEN` | подключение к демону по HTTP (контейнер/проброс порта); токен агентский, не UI |
 | `REVDECK_DEV_CONTAINER=1` | не запускать локальный демон, а подсказать про демон хоста |
-| `REVDECK_HOST_ROOT` | путь рабочей копии на хосте для devcontainer: клиент в контейнере заменяет на него свой root перед RPC |
+| `REVDECK_HOST_ROOT` | путь рабочей копии на хосте для devcontainer: `revdeck devcontainer --write` ставит `${localWorkspaceFolder}`, клиент в контейнере заменяет на него свой root перед RPC |
 | `REVDECK_UI_HOST` | хост для `revdeck ui` из контейнера (например, `host.docker.internal`) |
 | `REVDECK_ROOT` | корень проекта для MCP-сервера |
 | `REVDECK_FEATURE` | id фичи для MCP-сессии; текущий проект должен быть участником |

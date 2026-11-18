@@ -1,6 +1,6 @@
 import { existsSync, statSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setLocale } from '../src/core/locale.js';
@@ -8,8 +8,8 @@ import { parseJsonc } from '../src/core/jsonc.js';
 import {
     CONTAINER_RUNTIME_DIR,
     CONTAINER_STATE_DIR,
+    HOST_ROOT_EXPRESSION,
     devcontainerPatch,
-    hostRootExpression,
     mergeDevcontainerConfig,
     runDevcontainer,
 } from '../src/cli/devcontainer.js';
@@ -81,17 +81,15 @@ describe('devcontainer', () => {
     });
 
     it('passes the host working-copy path to the container', () => {
-        const patch = devcontainerPatch('${localEnv:HOME}/Personal/app');
-        expect(patch.containerEnv.REVDECK_HOST_ROOT).toBe('${localEnv:HOME}/Personal/app');
-        expect(patch.remoteEnv.REVDECK_HOST_ROOT).toBe('${localEnv:HOME}/Personal/app');
+        const patch = devcontainerPatch();
+        expect(HOST_ROOT_EXPRESSION).toBe('${localWorkspaceFolder}');
+        expect(patch.containerEnv.REVDECK_HOST_ROOT).toBe(HOST_ROOT_EXPRESSION);
+        expect(patch.remoteEnv.REVDECK_HOST_ROOT).toBe(HOST_ROOT_EXPRESSION);
     });
 
-    it('writes the host root only as a localEnv expression', () => {
-        expect(hostRootExpression('/home/dev/Personal/app', '/home/dev')).toBe(
-            '${localEnv:HOME}${localEnv:USERPROFILE}/Personal/app',
-        );
-        expect(hostRootExpression('/srv/app', '/home/dev')).toBeNull();
-        expect(hostRootExpression('/home/dev', '/home/dev')).toBe('${localEnv:HOME}${localEnv:USERPROFILE}');
+    it('keeps user-specific paths out of the shared devcontainer file', () => {
+        expect(JSON.stringify(devcontainerPatch())).not.toContain(root);
+        expect(JSON.stringify(devcontainerPatch())).not.toContain(homedir());
     });
 
     it('merges into an existing config without dropping foreign keys or mounts', () => {
@@ -131,7 +129,7 @@ describe('devcontainer', () => {
             `{
   // user setting
   "image": "custom",
-  "containerEnv": { "KEEP": "1", "REVDECK_HOST_ROOT": "\${localEnv:HOME}/app" },
+  "containerEnv": { "KEEP": "1", "REVDECK_HOST_ROOT": "\${localWorkspaceFolder}" },
 }
 `,
         );
@@ -168,33 +166,22 @@ describe('devcontainer', () => {
     });
 
     it('records the host root in the container env only', async () => {
-        const fakeHome = await mkdtemp(path.join(tmpdir(), 'revdeck-home-'));
-        const previousHome = process.env.HOME;
-        const homeRoot = path.join(fakeHome, 'repo');
-        process.env.HOME = fakeHome;
-        try {
-            await mkdir(path.join(homeRoot, '.git'), { recursive: true });
-            await writeFile(
-                path.join(homeRoot, '.mcp.json'),
-                JSON.stringify({ mcpServers: { revdeck: { command: 'npx', args: ['-y', 'revdeck', 'mcp'] } } }),
-            );
-            await runDevcontainer(homeRoot, { write: true });
-            const data = parseJsonc(await readFile(path.join(homeRoot, '.devcontainer', 'devcontainer.json'), 'utf8')) as {
-                containerEnv: Record<string, string>;
-                remoteEnv: Record<string, string>;
-            };
-            expect(data.containerEnv.REVDECK_HOST_ROOT).toBe('${localEnv:HOME}${localEnv:USERPROFILE}/repo');
-            expect(data.remoteEnv.REVDECK_HOST_ROOT).toBe(data.containerEnv.REVDECK_HOST_ROOT);
-            const mcp = JSON.parse(await readFile(path.join(homeRoot, '.mcp.json'), 'utf8')) as {
-                mcpServers: { revdeck: { env: Record<string, string> } };
-            };
-            expect(mcp.mcpServers.revdeck.env.REVDECK_RUNTIME_DIR).toBe(CONTAINER_RUNTIME_DIR);
-            expect(mcp.mcpServers.revdeck.env.REVDECK_HOST_ROOT).toBeUndefined();
-        } finally {
-            if (previousHome === undefined) delete process.env.HOME;
-            else process.env.HOME = previousHome;
-            await rm(fakeHome, { recursive: true, force: true });
-        }
+        await writeFile(
+            path.join(root, '.mcp.json'),
+            JSON.stringify({ mcpServers: { revdeck: { command: 'npx', args: ['-y', 'revdeck', 'mcp'] } } }),
+        );
+        await runDevcontainer(root, { write: true });
+        const data = parseJsonc(await readFile(path.join(root, '.devcontainer', 'devcontainer.json'), 'utf8')) as {
+            containerEnv: Record<string, string>;
+            remoteEnv: Record<string, string>;
+        };
+        expect(data.containerEnv.REVDECK_HOST_ROOT).toBe(HOST_ROOT_EXPRESSION);
+        expect(data.remoteEnv.REVDECK_HOST_ROOT).toBe(data.containerEnv.REVDECK_HOST_ROOT);
+        const mcp = JSON.parse(await readFile(path.join(root, '.mcp.json'), 'utf8')) as {
+            mcpServers: { revdeck: { env: Record<string, string> } };
+        };
+        expect(mcp.mcpServers.revdeck.env.REVDECK_RUNTIME_DIR).toBe(CONTAINER_RUNTIME_DIR);
+        expect(mcp.mcpServers.revdeck.env.REVDECK_HOST_ROOT).toBeUndefined();
     });
 
     it('starts a second RPC socket in the stable bridge directory', async () => {

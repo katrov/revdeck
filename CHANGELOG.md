@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-11-18
+
+### Fixed
+
+- `revdeck devcontainer --write` now writes `REVDECK_HOST_ROOT` as `${localWorkspaceFolder}` instead
+  of a `${localEnv:HOME}`-relative path. Each developer's devcontainer tooling expands the variable
+  to their own checkout, so the shared `devcontainer.json` no longer contains a user-specific path
+  that breaks colleagues who clone into another folder. A Windows host path (`C:\...`) from Docker
+  Desktop is passed to the daemon without POSIX normalization.
+
 ## [0.8.0] - 2026-11-18
 
 ### Changed
