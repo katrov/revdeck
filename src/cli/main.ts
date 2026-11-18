@@ -3,7 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import path from 'node:path';
-import { daemonInfoPath, findRepoRoot, logPath } from '../core/paths.js';
+import { daemonInfoPath, findRepoRoot, logPath, toHostRoot } from '../core/paths.js';
 import { loadConfig } from '../core/config.js';
 import { buildEffectiveRules, renderRules } from '../core/rules.js';
 import { changedPaths } from '../core/diff.js';
@@ -93,7 +93,7 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
 
   revdeck init            настроить проект: .revdeck.yml, адаптеры, MCP [--provider gitlab|github|auto]
   revdeck eject           удалить revdeck из проекта (--yes; --keep-config)
-  revdeck devcontainer    подключить devcontainer к демону хоста (--write)
+  revdeck devcontainer    подключить devcontainer к демону хоста (--write; путь хоста в REVDECK_HOST_ROOT)
   revdeck doctor          проверить окружение и доступы
   revdeck daemon <start|stop|restart|status|logs|install|uninstall>
   revdeck projects        проекты и их рабочие копии (add <path> — зарегистрировать)
@@ -128,7 +128,7 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
 
   revdeck init            set up a project: .revdeck.yml, adapters, MCP [--provider gitlab|github|auto]
   revdeck eject           remove revdeck from the project (--yes; --keep-config)
-  revdeck devcontainer    connect a devcontainer to the host daemon (--write)
+  revdeck devcontainer    connect a devcontainer to the host daemon (--write; host path in REVDECK_HOST_ROOT)
   revdeck doctor          check the environment and access
   revdeck daemon <start|stop|restart|status|logs|install|uninstall>
   revdeck projects        projects and their working copies (add <path> — register)
@@ -322,7 +322,7 @@ async function resolveReview(client: DaemonClient, root: string, arg: string | u
     }
     if (arg) {
         const result = await client.request<{ review: ReviewView }>('reviews.open', {
-            root,
+            root: toHostRoot(root),
             input: arg,
             ...(values.platform ? { platform: values.platform as 'gitlab' | 'github' } : {}),
             ...(values.project ? { project: values.project } : {}),
@@ -358,7 +358,7 @@ async function list(root: string, values: Values): Promise<void> {
                 platform: string;
                 project: string;
             }>('reviews.remoteList', {
-                root,
+                root: toHostRoot(root),
                 scope: (values.scope as 'open' | 'mine' | 'reviewing') ?? 'open',
                 limit: Number(values.limit ?? 50),
             });
@@ -372,7 +372,7 @@ async function list(root: string, values: Values): Promise<void> {
     }
     await withClient(async ({ client }) => {
         const project = typeof values.project === 'string' && values.project.trim() ? values.project.trim() : undefined;
-        const params = values.all === true ? {} : project ? { project } : { root };
+        const params = values.all === true ? {} : project ? { project } : { root: toHostRoot(root) };
         const { reviews } = await client.request<{ reviews: { number: number; title: string; author: string; project: string; syncedAt: string }[] }>('reviews.list', params);
         if (values.json) return printJson({ reviews });
         if (!reviews.length) return writers.out(tr('в этом проекте ревью ещё не открывались: revdeck open <N>', 'no reviews opened in this project yet: revdeck open <N>'));
@@ -385,7 +385,9 @@ async function projects(root: string, args: string[], values: Values): Promise<v
     await withClient(async ({ client }) => {
         if (action === 'add') {
             const target = args[1] ?? values.root ?? root;
-            const result = await client.request<{ project: { key: string; title: string; project: string; host: string } | null; projects: unknown[] }>('projects.register', { root: target });
+            const result = await client.request<{ project: { key: string; title: string; project: string; host: string } | null; projects: unknown[] }>('projects.register', {
+                root: toHostRoot(target),
+            });
             if (values.json) return printJson(result);
             if (!result.project) return writers.out(tr('проект не определён: проверьте git remote и .revdeck.yml', 'could not determine the project: check git remote and .revdeck.yml'));
             writers.out(`${tr('проект зарегистрирован', 'project registered')}: ${result.project.key}`);
@@ -619,7 +621,7 @@ async function openReview(root: string, args: string[], values: Values): Promise
     await withClient(async ({ client }) => {
         const requests = args.map(async (input) => {
             const result = await client.request<{ review: ReviewView }>('reviews.open', {
-                root,
+                root: toHostRoot(root),
                 input,
                 ...(values.platform ? { platform: values.platform as 'gitlab' | 'github' } : {}),
                 ...(values.project ? { project: values.project } : {}),
@@ -768,7 +770,7 @@ async function daemon(action: string, values: Values = {}): Promise<void> {
 
 async function status(root: string, values: Values): Promise<void> {
     await withClient(async ({ client }) => {
-        const params = values.all === true ? {} : { root };
+        const params = values.all === true ? {} : { root: toHostRoot(root) };
         const { reviews } = await client.request<{ reviews: { id: string; number: number; title: string; author: string; project: string; syncedAt: string }[] }>('reviews.list', params);
         if (!reviews.length) {
             writers.out(tr('в этом проекте ревью ещё не открывались', 'no reviews opened in this project yet'));
@@ -1191,6 +1193,16 @@ async function doctor(root: string): Promise<void> {
     rows.push(['node', major >= 22 ? 'ok' : 'fail', process.version]);
     if (container) {
         rows.push(['mode', 'ok', tr('devcontainer: revdeck и gh/glab работают на хосте', 'devcontainer: revdeck and gh/glab run on the host')]);
+        const hostRoot = process.env.REVDECK_HOST_ROOT?.trim();
+        rows.push([
+            'host root',
+            hostRoot ? 'ok' : 'warn',
+            hostRoot ??
+                tr(
+                    'не задан: демон хоста не увидит .revdeck.yml — выполните revdeck devcontainer --write',
+                    'not set: the host daemon will not see .revdeck.yml — run revdeck devcontainer --write',
+                ),
+        ]);
     }
     const binaries: Record<string, boolean> = {};
     for (const bin of ['glab', 'gh', 'git']) {

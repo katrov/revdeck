@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { applyEdits, modify, parse as parseJsonc } from 'jsonc-parser';
 import {
@@ -36,11 +37,26 @@ export interface DevcontainerOptions {
 }
 
 /**
+ * Путь рабочей копии на хосте в форме devcontainer.json. Только через
+ * `${localEnv:...}`, чтобы общий файл не содержал абсолютный домашний путь.
+ * `null` — репозиторий вне домашнего каталога: путь придётся задать вручную.
+ */
+export function hostRootExpression(
+    root: string,
+    home = process.env.HOME || process.env.USERPROFILE || os.homedir(),
+): string | null {
+    const relative = path.relative(home, path.resolve(root));
+    if (path.isAbsolute(relative) || relative.startsWith('..')) return null;
+    const suffix = relative ? `/${relative.split(path.sep).join('/')}` : '';
+    return `\${localEnv:HOME}\${localEnv:USERPROFILE}${suffix}`;
+}
+
+/**
  * Патч devcontainer: сокет и state моста демона хоста монтируются в контейнер.
  * В JSON попадают только ${localEnv:...}, чтобы общий файл не содержал путь
  * конкретного пользователя.
  */
-export function devcontainerPatch(): DevcontainerPatch {
+export function devcontainerPatch(hostRoot?: string | null): DevcontainerPatch {
     const bridge = '${localEnv:HOME}${localEnv:USERPROFILE}/.local/state/revdeck/devcontainer';
     return {
         mounts: [
@@ -52,12 +68,14 @@ export function devcontainerPatch(): DevcontainerPatch {
             REVDECK_STATE_DIR: CONTAINER_STATE_DIR,
             REVDECK_DEV_CONTAINER: '1',
             REVDECK_UI_HOST: CONTAINER_UI_HOST,
+            ...(hostRoot ? { REVDECK_HOST_ROOT: hostRoot } : {}),
         },
         remoteEnv: {
             REVDECK_RUNTIME_DIR: CONTAINER_RUNTIME_DIR,
             REVDECK_STATE_DIR: CONTAINER_STATE_DIR,
             REVDECK_DEV_CONTAINER: '1',
             REVDECK_UI_HOST: CONTAINER_UI_HOST,
+            ...(hostRoot ? { REVDECK_HOST_ROOT: hostRoot } : {}),
         },
         runArgs: [`--add-host=${CONTAINER_UI_HOST}:host-gateway`],
     };
@@ -127,7 +145,8 @@ export function applyDevcontainerPatch(text: string, patch: DevcontainerPatch): 
 
 export async function runDevcontainer(rootInput: string, options: DevcontainerOptions): Promise<void> {
     const root = findRepoRoot(rootInput);
-    const patch = devcontainerPatch();
+    const hostRoot = hostRootExpression(root);
+    const patch = devcontainerPatch(hostRoot);
     await ensureDir(devcontainerRunDir());
     await ensureDir(devcontainerStateDir());
     const dir = path.join(root, '.devcontainer');
@@ -136,6 +155,16 @@ export async function runDevcontainer(rootInput: string, options: DevcontainerOp
     writers.out(tr('Мост revdeck для контейнера:', 'revdeck bridge for the container:'));
     writers.out(`  ${tr('сокет', 'socket')}: ${devcontainerRunDir()} -> ${CONTAINER_RUNTIME_DIR}`);
     writers.out(`  ${tr('состояние', 'state')}: ${devcontainerStateDir()} -> ${CONTAINER_STATE_DIR} (${tr('только чтение', 'read-only')})`);
+    if (hostRoot) {
+        writers.out(`  ${tr('рабочая копия хоста', 'host working copy')}: ${hostRoot}`);
+    } else {
+        writers.err(
+            tr(
+                '! репозиторий вне домашнего каталога: задайте REVDECK_HOST_ROOT=<путь на хосте> в devcontainer.json вручную, иначе демон не увидит .revdeck.yml',
+                '! the repository is outside the home directory: set REVDECK_HOST_ROOT=<host path> in devcontainer.json manually, otherwise the daemon will not see .revdeck.yml',
+            ),
+        );
+    }
     if (!existsSync(devcontainerSocketPath())) {
         writers.err(
             tr(
@@ -191,6 +220,9 @@ export async function runDevcontainer(rootInput: string, options: DevcontainerOp
 
 /** Добавляет REVDECK_* в env MCP-сервера, чтобы он не поднимал демон в контейнере. */
 async function mergeMcpEnv(root: string, env: Record<string, string>): Promise<number> {
+    // ${localEnv:...} раскрывается только в devcontainer.json, не в .mcp.json:
+    // REVDECK_HOST_ROOT приходит процессу из containerEnv/remoteEnv.
+    const mcpEnv = Object.fromEntries(Object.entries(env).filter(([name]) => name !== 'REVDECK_HOST_ROOT'));
     let changed = 0;
     for (const relative of ['.mcp.json', '.cursor/mcp.json']) {
         const file = path.join(root, relative);
@@ -200,7 +232,7 @@ async function mergeMcpEnv(root: string, env: Record<string, string>): Promise<n
             const servers = isRecord(data.mcpServers) ? data.mcpServers : null;
             const server = servers && isRecord(servers.revdeck) ? servers.revdeck : null;
             if (!server) continue;
-            server.env = { ...(isRecord(server.env) ? server.env : {}), ...env };
+            server.env = { ...(isRecord(server.env) ? server.env : {}), ...mcpEnv };
             await writeFile(file, `${JSON.stringify(data, null, 2)}\n`);
             changed += 1;
             writers.out(`✔ MCP env: ${relative}`);

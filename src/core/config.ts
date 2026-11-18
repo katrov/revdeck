@@ -208,6 +208,14 @@ function mergeConfigData(base: unknown, local: unknown): unknown {
 
 export async function loadConfig(root = findRepoRoot()): Promise<LoadedConfig> {
     const warnings: string[] = [];
+    if (!existsSync(root)) {
+        warnings.push(
+            tr(
+                `каталог ${root} не виден тому, кто читает конфиг: в devcontainer демон на хосте не видит путь контейнера — выполните revdeck devcontainer --write или задайте REVDECK_HOST_ROOT`,
+                `the directory ${root} is not visible to the config reader: in a devcontainer the host daemon cannot see the container path — run revdeck devcontainer --write or set REVDECK_HOST_ROOT`,
+            ),
+        );
+    }
     const file = findConfigFile(root);
     let localFile = findLocalConfigFile(root);
     if (localFile && existsSync(path.join(root, '.git'))) {

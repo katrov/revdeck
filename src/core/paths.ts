@@ -15,6 +15,25 @@ export function findRepoRoot(start = process.cwd()): string {
     }
 }
 
+/**
+ * Путь, который видит демон. В devcontainer рабочая копия смонтирована по
+ * другому абсолютному пути, а демон живёт на хосте: клиент заменяет корень
+ * контейнера на `REVDECK_HOST_ROOT` и сохраняет относительный путь внутри него.
+ */
+export function toHostRoot(
+    root: string,
+    hostRoot = process.env.REVDECK_HOST_ROOT,
+    containerRoot = findRepoRoot(),
+): string {
+    const resolved = path.resolve(root);
+    const target = hostRoot?.trim();
+    if (!target) return resolved;
+    const relative = path.relative(path.resolve(containerRoot), resolved);
+    if (relative === '') return path.resolve(target);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) return resolved;
+    return path.join(path.resolve(target), relative);
+}
+
 export const CONFIG_FILES = ['.revdeck.yml', '.revdeck.yaml'] as const;
 export const LOCAL_CONFIG_FILES = ['.revdeck.local.yml', '.revdeck.local.yaml'] as const;
 export const CACHE_DIR = '.revdeck';

@@ -1,6 +1,6 @@
 {
   "name": "revdeck",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Agent-first code review for GitLab and GitHub: local daemon, CLI, MCP server and a triage UI.",
   "license": "MIT",
   "type": "module",
@@ -27,7 +27,9 @@
     "build:ui": "vite build --config ui/vite.config.ts",
     "prepack": "npm run build",
     "prepublishOnly": "npm run typecheck && npm test",
-    "typecheck": "tsc --noEmit && svelte-check --tsconfig ui/tsconfig.json --threshold error",
+    "typecheck": "npm run typecheck:server && npm run typecheck:ui",
+    "typecheck:server": "node ./node_modules/typescript-7/bin/tsc --noEmit",
+    "typecheck:ui": "svelte-check --tsconfig ui/tsconfig.json --threshold error",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev:daemon": "tsx src/daemon/main.ts",
@@ -50,6 +52,7 @@
     "svelte-check": "^4.5.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
+    "typescript-7": "npm:typescript@^7.0.2",
     "vite": "^8.3.6",
     "vitest": "^5.1.0"
   },

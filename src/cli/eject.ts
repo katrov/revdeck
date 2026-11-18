@@ -117,7 +117,7 @@ export async function runEject(rootInput: string, options: EjectOptions): Promis
                 for (const key of ['containerEnv', 'remoteEnv'] as const) {
                     if (!isRecord(parsed[key])) continue;
                     const env = { ...(parsed[key] as Record<string, unknown>) };
-                    for (const name of ['REVDECK_RUNTIME_DIR', 'REVDECK_STATE_DIR', 'REVDECK_DEV_CONTAINER', 'REVDECK_UI_HOST']) delete env[name];
+                    for (const name of ['REVDECK_RUNTIME_DIR', 'REVDECK_STATE_DIR', 'REVDECK_DEV_CONTAINER', 'REVDECK_UI_HOST', 'REVDECK_HOST_ROOT']) delete env[name];
                     if (Object.keys(env).length !== Object.keys(parsed[key] as Record<string, unknown>).length) {
                         current = applyEdits(current, modify(current, [key], env, formatting));
                         changed = true;

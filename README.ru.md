@@ -264,6 +264,15 @@ info-`daemon.json` без токена UI) и выставляет `REVDECK_RUNT
 путь, поэтому один `.devcontainer/devcontainer.json` работает у всех разработчиков. Комментарии и
 чужие ключи в существующем JSONC сохраняются.
 
+Демон живёт на хосте и не видит путь рабочей копии в контейнере (`/workspaces/...`), поэтому команда
+дополнительно записывает `REVDECK_HOST_ROOT` — путь рабочей копии на хосте, тоже через
+`${localEnv:HOME}...` — в `containerEnv` и `remoteEnv` (MCP-сервер наследует его из окружения
+контейнера). CLI и MCP-сервер в
+контейнере заменяют свой путь на путь хоста перед обращением к демону: `.revdeck.yml`, документы
+правил, checks и база локального diff читаются из рабочей копии хоста. Если репозиторий вне `$HOME`,
+задайте `REVDECK_HOST_ROOT` вручную. Ревью, открытые до этого изменения, хранят путь контейнера — их
+нужно открыть заново после обновления devcontainer.
+
 Демон создаёт сокет моста при старте: на хосте выполните `revdeck daemon restart`, затем пересоберите
 контейнер. В контейнере revdeck никогда не запускает свой демон, поэтому `gh`/`glab` там не
 вызываются; если сокет хоста недоступен, команда падает с понятной ошибкой `DEVCONTAINER`.
@@ -385,7 +394,7 @@ revdeck ищет `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` и `docs/*` и пр
 
 ```bash
 npm install
-npm run typecheck     # tsc + svelte-check
+npm run typecheck     # TypeScript 7 (сервер) + svelte-check (TS 6)
 npm test              # vitest
 npm run build         # dist/cli.js, dist/daemon.js, dist/mcp.js, dist/ui
 ```

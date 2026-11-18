@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { ensureDaemon, RpcError, type DaemonClient } from '../client.js';
 import { contextPayload, renderContext, type RulesPayload } from '../context.js';
 import { redact } from '../core/redact.js';
-import { findRepoRoot } from '../core/paths.js';
+import { findRepoRoot, toHostRoot } from '../core/paths.js';
 import { VERSION } from '../version.js';
 import { detectLocale, setLocale, tr } from '../core/locale.js';
 import type { ReviewView } from '../daemon/view.js';
@@ -33,6 +33,11 @@ setLocale(detectLocale());
 const server = new McpServer({ name: 'revdeck', version: VERSION });
 const defaultRoot = findRepoRoot(process.env.REVDECK_ROOT ?? process.cwd());
 const featureId = process.env.REVDECK_FEATURE?.trim() || null;
+
+/** Демон живёт на хосте: в devcontainer путь контейнера заменяется путём хоста. */
+function daemonRoot(root: string): string {
+    return toHostRoot(root, process.env.REVDECK_HOST_ROOT, defaultRoot);
+}
 
 let clientPromise: Promise<DaemonClient> | null = null;
 let scopePromise: Promise<McpScope> | null = null;
@@ -218,7 +223,7 @@ server.registerTool(
             }
             const result = await call<{ items: { ref: { number: number }; title: string; author: string; updatedAt: string }[]; platform: string; project: string }>(
                 'reviews.remoteList',
-                { root: current.root, scope: listScope, limit: limit ?? 50 },
+                { root: daemonRoot(current.root), scope: listScope, limit: limit ?? 50 },
             );
             const text = result.items.map((item) => `#${item.ref.number} ${item.title} · ${item.author} · ${item.updatedAt}`).join('\n') || 'Empty.';
             return ok(`${result.platform}:${result.project}\n${text}`, result as unknown as Record<string, unknown>);
@@ -259,7 +264,7 @@ server.registerTool(
                     continue;
                 }
                 const result = await call<{ review: ReviewView }>('reviews.open', {
-                    root: current.root,
+                    root: daemonRoot(current.root),
                     input: value,
                 });
                 reviews.push(result.review);

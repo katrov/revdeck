@@ -88,6 +88,12 @@ review:
         }
     });
 
+    it('warns when the config root is not visible to the reader', async () => {
+        const loaded = await loadConfig(path.join(tmpdir(), 'revdeck-missing-root'));
+        expect(loaded.path).toBeNull();
+        expect(loaded.warnings.join('\n')).toMatch(/REVDECK_HOST_ROOT/);
+    });
+
     it('rejects unknown levels and bad shapes', () => {
         expect(() => parseConfig('checks:\n  - id: x\n    argv: []\n')).toThrow(/checks/);
         expect(() => reviewConfigSchema.parse({ provider: { type: 'bitbucket' } })).toThrow();
