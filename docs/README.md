@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/brand/icon-128.png" alt="revdeck" width="72"></p>
+
 # revdeck documentation
 
 [English](README.md) | [Русский](ru/README.md)

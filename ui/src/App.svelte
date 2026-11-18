@@ -223,7 +223,7 @@
     {/if}
     <aside class="sidebar">
         <div class="brand">
-            <span class="dot"></span> revdeck
+            <img class="brand-icon" src="/favicon.svg" alt="" aria-hidden="true" /> revdeck
             <button
                 class="sidebar-collapse"
                 type="button"

@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/logo-dark.svg">
+    <img src="docs/assets/brand/logo.svg" alt="revdeck" width="360">
+  </picture>
+</p>
+
 # revdeck
 
 [English](README.md) | Русский · [Документация](docs/ru/README.md)

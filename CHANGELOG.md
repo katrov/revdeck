@@ -37,6 +37,7 @@ All notable changes to this project are documented here. The format is based on
   never touches the platform.
 - Command reference page (`#/help`): searchable CLI commands, examples, common flags and UI
   shortcuts with click-to-copy; reachable from the sidebar, the command palette and `h`.
+- Brand assets: logo and icon variants in `docs/assets/brand`, a dark-mode README logo, a documentation index icon, UI favicon/Apple touch icons and the sidebar mark.
 
 ### Fixed
 
