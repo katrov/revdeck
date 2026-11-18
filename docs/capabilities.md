@@ -20,16 +20,16 @@ agent (MCP/CLI) ──unix socket──▶ revdeck daemon ──glab/gh──▶
 The core guarantees:
 
 - **The human publishes.** Agents write drafts (summaries, findings, replies, line comments). A human
-  approves the exact plan in the UI or CLI; the daemon then posts it. An agent cannot create an
-  approval.
+  approves the exact plan in the UI or CLI on the host; the daemon then posts it. The devcontainer
+  bridge has no `publish.approve`/`publish.commit` (`CAPABILITY`), so an agent cannot create an approval.
 - **Tokens stay on the host.** The daemon calls `glab`/`gh`; platform tokens are not passed over RPC
   and are scrubbed from child environments.
 - **Project rules are explicit.** For changed paths revdeck selects repository documents and exact
   sections (`AGENTS.md`, architecture, style guides, ADRs).
 - **One local database.** Reviews, projects, features, drafts, approvals and audit live in SQLite in
   the user's state directory.
-- **Agent work is review-only.** Checks are planned by the agent and run only after human consent.
-  Publishing, resolving and approvals remain human actions.
+- **Agent work is review-only.** Checks are planned by the agent and run by a human in the UI or the
+  host CLI; the bridge denies `checks.run`. Publishing, resolving and approvals remain human actions.
 
 ## Reviews
 
@@ -53,7 +53,7 @@ The core guarantees:
 - Optional secret scan with masked previews only.
 - Optional review version history by head/base SHA.
 - Change groups: explicit or derived by file kind/module.
-- Project checks: argv without a shell, path scoping, explicit `--run --yes` confirmation.
+- Project checks: argv, path scoping; the agent only plans, a human runs them in the UI or host CLI with the full command shown.
 - Read-only reviews: drafts, findings, comments, reactions, checks and publishing are disabled.
 - Export/import of the legacy file format.
 
@@ -82,7 +82,9 @@ A project is a repository, not a "frontend" or "backend" kind.
 - `revdeck projects` lists projects, roots and review counts; `revdeck projects add <path>` registers a
   project before its first review.
 - The UI has a project switcher and a projects home; only the selected project's reviews are shown.
-  The selection is stored in the URL and local storage.
+  The selection is stored in the URL and local storage. The projects home can add a project, edit its
+  display title and working-copy roots, and delete the project with its cached reviews. Deletion never
+  touches MRs/PRs or comments on the platform.
 - An MCP server is scoped to the repository it runs in: status/list/open only see that project, and a
   review id or URL from another project is rejected. `REVDECK_ROOT` supports multi-root workspaces.
 - Devcontainers mount a stable bridge to the host daemon; the container never starts its own daemon.
@@ -124,11 +126,13 @@ a permanent project link; a project appears in a feature while at least one of i
 
 ## User interface
 
-- Local Svelte 5 SPA served by the daemon with a one-time launch token and cookie session.
-- Project switcher, projects home, feature list and feature page.
+- Local Svelte 5 SPA served by the daemon with a launch token (rotated with the daemon) and cookie session.
+- Project switcher, projects home (add/edit/delete project), feature list and feature page.
 - Review tabs: Overview, Threads, Findings, Diff, Rules, Analytics.
-- Keyboard shortcuts (`1`–`5`, `o`, `r`, `s`, `p`, `?`), command palette, deep links to threads,
+- Keyboard shortcuts (`1`–`5`, `o`, `r`, `s`, `p`, `?`, `h`), command palette, deep links to threads,
   findings and diff lines with browser Back/Forward.
+- Command reference page (`#/help`): searchable CLI usage, common flags and UI shortcuts, with
+  click-to-copy commands. Reachable from the sidebar and by `h`.
 - Markdown preview, attachment button, reactions, line comments, publish dialog with exact plan.
 - Russian and English interface; language is independent from the language of review output.
 - Responsive sidebar and mobile backdrop; dark/light theme via CSS variables.
@@ -137,6 +141,12 @@ a permanent project link; a project appears in a feature while at least one of i
 
 - Unix socket with `0700` directory and `0600` socket; loopback UI only; `Host`/`Origin` checks,
   `HttpOnly` `SameSite=Strict` cookie, CSP.
+- The devcontainer bridge is agent-scoped (`read`/`draft`): `publish.*`, `checks.run`, decisions,
+  platform writes and feature/project administration return `CAPABILITY`. The UI token is not mounted
+  into the container.
+- Rule and profile documents must be git-tracked, have a safe extension and are denied for local
+  secrets (`.env*`, `.git/config`, `.npmrc`, `.revdeck.local.*`, keys); reads verify the opened fd's
+  realpath to close symlink TOCTOU.
 - Platform CLI calls without a shell, outside the working copy, with a scrubbed environment; secrets
   redacted in logs and errors.
 - MR text, comments and diff are untrusted data; the skill and context say so.
@@ -144,7 +154,8 @@ a permanent project link; a project appears in a feature while at least one of i
   external images are links, not loads.
 - Approvals are random, single-use, TTL-bound and tied to the review and plan hash.
 - Project and feature scopes are **context isolation**, not a security boundary: one daemon and one
-  database remain; a process with access to the user's home can read them.
+  database remain. The bridge limits writes, but read methods still see the local database; a process
+  with access to the user's home can read it.
 - Hard isolation would require a separate daemon/state directory under another user/container; that is
   outside the current model and breaks cross-project review.
 

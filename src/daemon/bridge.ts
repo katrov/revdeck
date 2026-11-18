@@ -11,16 +11,19 @@ import {
 } from '../core/paths.js';
 import type { ReviewService } from './service.js';
 import { startRpcServer } from './rpc.js';
+import { AGENT_POLICY } from './capabilities.js';
 
 export interface DevcontainerBridgeInfo {
     pid: number;
     port: number;
-    token: string;
     url: string;
     socket: string;
     startedAt: string;
     version: string;
     protocol: number;
+    capabilities: string[];
+    /** Только agent-scoped токен; UI-токен в контейнер не попадает. */
+    agentToken: string;
 }
 
 /**
@@ -29,7 +32,7 @@ export interface DevcontainerBridgeInfo {
  */
 export async function startDevcontainerBridge(
     service: ReviewService,
-    info: Omit<DevcontainerBridgeInfo, 'socket'>,
+    info: { pid: number; port: number; url: string; startedAt: string; version: string; protocol: number; agentToken: string },
 ): Promise<{ close(): Promise<void> }> {
     // Мост монтируется в контейнер с другим uid: каталоги и файлы должны быть читаемы.
     // Родительский ~/.local/state/revdeck остаётся 0700, поэтому другие пользователи хоста
@@ -38,9 +41,24 @@ export async function startDevcontainerBridge(
     await ensureDir(devcontainerBridgeDir(), 0o700);
     await ensureDir(devcontainerRunDir(), 0o755);
     await ensureDir(devcontainerStateDir(), 0o755);
-    const rpc = await startRpcServer(service, devcontainerSocketPath(), { mode: 0o666, dirMode: 0o755 });
+    const rpc = await startRpcServer(service, devcontainerSocketPath(), {
+        mode: 0o666,
+        dirMode: 0o755,
+        policy: AGENT_POLICY,
+    });
     try {
-        const payload: DevcontainerBridgeInfo = { ...info, socket: devcontainerSocketPath() };
+        // Токен UI в контейнер не попадает: мост даёт только агентские методы.
+        const payload: DevcontainerBridgeInfo = {
+            pid: info.pid,
+            port: info.port,
+            url: info.url,
+            socket: devcontainerSocketPath(),
+            startedAt: info.startedAt,
+            version: info.version,
+            protocol: info.protocol,
+            capabilities: [...AGENT_POLICY.capabilities],
+            agentToken: info.agentToken,
+        };
         await writeFileAtomic(devcontainerInfoPath(), `${JSON.stringify(payload, null, 2)}\n`, 0o644, 0o755);
     } catch (error) {
         await rpc.close();

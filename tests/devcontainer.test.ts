@@ -157,11 +157,11 @@ describe('devcontainer', () => {
         const bridge = await startDevcontainerBridge(service, {
             pid: process.pid,
             port: 0,
-            token: 'test-token',
             url: 'http://127.0.0.1:0',
             startedAt: new Date().toISOString(),
             version: 'test',
             protocol: 1,
+            agentToken: 'agent-test-token',
         });
         expect(existsSync(devcontainerSocketPath())).toBe(true);
         expect(existsSync(devcontainerInfoPath())).toBe(true);
@@ -169,8 +169,16 @@ describe('devcontainer', () => {
         expect(statSync(path.dirname(devcontainerInfoPath())).mode & 0o777).toBe(0o755);
         expect(statSync(devcontainerSocketPath()).mode & 0o777).toBe(0o666);
         expect(statSync(devcontainerInfoPath()).mode & 0o777).toBe(0o644);
+        const info = JSON.parse(await readFile(devcontainerInfoPath(), 'utf8')) as Record<string, unknown>;
+        expect(info.token).toBeUndefined();
+        expect(info.agentToken).toBe('agent-test-token');
+        expect(info.capabilities).toEqual(['read', 'draft']);
         const client = await connectSocket(devcontainerSocketPath());
         await expect(client.request('reviews.list')).resolves.toEqual({ reviews: [] });
+        await expect(client.request('checks.run', { review: 'none', allowRun: true })).rejects.toMatchObject({ code: 'CAPABILITY' });
+        await expect(
+            client.request('publish.approve', { review: 'none', kind: 'reply', ids: [], hash: 'x' }),
+        ).rejects.toMatchObject({ code: 'CAPABILITY' });
         client.close();
         await bridge.close();
         service.close();

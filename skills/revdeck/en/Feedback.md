@@ -27,8 +27,9 @@ with justification.
    - "reply" and "disagree" — prepare the reply text, short and to the point;
    - "unclear" — ask the human a question.
    Do not move to the next thread without confirmation.
-7. After the edits, run the checks of the affected projects from `rules.checks`:
-   `revdeck checks <N> --run --yes`; report the result as is, including failures.
+7. After the edits, show the checks from `rules.checks` to the human and ask them to run them in the
+   UI or on the host. Do not run `revdeck checks --run --yes` from the container: the bridge denies it.
+   Report the result as is, including failures.
 8. Produce the result: a list of threads with the action and ready-made reply texts, then "Rule
    candidates" per `Rules.md` if the reviewers demanded something that is not in the documents.
    Record reply drafts via `revdeck_draft_reply` (CLI: `revdeck reply <N> --thread <id> --body ...`);

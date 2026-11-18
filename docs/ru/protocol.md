@@ -8,9 +8,12 @@
    Строки JSON, по одному запросу/ответу на строку.
 2. **Сокет моста для devcontainer**: `~/.local/state/revdeck/devcontainer/run/daemon.sock`, тот же
    протокол по стабильному домашнему пути. Демон обслуживает его дополнительно к основному сокету и
-   кладёт копию `daemon.json` в `~/.local/state/revdeck/devcontainer/state/`.
-3. **HTTP**: `POST /api/rpc` на loopback с cookie-сессией. Нужен для контейнеров, куда сокет не
-   проброшен (`REVDECK_URL` + `REVDECK_TOKEN`).
+   пишет info-файл в `~/.local/state/revdeck/devcontainer/state/daemon.json`. Мост **агентский**:
+   разрешены только `read`/`draft`; в info-файле лежит `agentToken` для ограниченного `/api/rpc`,
+   токена UI там нет.
+3. **HTTP**: `POST /api/rpc` на loopback с cookie-сессией. Токен UI остаётся на хосте и в контейнер
+   не монтируется. Для контейнера без проброса сокета задайте `REVDECK_URL` + `REVDECK_TOKEN` из
+   пользовательского окружения; токен агентский.
 4. **UI HTTP**: `/api/*` и SSE `/api/events` для браузера.
 
 ## Сообщения
@@ -33,8 +36,9 @@
 {"id": 1, "error": {"message": "...", "code": "APPROVAL", "hint": "..."}}
 ```
 
-`id` — число. Соединение считается недоверенным до первого успешного запроса: авторизация — права
-файла сокета.
+`id` — число. Основной сокет авторизуется правами файла (0600). Мост devcontainer авторизуется
+капабилити транспорта: агенту доступны read/draft, а human-only методы возвращают
+`{"error":{"code":"CAPABILITY"}}`, даже если сокет доступен.
 
 ## Методы
 
@@ -43,6 +47,8 @@
 | `ping` | — | версия, протокол, pid |
 | `projects.list` | — | зарегистрированные проекты с числом ревью и root'ами |
 | `projects.register` | `root` | проект, определённый по рабочей копии |
+| `projects.update` | `project`, `title?`, `roots?` | переименовать проект или заменить root'ы |
+| `projects.remove` | `project` | удалить проект и локальные ревью (платформа не затрагивается) |
 | `reviews.list` | `project?` / `root?` | сохранённые ревью, опционально в скоупе проекта |
 | `features.list` | `project?`, `includeArchived?` | сводки фич |
 | `features.get` | `feature` | фича с упорядоченными участниками и ролями |
@@ -81,8 +87,21 @@
 | `publish.approve` | `review`, `kind`, `ids[]`, `hash` | `approvalId`, `expiresAt` |
 | `publish.commit` | `review`, `approvalId` | результаты по пунктам |
 | `rules.get` | `review` | markdown правил, проверки, предупреждения |
-| `checks.run` | `review`, `allowRun`, `ids[]` | результаты проверок |
-| `audit.tail` | `limit` | последние действия |
+| `checks.run` | `review`, `allowRun`, `ids[]` | результаты проверок (human-only) |
+
+## Капабилити
+
+- **human** — основной сокет (0600), UI-сессия на хосте, CLI на хосте. Все методы.
+- **agent** — мост devcontainer и ограниченный HTTP-токен. Только read/draft:
+  `reviews.*` (чтение/open/refresh), `diff.get`, `rules.get`, `features.list/get/context/forReview`,
+  `features.addNote/updateNote/deleteNote` (автор принудительно `agent`; только свои заметки),
+  `drafts.put`, `findings.put/list`, `summary.put`, `notes.*` (серверные поля публикации
+  игнорируются), `publish.preview`, `projects.list`, `versions.*`, `analytics.get`, `secrets.get`.
+
+Human-only методы возвращают `CAPABILITY` на мосту: `publish.approve`, `publish.commit`,
+`checks.run`, `decisions.put`, `comments.update/delete`, `reactions.*`, `attachments.upload`,
+`reviews.remove`, `projects.register/update/remove` и администрирование фич
+(`features.create/update/delete/addReviews/removeReview/reorder`).
 
 ## Скоуп проекта
 
@@ -125,8 +144,9 @@
 3. `publish.commit` проверяет, что approval не использован и не истёк, помечает его использованным и
    выполняет только `items`. Уже отправленные пункты пропускаются.
 
-Агент не может вызвать `publish.approve`: MCP-инструмент его не предоставляет. Человек подтверждает
-в UI или CLI с `--yes`.
+Агент не может вызвать `publish.approve`: MCP-инструмент его не предоставляет, а мост отвечает
+`CAPABILITY`. Человек подтверждает в UI или в CLI на хосте (`--yes`); CLI на хосте использует
+основной human-сокет.
 
 ## HTTP API (UI)
 
@@ -137,11 +157,11 @@
 | GET | `/api/health` | живость |
 | GET | `/api/projects` | зарегистрированные проекты |
 | GET | `/api/reviews?project=` | список ревью, опционально в скоупе |
-| POST | `/api/projects/register` | зарегистрировать проект рабочей копии |
+| POST | `/api/projects/register`, `/update`, `/remove` | зарегистрировать, изменить или удалить проект |
 | GET | `/api/state?review=` | снимок для UI |
 | GET | `/api/diff?review=&file=` | hunks файла |
 | GET | `/api/rules?review=` | правила |
-| GET | `/api/events` | SSE: `review` |
+| GET | `/api/events` | SSE: `review`, `feature`, `project` |
 | POST | `/api/reviews/open`, `/api/reviews/refresh` | открыть/обновить |
 | POST | `/api/drafts`, `/api/findings`, `/api/summary`, `/api/decisions` | черновики |
 | POST | `/api/notes` | `action: add/update/delete` |
@@ -157,5 +177,6 @@
 
 ## Версионирование
 
-`PROTOCOL_VERSION` в `src/version.ts` сверяется при рукопожатии; клиент и демон одной версии пакета.
+`PROTOCOL_VERSION` в `src/version.ts` передаётся в `ping` и в info моста; клиент и демон должны быть
+одной версии пакета. Версия 2 — agent-scoped мост.
 Несовпадение методов возвращает `METHOD` с подсказкой обновить revdeck.

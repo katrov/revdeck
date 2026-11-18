@@ -35,8 +35,8 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
 - `src/daemon/store.ts` — SQLite (`node:sqlite`): projects and their roots, reviews, diff/thread snapshot,
   drafts, findings, decisions, comments, approvals, audit.
 - `src/daemon/rpc.ts` — [JSON-RPC](protocol.md) over a Unix socket (0600) for the CLI and MCP.
-- `src/daemon/bridge.ts` — an additional RPC socket in a stable home-based directory for devcontainers.
-- `src/daemon/http.ts` — UI and `/api/*`, SSE events, cookie session with a one-time token.
+- `src/daemon/bridge.ts` — an additional agent-scoped RPC socket in a stable home-based directory for devcontainers (no publish/checks/admin, no UI token).
+- `src/daemon/http.ts` — UI and `/api/*`, SSE events, cookie session with a launch token (not mounted into containers).
 - `src/cli` — commands, `init`, `doctor`, export/import of the old file format.
 - `src/mcp` — MCP server: tools and prompts, a thin wrapper over RPC.
 - `ui` — Svelte 5 SPA, built into `dist/ui`.
@@ -49,8 +49,9 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
 3. The agent requests `revdeck_context`: the daemon assembles effective rules (documents and sections
    for changed paths), snippets, threads, and findings.
 4. The agent writes drafts (`drafts.put`, `findings.put`, `summary.put`, `notes.update`).
-5. A human in the UI calls `publish.preview` → sees the exact plan and hash → `publish.approve` →
-   `publish.commit`. The daemon executes only the items included in the approved plan.
+5. A human in the UI or host CLI calls `publish.preview` → sees the exact plan and hash →
+   `publish.approve` → `publish.commit`. The bridge has no approve/commit (`CAPABILITY`); the daemon
+   executes only the items included in the approved plan.
 6. Background sync every 2 minutes refreshes open reviews and broadcasts SSE events to the UI.
 
 ## Data model
@@ -76,7 +77,9 @@ registry (`projects`, `project_roots`) is populated when a review is opened or w
 registered explicitly (`revdeck projects add <path>`).
 
 - The UI selects one project at a time: a switcher, a projects home, and a review queue scoped to the
-  selection. The selection is kept in the URL and in local storage.
+  selection. The selection is kept in the URL and in local storage. The projects home registers a
+  working copy, edits the display title and roots, and deletes a project with its cached reviews;
+  project deletion never calls the platform.
 - The MCP server is the isolation point. It resolves its project from `REVDECK_ROOT` (or the current
   directory), lists only that project, and rejects review ids/URLs from other projects. The agent gets
   no `root` or project overrides.
@@ -128,7 +131,8 @@ documents declared in `context.sources` of each repository (`context.maxBytes` c
   Harnesses without MCP use the CLI.
 - **Rules**: `rules.map`/`rules.sources` in `.revdeck.yml`; rule packs can be distributed as a regular
   configuration file.
-- **Checks**: `checks` with argv, no shell; run only on explicit confirmation.
+- **Checks**: `checks` with argv; the agent only plans, a human runs them in the UI or host CLI;
+  the bridge denies `checks.run`.
 
 ## Performance
 

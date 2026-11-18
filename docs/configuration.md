@@ -43,7 +43,8 @@ publish:
 
 `revdeck` also reads `.revdeck.local.yml` (or `.revdeck.local.yaml`) next to the base config. Use it for
 local roles, checks, output language or provider settings without changing the shared file. `init`
-adds both local names to `.gitignore`.
+adds both local names to `.gitignore`. If the file is **tracked by git**, it came from the repository
+(not from the user) and is ignored as personal overrides; a warning is shown.
 
 Merge rules:
 
@@ -52,6 +53,13 @@ Merge rules:
 - `review.readOnly: true` in the base cannot be disabled locally (the effective value is OR);
 - local file alone is allowed, but a base `.revdeck.yml` is recommended for the team;
 - YAML/schema errors in the local file are reported, never silently ignored.
+
+Rule and `context.sources` documents are read only if they are **tracked by git**, have a safe
+extension (`.md`, `.mdx`, `.rst`, `.txt`, `.adoc`; profiles may also be `.yaml`, `.yml`, `.json`) and
+do not match the secret deny-list (`.env*`, `.git/**`, `.npmrc`, `.revdeck.local.*`, `*.pem`, keys).
+The opened file descriptor's realpath is checked inside the root, so a parent symlink swap cannot
+escape the repository. In a directory without `.git` (tests, scratch dirs) the tracked check is
+skipped.
 
 ```yaml
 # .revdeck.local.yml — do not commit
@@ -66,7 +74,7 @@ output:
 
 | Field | Default | Meaning |
 |---|---|---|
-| `type` | `auto` | `auto` — inferred from the git remote; otherwise an explicit platform |
+| `type` | `auto` | `auto` — inferred from the git remote; otherwise an explicit platform. `revdeck init` writes the remote platform, or `gitlab` when the host is not recognized (`--provider` overrides it) |
 | `host` | from the remote | host without a scheme |
 | `project` | from the remote | GitLab `group/project`, GitHub `owner/repo` |
 | `base` | `develop`/`main` | base for the local diff |
@@ -90,6 +98,10 @@ project do not mix their rules.
 revdeck projects                 # list projects, review counts and roots
 revdeck projects add /path/repo  # register a project before its first review
 ```
+
+In the projects home, **Add project** registers a working copy, **Edit** changes the display title
+and the working-copy roots, and **Delete** removes the project and its cached reviews from revdeck.
+MRs/PRs and comments on the platform are never touched by project deletion.
 
 The UI and agent scope are described in [architecture.md](architecture.md) and
 [capabilities](capabilities.md#project-scopes).
@@ -308,8 +320,10 @@ alternative. Examples: `src/**/*.ts`, `docs/{guides,adr}/**`, `**/*.test.ts`.
 
 ## checks
 
-Checks are argv arrays, not shell strings. This matters: the config lives in the repository, and a shell
-string would allow arbitrary code to be executed during a review.
+Checks are argv arrays that execute code on the host. The repository controls them, so they are
+human-only: the devcontainer bridge denies `checks.run`, and the CLI refuses `--run` inside a
+container. `argv: ["sh","-c","…"]` is still an argv array and executes arbitrary code — read the full
+command before confirming.
 
 | Field | Meaning |
 |---|---|
@@ -317,11 +331,13 @@ string would allow arbitrary code to be executed during a review.
 | `name` | display name |
 | `argv` | command and arguments; the executable comes first |
 | `when` | glob paths: run only if the diff touched them; empty — always |
-| `consent` | requires explicit confirmation (default `true`) |
+| `consent` | deprecated and ignored: checks always require a human UI/host-CLI run |
 | `timeoutMs` | timeout (default 300,000) |
 
-Running: `revdeck checks <N> --run --yes`, or **Run matching** in the Rules tab with an explicit
-confirmation. Read-only reviews disable the runner. The MCP tool only shows the plan.
+Running: a human uses **Run matching** in the Rules tab (the dialog shows the full argv) or
+`revdeck checks <N> --run --yes` on the host; `revdeck checks` prints the commands first. Read-only
+reviews disable the runner. The agent can only show the plan; the bridge returns `CAPABILITY` for
+`checks.run`. Host checks are not sandboxed yet.
 
 ## publish
 
@@ -335,7 +351,7 @@ confirmation. Read-only reviews disable the runner. The MCP tool only shows the 
 |---|---|
 | `REVDECK_STATE_DIR` | state directory (default `~/.local/state/revdeck`) |
 | `REVDECK_RUNTIME_DIR` | socket directory (default `$XDG_RUNTIME_DIR/revdeck`) |
-| `REVDECK_URL` + `REVDECK_TOKEN` | connect to the daemon over HTTP (container/port forwarding) |
+| `REVDECK_URL` + `REVDECK_TOKEN` | connect to the daemon over HTTP (container/port forwarding); the token is agent-scoped, not the UI token |
 | `REVDECK_DEV_CONTAINER=1` | do not start a local daemon; fail with a host-daemon hint instead |
 | `REVDECK_UI_HOST` | host used by `revdeck ui` from a container (for example `host.docker.internal`) |
 | `REVDECK_ROOT` | project root for the MCP server |

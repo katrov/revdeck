@@ -64,6 +64,20 @@ describe('revdeck init', () => {
         expect((await lstat(path.join(dir, 'SKILL.md'))).isSymbolicLink()).toBe(true);
         expect(existsSync(path.join(dir, 'Review.md'))).toBe(false);
     });
+
+    it('writes gitlab as the default provider when the remote is not recognized', async () => {
+        await runInit(root, options);
+
+        const config = await readFile(path.join(root, '.revdeck.yml'), 'utf8');
+        expect(config).toContain('provider:\n  type: gitlab\n');
+    });
+
+    it('honours an explicit provider', async () => {
+        await runInit(root, { ...options, provider: 'github' });
+
+        const config = await readFile(path.join(root, '.revdeck.yml'), 'utf8');
+        expect(config).toContain('provider:\n  type: github\n');
+    });
 });
 
 describe('revdeck eject', () => {

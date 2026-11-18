@@ -2,7 +2,8 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 import type { EffectiveRules, RuleDocument, RuleScope } from './types.js';
 import type { ReviewConfig } from './config.js';
-import { assertConfigPath, checksForPaths, readConfigFile } from './config.js';
+import { checksForPaths, readConfigFile } from './config.js';
+import { assertSafeDocument } from './doc-policy.js';
 import { classifyFile, globToRegExp } from './glob.js';
 import { redactLine } from './redact.js';
 import type { Locale } from './locale.js';
@@ -51,9 +52,9 @@ export async function buildEffectiveRules(options: BuildRulesOptions): Promise<E
         const relative = rawPath!;
         let resolved: string;
         try {
-            resolved = assertConfigPath(root, relative);
+            resolved = await assertSafeDocument(root, relative, 'rules');
         } catch (error) {
-            warnings.push(`${relative}: ${(error as Error).message}`);
+            warnings.push((error as Error).message);
             return { path: relative, exists: false, sections: [], excerpt: '', truncated: false };
         }
         let cached = cache.get(resolved);

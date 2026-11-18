@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/brand/icon-128.png" alt="revdeck" width="72"></p>
+
 # revdeck documentation
 
 [English](README.md) | [Русский](ru/README.md)
@@ -13,5 +15,6 @@ slightly behind.
 | RPC and HTTP protocol | [protocol.md](protocol.md) | [ru/protocol.md](ru/protocol.md) |
 | Threat model | [threat-model.md](threat-model.md) | [ru/threat-model.md](ru/threat-model.md) |
 | Harness integrations | [integrations.md](integrations.md) | [ru/integrations.md](ru/integrations.md) |
+| Brand assets | [assets/brand/README.md](assets/brand/README.md) | [(EN)](assets/brand/README.md) |
 
 Start with the [README](../README.md) for installation, commands and MCP setup.

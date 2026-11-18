@@ -132,8 +132,9 @@ revdeck devcontainer          # показать mounts и окружение
 revdeck devcontainer --write  # добавить их в .devcontainer/devcontainer.json
 ```
 
-`--write` монтирует стабильный мост `~/.local/state/revdeck/devcontainer/run` (сокет) и
-`~/.local/state/revdeck/devcontainer/state` (только чтение, `daemon.json`) и выставляет:
+`--write` монтирует стабильный мост `~/.local/state/revdeck/devcontainer/run` (агентский сокет) и
+`~/.local/state/revdeck/devcontainer/state` (только чтение, info-`daemon.json`: capabilities и агентский токен, без токена UI) и
+выставляет:
 
 ```json
 {
@@ -153,26 +154,27 @@ revdeck devcontainer --write  # добавить их в .devcontainer/devcontai
 контейнер. В контейнере revdeck никогда не запускает свой демон: если сокет недоступен, команда
 падает с ошибкой `DEVCONTAINER` и подсказкой. `revdeck doctor` не ищет `glab`/`gh` в контейнере.
 
-На macOS с Docker Desktop Unix-сокет хоста не пробрасывается. `daemon.json` моста читается
-пользователем контейнера (`run`/`state` — `0755`, файл — `0644`, приватный родитель остаётся `0700`),
-а loopback-сервер принимает `Host: host.docker.internal`; достаточно `revdeck daemon restart`. На Linux,
-если сокет недоступен, используйте `revdeck daemon restart --host 0.0.0.0` (или
-`revdeck daemon install --host 0.0.0.0` для сервиса); это открывает HTTP-порт в сеть — только для
-доверенной сети. Контейнер читает `daemon.json` и переключается на HTTP с тем же токеном сессии;
-токен в репозиторий не пишется.
+На macOS с Docker Desktop Unix-сокет хоста не пробрасывается. Мост агентский: разрешены только
+`read`/`draft`, токена UI в его `daemon.json` нет. UI открывается на хосте, контейнер использует
+смонтированный сокет. Если сокет недоступен, задайте `REVDECK_URL` + `REVDECK_TOKEN` из
+пользовательского окружения (агентский токен); автоматического HTTP-fallback с токеном UI нет.
+
+На Linux при недоступном сокете действует тот же `REVDECK_URL` + `REVDECK_TOKEN`. Не передавайте
+токен UI в контейнер; `--host 0.0.0.0` нужен для браузера на другой доверенной машине, а не для
+расширения прав агента.
 
 `revdeck devcontainer --write` добавляет `REVDECK_*` в MCP-сервер `revdeck` в `.mcp.json` и
 `.cursor/mcp.json` внутри репозитория. Пользовательский MCP вне репозитория нужно снабдить теми же
 переменными вручную, иначе он может поднять второй демон в контейнере.
 
-Пользователь контейнера должен иметь доступ к сокету хоста (обычно совпадает UID; сокет 0600). Чтобы
-открыть UI из контейнера, запустите демон на хосте с `revdeck daemon start --host 0.0.0.0` и
-используйте `host.docker.internal`; иначе открывайте UI на хосте.
+Пользователь контейнера должен иметь доступ к сокету моста (сокет `0666` в смонтированном каталоге
+`0755`; методы ограничены капабилити `read`/`draft`). UI открывается на хосте через `revdeck ui`;
+токен UI в контейнер не передаётся.
 
 Запасные варианты:
 
-1. `REVDECK_URL=http://host.docker.internal:<port>` и `REVDECK_TOKEN=<token>` — HTTP-транспорт,
-   демон на хосте запущен с `--host 0.0.0.0`.
+1. `REVDECK_URL=http://host.docker.internal:<port>` и `REVDECK_TOKEN=<agent-scoped-token>` —
+   HTTP-транспорт, демон на хосте запущен с `--host 0.0.0.0`; токен агентский, не токен UI.
 2. `revdeck export <N>` на хосте и `revdeck import <N>` в контейнере — файловый мост.
 
 ## Несколько проектов и devcontainer'ы

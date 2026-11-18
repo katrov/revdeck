@@ -22,7 +22,11 @@
         if (!review || review.readOnly) return;
         const ids = id ? [id] : rules?.checks.filter((check) => check.matched).map((check) => check.id);
         if (!ids?.length) return;
-        if (!confirm(t(`Запустить проверки: ${ids.join(', ')}?`, `Run checks: ${ids.join(', ')}?`))) return;
+        const commands = (rules?.checks ?? [])
+            .filter((check) => ids.includes(check.id))
+            .map((check) => `${check.id}: ${check.argv.join(' ')}`)
+            .join('\n');
+        if (!confirm(t(`Запустить проверки?\n\n${commands}`, `Run checks?\n\n${commands}`))) return;
         checkBusy = id ?? '*';
         try {
             const { results } = await runChecks(review.id, ids);

@@ -1,9 +1,14 @@
 <script lang="ts">
-    import { app, loadReview, notify, setTab } from '../lib/state.svelte';
+    import { app, loadReview, notify, setTab, showHelp, showProjectsHome } from '../lib/state.svelte';
     import type { Tab } from '../lib/types';
     import { t } from '../lib/i18n.svelte';
 
-    let { onclose, onpublish, onopen }: { onclose: () => void; onpublish: () => void; onopen: () => void } = $props();
+    let {
+        onclose,
+        onpublish,
+        onopen,
+        onaddproject,
+    }: { onclose: () => void; onpublish: () => void; onopen: () => void; onaddproject: () => void } = $props();
 
     interface Action {
         id: string;
@@ -24,6 +29,9 @@
         const review = app.review;
         const list: Action[] = [
             { id: 'open-review', label: t('Открыть ревью', 'Open review'), hint: 'o', run: onopen },
+            { id: 'add-project', label: t('Добавить проект', 'Add project'), hint: 'revdeck', run: onaddproject },
+            { id: 'projects', label: t('Все проекты', 'All projects'), hint: 'projects', run: () => showProjectsHome() },
+            { id: 'help', label: t('Справка по командам', 'Command reference'), hint: 'h', run: () => showHelp() },
         ];
         const tabs: [Tab, string][] = [
             ['overview', t('Обзор', 'Overview')],

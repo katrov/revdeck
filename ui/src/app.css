@@ -162,11 +162,11 @@ pre {
     letter-spacing: -0.01em;
 }
 
-.brand .dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--ok);
+.brand .brand-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    flex: 0 0 auto;
 }
 
 .sidebar-list {
@@ -1602,6 +1602,39 @@ mark {
     margin-bottom: 5px;
 }
 
+.sidebar-help {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    margin: 8px 0 6px;
+    padding: 5px 7px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--panel);
+    color: var(--muted);
+    font-size: 11.5px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sidebar-help:hover {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.sidebar-help-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    font-size: 10.5px;
+    font-weight: 700;
+}
+
 .breadcrumbs {
     display: flex;
     align-items: center;
@@ -1642,10 +1675,32 @@ mark {
 
 .projects-home-head {
     display: flex;
+    flex-wrap: wrap;
     gap: 18px;
     align-items: flex-start;
     justify-content: space-between;
     margin-bottom: 18px;
+}
+
+.projects-home-intro {
+    flex: 1 1 360px;
+    min-width: 320px;
+}
+
+.projects-home-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: nowrap;
+    margin-left: auto;
+    max-width: 100%;
+}
+
+.projects-home-actions .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .projects-home-head h1 {
@@ -1660,6 +1715,8 @@ mark {
 
 .project-home-search {
     width: 210px;
+    min-width: 120px;
+    flex: 1 1 160px;
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 6px 9px;
@@ -1676,19 +1733,58 @@ mark {
 .project-card {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 8px;
     text-align: left;
     border: 1px solid var(--border);
     background: var(--panel);
     border-radius: var(--radius);
     padding: 13px 14px;
     box-shadow: var(--shadow);
-    cursor: pointer;
 }
 
 .project-card:hover {
     border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
     background: color-mix(in srgb, var(--accent-soft) 35%, var(--panel));
+}
+
+.project-card-open {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: 100%;
+    border: 0;
+    background: none;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.project-card-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+.project-card-action {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 2px 7px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.project-card-action:hover {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.project-card-action.danger:hover {
+    color: var(--danger, #d33);
+    border-color: color-mix(in srgb, var(--danger, #d33) 45%, var(--border));
 }
 
 .project-card-top {
@@ -1727,6 +1823,163 @@ mark {
     font-size: 10.8px;
 }
 
+/* ---------- command reference ---------- */
+
+.help-page {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 24px 30px 40px;
+}
+
+.help-search {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    max-width: 430px;
+    margin: 0 0 18px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--muted);
+}
+
+.help-search input {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font: inherit;
+    color: var(--text);
+}
+
+.help-search input:focus {
+    outline: none;
+}
+
+.help-group {
+    margin: 0 0 22px;
+}
+
+.help-group h2 {
+    margin: 0 0 9px;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+}
+
+.help-commands {
+    display: grid;
+    gap: 8px;
+}
+
+.help-command {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--panel);
+    padding: 10px 12px;
+}
+
+.help-command p {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.45;
+}
+
+.help-command-head {
+    display: flex;
+    align-items: center;
+}
+
+.help-usage {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+    border: 0;
+    background: none;
+    padding: 0;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.help-usage code {
+    background: var(--code);
+    border-radius: 5px;
+    padding: 2px 6px;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.help-copy {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+
+.help-usage:hover .help-copy,
+.help-usage:focus-visible .help-copy {
+    opacity: 1;
+}
+
+.help-example {
+    margin-top: 7px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    padding: 4px 7px;
+    font-size: 11.5px;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.help-example:hover {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.help-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.help-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--panel);
+    padding: 4px 8px;
+    color: var(--muted);
+    font-size: 11.5px;
+}
+
+.help-chip code,
+.help-chip kbd {
+    color: var(--text);
+    font-size: 11.5px;
+}
+
+.project-edit-key {
+    margin-top: 8px;
+    font-family: var(--mono);
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 860px) {
+    .help-page {
+        padding: 16px;
+    }
+}
+
 @media (max-width: 860px) {
     .projects-home {
         padding: 16px;
@@ -1736,7 +1989,20 @@ mark {
         flex-direction: column;
     }
 
+    .projects-home-intro {
+        flex-basis: auto;
+        min-width: 0;
+    }
+
+    .projects-home-actions {
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        margin-left: 0;
+    }
+
     .project-home-search {
+        flex-basis: 100%;
         width: 100%;
     }
 }
@@ -2173,17 +2439,18 @@ mark {
     min-width: 120px;
 }
 
-.mobile-sidebar-toggle {
-    display: none;
+.sidebar-reopen {
+    display: inline-flex;
+    position: fixed;
+    left: 16px;
+    bottom: 16px;
+    z-index: 40;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
 }
 
 @media (max-width: 860px) {
-    .mobile-sidebar-toggle {
-        display: inline-flex;
-        position: fixed;
-        left: 16px;
-        bottom: 16px;
-        z-index: 40;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+    .sidebar-reopen {
+        left: 12px;
+        bottom: 12px;
     }
 }

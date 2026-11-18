@@ -8,9 +8,12 @@
    JSON lines, one request/response per line.
 2. **Devcontainer bridge socket**: `~/.local/state/revdeck/devcontainer/run/daemon.sock`, the same
    protocol on a stable home-based path. The daemon serves it in addition to the primary socket and
-   writes a copy of `daemon.json` to `~/.local/state/revdeck/devcontainer/state/`.
-3. **HTTP**: `POST /api/rpc` on loopback with a cookie session. Needed for containers where the socket
-   is not forwarded (`REVDECK_URL` + `REVDECK_TOKEN`).
+   writes an info file to `~/.local/state/revdeck/devcontainer/state/daemon.json`. The bridge is
+   **agent-scoped**: only the `read`/`draft` capability set is allowed. The info file contains an
+   `agentToken` for the restricted `/api/rpc` transport; the UI token is not in that file.
+3. **HTTP**: `POST /api/rpc` on loopback with a cookie session. The UI token lives on the host; it is
+   not mounted into the container. For a container where the socket is not forwarded, set
+   `REVDECK_URL` + `REVDECK_TOKEN` from the user's environment; the token is agent-scoped.
 4. **UI HTTP**: `/api/*` and SSE `/api/events` for the browser.
 
 ## Messages
@@ -33,8 +36,9 @@ Error:
 {"id": 1, "error": {"message": "...", "code": "APPROVAL", "hint": "..."}}
 ```
 
-`id` is a number. A connection is considered untrusted until the first successful request:
-authorization is enforced by the socket file's permissions.
+`id` is a number. The primary socket is authorized by its file permissions (0600). The devcontainer
+bridge is authorized by transport capability: `agent` may read and draft, but human-only methods return
+`{"error":{"code":"CAPABILITY"}}` even if the socket is reachable.
 
 ## Methods
 
@@ -43,6 +47,8 @@ authorization is enforced by the socket file's permissions.
 | `ping` | — | version, protocol, pid |
 | `projects.list` | — | registered projects with review counts and roots |
 | `projects.register` | `root` | project resolved from that working copy |
+| `projects.update` | `project`, `title?`, `roots?` | rename a project or replace its working-copy roots |
+| `projects.remove` | `project` | delete a project and its cached reviews (platform untouched) |
 | `reviews.list` | `project?` / `root?` | saved reviews, optionally scoped to one project |
 | `features.list` | `project?`, `includeArchived?` | feature summaries |
 | `features.get` | `feature` | feature with ordered members and roles |
@@ -81,8 +87,21 @@ authorization is enforced by the socket file's permissions.
 | `publish.approve` | `review`, `kind`, `ids[]`, `hash` | `approvalId`, `expiresAt` |
 | `publish.commit` | `review`, `approvalId` | per-item results |
 | `rules.get` | `review` | rules markdown, checks, warnings |
-| `checks.run` | `review`, `allowRun`, `ids[]` | check results |
-| `audit.tail` | `limit` | latest actions |
+| `checks.run` | `review`, `allowRun`, `ids[]` | check results (human-only) |
+
+## Capabilities
+
+- **human** — primary socket (0600), UI session on the host, host CLI. All methods.
+- **agent** — devcontainer bridge and any restricted HTTP token. Read/draft methods only:
+  `reviews.*` (read/open/refresh), `diff.get`, `rules.get`, `features.list/get/context/forReview`,
+  `features.addNote/updateNote/deleteNote` (author forced to `agent`; only own notes),
+  `drafts.put`, `findings.put/list`, `summary.put`, `notes.*` (server-only publication fields ignored),
+  `publish.preview`, `projects.list`, `versions.*`, `analytics.get`, `secrets.get`.
+
+Human-only methods return `CAPABILITY` on the bridge: `publish.approve`, `publish.commit`,
+`checks.run`, `decisions.put`, `comments.update/delete`, `reactions.*`, `attachments.upload`,
+`reviews.remove`, `projects.register/update/remove`, and feature administration
+(`features.create/update/delete/addReviews/removeReview/reorder`).
 
 ## Project scope
 
@@ -126,8 +145,9 @@ isolation boundary. Feature membership is the only explicit cross-project door.
 3. `publish.commit` verifies that the approval has not been used and has not expired, marks it as used,
    and executes only `items`. Items that have already been posted are skipped.
 
-The agent cannot call `publish.approve`: the MCP tool does not expose it. A human confirms in the UI or
-in the CLI with `--yes`.
+The agent cannot call `publish.approve`: the MCP tool does not expose it, and the bridge denies it with
+`CAPABILITY`. A human confirms in the UI or in the host CLI (`--yes`); the host CLI uses the primary
+human socket.
 
 ## HTTP API (UI)
 
@@ -138,11 +158,11 @@ in the CLI with `--yes`.
 | GET | `/api/health` | liveness |
 | GET | `/api/projects` | registered projects |
 | GET | `/api/reviews?project=` | review list, optionally scoped |
-| POST | `/api/projects/register` | register the project of a working copy |
+| POST | `/api/projects/register`, `/update`, `/remove` | register, edit or delete a project |
 | GET | `/api/state?review=` | snapshot for the UI |
 | GET | `/api/diff?review=&file=` | file hunks |
 | GET | `/api/rules?review=` | rules |
-| GET | `/api/events` | SSE: `review` |
+| GET | `/api/events` | SSE: `review`, `feature`, `project` |
 | POST | `/api/reviews/open`, `/api/reviews/refresh` | open/refresh |
 | POST | `/api/drafts`, `/api/findings`, `/api/summary`, `/api/decisions` | drafts |
 | POST | `/api/notes` | `action: add/update/delete` |
@@ -158,5 +178,6 @@ in the CLI with `--yes`.
 
 ## Versioning
 
-`PROTOCOL_VERSION` in `src/version.ts` is checked during the handshake; the client and daemon must be
-the same package version. A method mismatch returns `METHOD` with a hint to update revdeck.
+`PROTOCOL_VERSION` in `src/version.ts` is reported in `ping` and in the bridge info; the client and
+daemon must be the same package version. A method mismatch returns `METHOD` with a hint to update
+revdeck. Version 2 is the agent-scoped bridge.

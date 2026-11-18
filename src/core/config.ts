@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { readTextNoFollow, readTextPrefixNoFollow, resolveInsideRoot, findConfigFile, findLocalConfigFile, findRepoRoot } from './paths.js';
+import { openInsideRoot, readTextNoFollow, findConfigFile, findLocalConfigFile, findRepoRoot } from './paths.js';
 import { ConfigError } from './errors.js';
 import { parse as parseYaml } from 'yaml';
 import { existsSync } from 'node:fs';
@@ -7,6 +7,7 @@ import path from 'node:path';
 import { globToRegExp } from './glob.js';
 import { tr } from './locale.js';
 import { DEFAULT_REVIEW_ROLES, REVIEW_ROLE_IDS } from './review-roles.js';
+import { gitTrackState } from './git-files.js';
 
 const matchSchema = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]);
 
@@ -208,7 +209,21 @@ function mergeConfigData(base: unknown, local: unknown): unknown {
 export async function loadConfig(root = findRepoRoot()): Promise<LoadedConfig> {
     const warnings: string[] = [];
     const file = findConfigFile(root);
-    const localFile = findLocalConfigFile(root);
+    let localFile = findLocalConfigFile(root);
+    if (localFile && existsSync(path.join(root, '.git'))) {
+        // Личные overrides не должны приходить из ветки MR: tracked-файл — это
+        // файл репозитория, а не настройки пользователя.
+        const state = await gitTrackState(root, path.relative(root, localFile));
+        if (state !== 'untracked') {
+            warnings.push(
+                tr(
+                    '.revdeck.local.yml отслеживается git: файл из репозитория игнорируется как личный',
+                    '.revdeck.local.yml is tracked by git: a repository file is ignored as personal overrides',
+                ),
+            );
+            localFile = null;
+        }
+    }
     const baseData = file ? parseYamlData(await readTextNoFollow(file), path.relative(root, file) || file) : {};
     const localData = localFile ? parseYamlData(await readTextNoFollow(localFile), path.relative(root, localFile) || localFile) : {};
     if (!file && !localFile) {
@@ -248,9 +263,16 @@ export function assertConfigPath(root: string, relative: string): string {
 
 /** Читает файл конфигурации/документа, проверяя и лексический путь, и раскрытые symlink'и. */
 export async function readConfigFile(root: string, relative: string, maxBytes = 4 * 1024 * 1024): Promise<string> {
-    const resolved = assertConfigPath(root, relative);
-    const actual = await resolveInsideRoot(root, resolved);
-    return readTextNoFollow(actual, maxBytes);
+    const handle = await openInsideRoot(root, assertConfigPath(root, relative));
+    try {
+        const info = await handle.stat();
+        if (info.size > maxBytes) {
+            throw new Error(`${path.basename(relative)}: file is larger than ${Math.round(maxBytes / 1024)} KB`);
+        }
+        return await handle.readFile({ encoding: 'utf8' });
+    } finally {
+        await handle.close();
+    }
 }
 
 /** Как readConfigFile, но обрезает большой документ вместо ошибки. */
@@ -259,9 +281,18 @@ export async function readConfigPrefix(
     relative: string,
     maxBytes = 4 * 1024 * 1024,
 ): Promise<{ text: string; truncated: boolean }> {
-    const resolved = assertConfigPath(root, relative);
-    const actual = await resolveInsideRoot(root, resolved);
-    return readTextPrefixNoFollow(actual, maxBytes);
+    const handle = await openInsideRoot(root, assertConfigPath(root, relative));
+    try {
+        const limit = Math.max(1, Math.min(Math.floor(maxBytes), 16 * 1024 * 1024));
+        const buffer = Buffer.allocUnsafe(limit + 1);
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+        return {
+            text: buffer.subarray(0, Math.min(bytesRead, limit)).toString('utf8'),
+            truncated: bytesRead > limit,
+        };
+    } finally {
+        await handle.close();
+    }
 }
 
 /** Какие проверки из конфига относятся к изменённым путям. */

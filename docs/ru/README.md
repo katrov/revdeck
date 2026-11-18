@@ -1,3 +1,5 @@
+<p align="center"><img src="../assets/brand/icon-128.png" alt="revdeck" width="72"></p>
+
 # Документация revdeck
 
 [English](../README.md) | Русский
@@ -13,5 +15,6 @@
 | Протокол RPC и HTTP | [../protocol.md](../protocol.md) | [protocol.md](protocol.md) |
 | Модель угроз | [../threat-model.md](../threat-model.md) | [threat-model.md](threat-model.md) |
 | Интеграции с харнессами | [../integrations.md](../integrations.md) | [integrations.md](integrations.md) |
+| Бренд-ассеты | [(EN)](../assets/brand/README.md) | [(EN)](../assets/brand/README.md) |
 
 Начните с [README](../../README.ru.md): установка, команды и настройка MCP.

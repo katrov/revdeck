@@ -21,6 +21,7 @@ export const app = $state({
     activeProject: null as string | null,
     projectsHome: false,
     projectSwitcher: false,
+    help: false,
     features: [] as FeatureSummary[],
     featureRevision: 0,
     feature: null as FeatureDetail | null,
@@ -177,6 +178,7 @@ export async function loadFeature(id: string, options: { push?: boolean } = {}):
         app.error = '';
         app.feature = feature;
         app.featuresHome = false;
+        app.help = false;
         app.review = null;
         app.featureContext = '';
         app.projectSwitcher = false;
@@ -197,6 +199,7 @@ export async function showFeaturesHome(push = true): Promise<void> {
     app.featuresHome = true;
     app.feature = null;
     app.review = null;
+    app.help = false;
     app.featureContext = '';
     app.projectSwitcher = false;
     await loadReviews();
@@ -209,6 +212,7 @@ export async function setActiveProject(key: string, selectFirst = true): Promise
     const epoch = routeEpoch;
     app.projectsHome = false;
     app.featuresHome = false;
+    app.help = false;
     app.feature = null;
     app.featureContext = '';
     app.projectSwitcher = false;
@@ -240,6 +244,7 @@ export async function adoptOpenedReview(review: ReviewView): Promise<void> {
     storeProject(key);
     app.projectsHome = false;
     app.featuresHome = false;
+    app.help = false;
     app.feature = null;
     app.review = review;
     await loadProjects();
@@ -252,11 +257,25 @@ export async function adoptOpenedReview(review: ReviewView): Promise<void> {
 export function showProjectsHome(push = true): void {
     app.projectsHome = true;
     app.featuresHome = false;
+    app.help = false;
     app.feature = null;
     app.featureContext = '';
     app.projectSwitcher = false;
     app.review = null;
     app.focus = null;
+    writeHash(push);
+}
+
+export function showHelp(push = true): void {
+    app.help = true;
+    app.projectsHome = false;
+    app.featuresHome = false;
+    app.feature = null;
+    app.featureContext = '';
+    app.projectSwitcher = false;
+    app.review = null;
+    app.focus = null;
+    app.diffFocus = null;
     writeHash(push);
 }
 
@@ -276,6 +295,7 @@ export async function loadReview(id: string, options: { refresh?: boolean; silen
         }
         app.projectsHome = false;
         app.featuresHome = false;
+        app.help = false;
         app.feature = null;
         app.featureContext = '';
         app.review = data.review;
@@ -349,11 +369,13 @@ export interface Route {
     projects: boolean;
     feature: string | null;
     features: boolean;
+    help: boolean;
 }
 
 export function parseHash(): Route {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-    const empty: Route = { id: null, tab: 'overview', focus: null, project: null, projects: false, feature: null, features: false };
+    const empty: Route = { id: null, tab: 'overview', focus: null, project: null, projects: false, feature: null, features: false, help: false };
+    if (parts[0] === 'help') return { ...empty, help: true };
     if (parts[0] === 'projects') return { ...empty, projects: true };
     if (parts[0] === 'features') return { ...empty, features: true };
     if (parts[0] === 'f' && parts[1]) return { ...empty, feature: decodeURIComponent(parts[1]) };
@@ -370,10 +392,11 @@ export function parseHash(): Route {
         const line = Number(rest[2]);
         if (Number.isInteger(line) && line > 0) focus = { kind: 'line', file: decodeURIComponent(rest[1]), line };
     }
-    return { id, tab, focus, project: null, projects: false, feature: null, features: false };
+    return { id, tab, focus, project: null, projects: false, feature: null, features: false, help: false };
 }
 
 export function hashFor(tab: Tab, focus: Focus): string {
+    if (app.help) return '#/help';
     if (app.feature) return `#/f/${encodeURIComponent(app.feature.id)}`;
     if (app.featuresHome) return '#/features';
     const id = app.review?.id;
@@ -410,11 +433,21 @@ export function applyRoute(): void {
     routeEpoch += 1;
     const route = parseHash();
     app.projectSwitcher = false;
+    app.help = false;
     app.tab = route.tab;
     app.focus = route.focus;
     if (route.focus?.kind === 'line') {
         app.diffFile = route.focus.file;
         app.diffFocus = { file: route.focus.file, line: route.focus.line };
+    }
+    if (route.help) {
+        app.help = true;
+        app.projectsHome = false;
+        app.featuresHome = false;
+        app.feature = null;
+        app.review = null;
+        writeHash(false);
+        return;
     }
     if (route.projects) {
         app.projectsHome = true;
@@ -519,6 +552,16 @@ export async function bootstrap(): Promise<void> {
     if (route.focus?.kind === 'line') {
         app.diffFile = route.focus.file;
         app.diffFocus = { file: route.focus.file, line: route.focus.line };
+    }
+    if (route.help) {
+        app.help = true;
+        app.projectsHome = false;
+        app.featuresHome = false;
+        app.feature = null;
+        app.review = null;
+        await loadReviews();
+        writeHash(false);
+        return;
     }
     if (route.projects) {
         app.projectsHome = true;
