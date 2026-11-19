@@ -23,6 +23,7 @@ import { exportReview, importReview } from './export.js';
 import { attachmentSpec, MAX_ATTACHMENT_BYTES } from '../core/attachments.js';
 import { contextPayload, renderContext } from '../context.js';
 import type { ResolvedReviewRole } from '../core/review-roles.js';
+import { isReviewScenario, scenarioLabel, suggestedScenario, type ReviewScenario } from '../core/scenario.js';
 
 const OPTIONS = {
     json: { type: 'boolean', default: false },
@@ -30,6 +31,7 @@ const OPTIONS = {
     yes: { type: 'boolean', default: false },
     'dry-run': { type: 'boolean', default: false },
     review: { type: 'string' },
+    scenario: { type: 'string' },
     root: { type: 'string' },
     platform: { type: 'string' },
     provider: { type: 'string' },
@@ -99,9 +101,11 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
   revdeck projects        проекты и их рабочие копии (add <path> — зарегистрировать)
   revdeck feature         фичи: list|create|get|add|remove|reorder|notes|note|note-delete|context|update|archive|delete
   revdeck list            ревью текущего проекта (--all — все проекты; --remote — с платформы)
-  revdeck open <url|N...>  открыть одно или несколько ревью
+  revdeck review <N>      ревью чужого MR: контекст, правила и diff
+  revdeck feedback <N>    замечания к своему MR: треды, правки, ответы
+  revdeck open <url|N...>  только открыть одно или несколько ревью
   revdeck ui [N]          ссылка на локальный интерфейс
-  revdeck context <N>     контекст для агента: правила, diff, треды [--role <роль>] [--shard i/N]
+  revdeck context <N>     контекст для агента: правила, diff, треды [--scenario review|feedback] [--role <роль>] [--shard i/N]
   revdeck stats <N>       аналитика ревью: решения, отклонения, треды
   revdeck scan <N>        скан секретов (если включён review.secrets)
   revdeck versions <N>    история версий ревью
@@ -134,9 +138,11 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
   revdeck projects        projects and their working copies (add <path> — register)
   revdeck feature         features: list|create|get|add|remove|reorder|notes|note|note-delete|context|update|archive|delete
   revdeck list            reviews of the current project (--all — all projects; --remote — from the platform)
-  revdeck open <url|N...>  open one or more reviews
+  revdeck review <N>      review someone else's MR: context, rules and diff
+  revdeck feedback <N>    work through feedback on your own MR: threads, fixes, replies
+  revdeck open <url|N...>  only open one or more reviews
   revdeck ui [N]          link to the local UI
-  revdeck context <N>     agent context: rules, diff, threads [--role <role>] [--shard i/N]
+  revdeck context <N>     agent context: rules, diff, threads [--scenario review|feedback] [--role <role>] [--shard i/N]
   revdeck stats <N>       review analytics: decisions, rejections, threads
   revdeck scan <N>        secret scan (when review.secrets is enabled)
   revdeck versions <N>    review version history
@@ -251,8 +257,11 @@ async function main(): Promise<void> {
         case 'status':
             return status(root, values);
         case 'context':
-        case 'review':
             return context(root, positionals[0], values);
+        case 'review':
+            return context(root, positionals[0], withScenario(values, 'review'));
+        case 'feedback':
+            return context(root, positionals[0], withScenario(values, 'feedback'));
         case 'stats':
         case 'analytics':
             return stats(positionals[0], values);
@@ -640,6 +649,8 @@ async function openReview(root: string, args: string[], values: Values): Promise
         }
         for (const review of reviews) {
             writers.out(formatInfo(review).join('\n'));
+            const suggested = suggestedScenario(review);
+            if (suggested) writers.out(`  ${tr('дальше', 'next')}: revdeck ${suggested} ${review.info.ref.number} — ${scenarioLabel(suggested, locale())}`);
             if (review.errors.length) writers.err(`${tr('предупреждения', 'warnings')}:\n${review.errors.map((item) => `  ${item}`).join('\n')}`);
         }
         for (const failure of failures) writers.err(tr(`не удалось открыть: ${failure.message}`, `could not open: ${failure.message}`));
@@ -795,13 +806,34 @@ function parseShard(value: string | undefined): { index: number; count: number }
     return { index, count };
 }
 
+function parseScenario(value: unknown): ReviewScenario | undefined {
+    if (value === undefined || value === '') return undefined;
+    if (isReviewScenario(value)) return value;
+    return fail(
+        tr(`неизвестный сценарий: ${String(value)}`, `unknown scenario: ${String(value)}`),
+        tr('допустимо: review (чужой MR) или feedback (свой MR)', 'allowed: review (someone else\'s MR) or feedback (your own MR)'),
+    );
+}
+
+/** `revdeck review` / `revdeck feedback` не должны конфликтовать с явным --scenario. */
+function withScenario(values: Values, scenario: ReviewScenario): Values {
+    if (values.scenario !== undefined && values.scenario !== '' && values.scenario !== scenario) {
+        fail(
+            tr(`revdeck ${scenario} не сочетается с --scenario ${String(values.scenario)}`, `revdeck ${scenario} cannot be combined with --scenario ${String(values.scenario)}`),
+            tr('уберите --scenario: команда уже задаёт сценарий', 'drop --scenario: the command already sets the scenario'),
+        );
+    }
+    return { ...values, scenario };
+}
+
 async function context(root: string, arg: string | undefined, values: Values): Promise<void> {
+    const scenario = parseScenario(values.scenario);
     await withClient(async ({ client }) => {
         const { review } = await resolveReview(client, root, reviewArg(values, arg), values);
         const { rules } = await client.request<{ rules: { markdown: string; configPath: string | null; warnings: string[]; checks: { id: string; name: string; argv: string[]; consent: boolean; matched: boolean }[]; language: 'ru' | 'en'; maxBytes?: number; agents: number; roles: ResolvedReviewRole[] } }>('rules.get', {
             review: review.id,
         });
-        if (values.json) return printJson(contextPayload(review, rules));
+        if (values.json) return printJson(contextPayload(review, rules, scenario));
         const role = parseRole(values.role as string | undefined);
         if (role && !rules.roles.some((item) => item.id === role)) {
             fail(tr(`неизвестная роль ${role}`, `unknown role ${role}`), `--role <${rules.roles.map((item) => item.id).join('|')}>`);
@@ -810,6 +842,7 @@ async function context(root: string, arg: string | undefined, values: Values): P
         writers.out(renderContext(review, rules, {
             language: rules.language,
             ...(rules.maxBytes !== undefined ? { maxBytes: rules.maxBytes } : {}),
+            ...(scenario ? { scenario } : {}),
             ...(role ? { role } : {}),
             ...(shard ? { shard } : {}),
         }));

@@ -2,12 +2,21 @@ import { existsSync } from 'node:fs';
 import { lstat, mkdir, mkdtemp, readFile, readlink, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setLocale } from '../src/core/locale.js';
 import { runEject } from '../src/cli/eject.js';
 import { runInit } from '../src/cli/init.js';
 
 let root: string;
+
+const LEGACY_COMMAND = `---
+description: Open a MR/PR review and work through the discussion
+---
+
+Run revdeck: \`revdeck context <number>\` (or the MCP tool \`revdeck_context\`), then follow the
+revdeck skill. Write draft findings and replies with the tools; a human publishes them.
+`;
 
 beforeEach(async () => {
     setLocale('ru');
@@ -50,6 +59,14 @@ describe('revdeck init', () => {
         expect(existsSync(path.join(dir, 'Review.md'))).toBe(false);
         expect(existsSync(path.join(dir, 'agents'))).toBe(false);
         expect(existsSync(path.join(root, '.claude', 'commands', 'revdeck.md'))).toBe(true);
+        const command = await readFile(path.join(root, '.claude', 'commands', 'revdeck.md'), 'utf8');
+        const frontmatter = command.split('---')[1] ?? '';
+        expect(parseYaml(frontmatter)).toMatchObject({
+            'argument-hint': expect.stringContaining('feedback <N|URL>'),
+        });
+        expect(command).toContain('argument-hint');
+        expect(command).toContain('review <N|URL>');
+        expect(command).toContain('feedback <N|URL>');
         expect(existsSync(path.join(root, '.mcp.json'))).toBe(true);
     });
 
@@ -77,6 +94,23 @@ describe('revdeck init', () => {
 
         const config = await readFile(path.join(root, '.revdeck.yml'), 'utf8');
         expect(config).toContain('provider:\n  type: github\n');
+    });
+
+    it('upgrades the old generated command file and keeps a customized one', async () => {
+        const command = path.join(root, '.claude', 'commands', 'revdeck.md');
+        await mkdir(path.dirname(command), { recursive: true });
+        await writeFile(command, LEGACY_COMMAND);
+
+        await runInit(root, options);
+
+        const upgraded = await readFile(command, 'utf8');
+        expect(upgraded).toContain('argument-hint');
+        expect(upgraded).toContain('feedback <N|URL>');
+
+        await writeFile(command, 'My custom revdeck command.\n');
+        await runInit(root, options);
+
+        expect(await readFile(command, 'utf8')).toBe('My custom revdeck command.\n');
     });
 });
 

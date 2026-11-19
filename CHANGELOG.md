@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Explicit scenario entry points: `revdeck review <N|URL>` for someone else's MR and
+  `revdeck feedback <N|URL>` for your own, matching `/revdeck review|feedback` in harness commands.
+  `revdeck context --scenario review|feedback` and the MCP tool `revdeck_context` with
+  `scenario=review|feedback` carry the same choice into the agent context; `revdeck open` stays neutral
+  and prints the matching next command when the platform user and the MR author are known. Context
+  marks whether the MR belongs to you and returns `scenario` / `suggestedScenario` in JSON and MCP
+  structured content.
+- `revdeck init` now upgrades a harness command file that still matches the previously generated
+  template, so existing projects get the `review`/`feedback` router. A customized command file is left
+  alone.
+
+### Changed
+
+- `revdeck review` is the explicit "someone else's MR" command instead of an undocumented alias of
+  `revdeck context`. The context content, flags, RPC methods and stored reviews are unchanged.
+
 ## [0.8.1] - 2026-11-18
 
 ### Fixed

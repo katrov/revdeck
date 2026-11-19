@@ -83,10 +83,24 @@ export const COMMAND_GROUPS: CommandGroup[] = [
                 en: 'Lists reviews of the current project; --all covers every project, --remote asks the platform.',
             },
             {
+                id: 'review',
+                usage: 'revdeck review <N|URL>',
+                ru: 'Ревью чужого MR: открывает ревью и отдаёт контекст с процедурой Review.md. Флаги как у context.',
+                en: "Reviews someone else's MR: opens the review and returns context with the Review.md procedure. Same flags as context.",
+                example: 'revdeck review 42',
+            },
+            {
+                id: 'feedback',
+                usage: 'revdeck feedback <N|URL>',
+                ru: 'Замечания к своему MR: открывает ревью и отдаёт контекст с процедурой Feedback.md. Флаги как у context.',
+                en: 'Works through findings on your own MR: opens the review and returns context with the Feedback.md procedure. Same flags as context.',
+                example: 'revdeck feedback 42',
+            },
+            {
                 id: 'open',
                 usage: 'revdeck open <N|URL> [<N|URL> ...] [--branch <name>]',
-                ru: 'Загружает одно или несколько ревью по номеру, ссылке или текущей ветке. --platform/--project/--host задают контекст явно.',
-                en: 'Loads one or more reviews by number, URL or current branch. --platform/--project/--host set the context explicitly.',
+                ru: 'Загружает одно или несколько ревью без сценария. Если автор известен, подсказывает review или feedback. --platform/--project/--host задают контекст явно.',
+                en: 'Loads one or more reviews without a scenario. When the author is known, suggests review or feedback. --platform/--project/--host set the context explicitly.',
                 example: 'revdeck open https://gitlab.com/group/project/-/merge_requests/42',
             },
             {
@@ -104,9 +118,9 @@ export const COMMAND_GROUPS: CommandGroup[] = [
         commands: [
             {
                 id: 'context',
-                usage: 'revdeck context <N> [--role <role>] [--shard i/N]',
-                ru: 'Собирает контекст для агента: правила проекта, diff, треды, замечания и черновики. Роль и шард делят работу между агентами.',
-                en: 'Builds agent context: project rules, diff, threads, findings and drafts. Role and shard split the work between agents.',
+                usage: 'revdeck context <N> [--scenario review|feedback] [--role <role>] [--shard i/N]',
+                ru: 'Собирает контекст для агента: правила проекта, diff, треды, замечания и черновики. Сценарий, роль и шард делят работу между агентами.',
+                en: 'Builds agent context: project rules, diff, threads, findings and drafts. Scenario, role and shard split the work between agents.',
                 example: 'revdeck context 42 --role correctness',
             },
             {

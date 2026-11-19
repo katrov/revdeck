@@ -62,9 +62,14 @@ The core guarantees:
 - **MCP server** over stdio with tools for status, list, open, context, threads, diff, rules, draft
   replies, draft findings, summary, line notes, feature context/notes, publish preview and publish.
 - **CLI** with the same capabilities for harnesses without MCP.
+- **Explicit scenario entry points**: `revdeck review` / `revdeck feedback` and `/revdeck review|feedback`
+  fix "someone else's MR" or "your own MR" before the agent starts. `revdeck_context` takes
+  `scenario=review|feedback`; `revdeck open` stays neutral and suggests the matching command. Context
+  carries `scenario` and `suggestedScenario` and marks whether the MR belongs to the current user.
 - **Skill** (`skills/revdeck`) carrying the review procedure, criteria, feedback workflow and
   cross-project feature workflow.
-- MCP prompts `review-mr`, `close-feedback` and `review-feature`.
+- MCP prompts `review-mr`, `close-feedback` and `review-feature`; they mirror the `review`, `feedback`
+  and feature commands.
 - Context is deterministic and size-limited: summary, changed files, effective rules, threads,
   findings, drafts and next actions.
 - The agent cannot publish, resolve threads, approve/merge or call platform CLIs directly.

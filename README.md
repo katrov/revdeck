@@ -75,7 +75,9 @@ In a repository:
 cd /path/to/repo
 revdeck init          # .revdeck.yml, skill for your harnesses, MCP config
 revdeck doctor        # node, glab/gh auth, daemon, adapters
-revdeck open 42       # load an MR/PR
+revdeck review 42     # someone else's MR: context, rules, review
+revdeck feedback 42   # your own MR: work through the discussion
+revdeck open 42       # just load an MR/PR without a scenario
 revdeck ui            # open the local UI
 ```
 
@@ -125,8 +127,10 @@ Russian READMEs live in this repository; translation fixes are welcome.
 | `revdeck projects [add <path>]` | projects, their roots and review counts; register a repository |
 | `revdeck list [--all] [--remote]` | reviews of the current project, or all projects with `--all` |
 | `revdeck feature …` | list/create/add/remove/context/update/archive/delete features |
-| `revdeck open <N\|URL>` | load a review |
-| `revdeck context <N>` | agent context: rules, files, threads, findings |
+| `revdeck review <N\|URL>` | review someone else's MR: context, rules, diff |
+| `revdeck feedback <N\|URL>` | work through findings on your own MR: threads, fixes, replies |
+| `revdeck open <N\|URL>` | load a review without a scenario; suggests review or feedback |
+| `revdeck context <N> [--scenario review\|feedback]` | agent context: rules, files, threads, findings |
 | `revdeck diff <N> [--file]` | files and hunks |
 | `revdeck threads <N>` | discussions |
 | `revdeck findings <N> set --file f.json` | write findings |
@@ -228,6 +232,24 @@ Every finding has a private **Note for the agent** field, and every thread has t
 reply. The text is included in `revdeck_context` / MCP but never published to GitLab or GitHub. Findings
 also keep their decision note separately.
 
+## Two scenarios
+
+revdeck has two review procedures, and the command now names the scenario explicitly:
+
+```bash
+revdeck review 42     # someone else's MR: Review.md
+revdeck feedback 42   # your own MR: Feedback.md
+revdeck open 42       # only load; the scenario stays open
+```
+
+The same verbs work in the harness command: `/revdeck review 42` and `/revdeck feedback 42`. The
+generated command file routes the first argument, and `revdeck_context` / `revdeck context` with
+`--scenario review|feedback` carries the same choice into the agent context. The context marks whether
+the MR belongs to you (`your MR` / `someone else's MR`), so `open` can suggest the matching command when
+the platform user is known. The scenario is client-side: it is not stored in the review, the daemon or
+the database. Existing projects get the new router by rerunning `revdeck init`; a command file you have
+customized is left alone.
+
 ## Multi-agent review
 
 Configure independent reviewers in `.revdeck.yml`:
@@ -239,7 +261,8 @@ review:
 ```
 
 The lead agent reads this plan from `revdeck_context`, starts one subagent per role/shard, and gives each
-`revdeck context <N> --role <role> --shard i/N` (the MCP tool takes the same `role` and `shard`). Workers
+`revdeck context <N> --scenario review|feedback --role <role> --shard i/N` (the MCP tool takes the same
+`scenario`, `role` and `shard`). Workers
 return findings as JSON and do not write to revdeck; the lead deduplicates by `file:line:title` and writes
 the final summary/findings once.
 
@@ -326,8 +349,8 @@ Tools: `revdeck_status`, `revdeck_list`, `revdeck_open`, `revdeck_context`, `rev
 
 Publishing requires an `approval_id` created by the human UI or the host CLI. The agent bridge has no
 `publish.approve`, and the MCP tool does not create one. Prompts `review-mr`, `close-feedback` and
-`review-feature` are available in
-clients that support MCP prompts.
+`review-feature` are available in clients that support MCP prompts; they mirror `/revdeck review`,
+`/revdeck feedback` and the feature workflow.
 
 Harness matrix and slash commands: [docs/integrations.md](docs/integrations.md).
 

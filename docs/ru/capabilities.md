@@ -62,9 +62,14 @@ agent (MCP/CLI) ──unix socket──▶ revdeck daemon ──glab/gh──▶
 - **MCP-сервер** поверх stdio: status, list, open, context, threads, diff, rules, draft replies,
   draft findings, summary, line notes, feature context/notes, publish preview и publish.
 - **CLI** с теми же возможностями для харнессов без MCP.
+- **Явные точки входа сценариев**: `revdeck review` / `revdeck feedback` и `/revdeck review|feedback`
+  фиксируют «чужой MR» или «свой MR» до старта агента. `revdeck_context` принимает
+  `scenario=review|feedback`; `revdeck open` остаётся нейтральным и подсказывает подходящую команду.
+  В контексте есть `scenario`, `suggestedScenario` и отметка, ваш ли это MR.
 - **Skill** (`skills/revdeck`) с процедурой ревью, критериями, разбором фидбека и кросс-проектным
   workflow.
-- MCP-промпты `review-mr`, `close-feedback` и `review-feature`.
+- MCP-промпты `review-mr`, `close-feedback` и `review-feature`; они соответствуют командам `review`,
+  `feedback` и работе с фичей.
 - Детерминированный контекст с ограничением размера: выжимка, изменённые файлы, эффективные правила,
   треды, замечания, черновики и следующие действия.
 - Агент не публикует, не резолвит треды, не делает approve/merge и не вызывает платформенные CLI

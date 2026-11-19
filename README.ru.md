@@ -62,7 +62,9 @@ GitHub — `gh` с `gh auth login`. CLI должен быть в `PATH` демо
 cd /path/to/repo
 revdeck init          # .revdeck.yml, skill в .agents/.claude, MCP-конфиг
 revdeck doctor        # проверка окружения и адаптеров
-revdeck open 42       # открыть MR/PR по номеру
+revdeck review 42     # чужой MR: контекст, правила, ревью
+revdeck feedback 42   # свой MR: разбор замечаний
+revdeck open 42       # только открыть MR/PR без сценария
 revdeck ui            # ссылка на локальный интерфейс
 ```
 
@@ -109,8 +111,10 @@ self-hosted GitLab), по умолчанию выбирается `gitlab`. Пе
 | `revdeck projects [add <путь>]` | проекты, их root'ы и число ревью; зарегистрировать репозиторий |
 | `revdeck list [--all] [--remote]` | ревью текущего проекта или все проекты с `--all` |
 | `revdeck feature …` | list/create/add/remove/context/update/archive/delete фич |
-| `revdeck open <N│URL>` | загрузить ревью |
-| `revdeck context <N>` | контекст для агента: правила, файлы, треды, замечания |
+| `revdeck review <N│URL>` | ревью чужого MR: контекст, правила, diff |
+| `revdeck feedback <N│URL>` | разбор замечаний к своему MR: треды, правки, ответы |
+| `revdeck open <N│URL>` | загрузить ревью без сценария; подсказывает review или feedback |
+| `revdeck context <N> [--scenario review│feedback]` | контекст для агента: правила, файлы, треды, замечания |
 | `revdeck diff <N> [--file]` | файлы и hunks |
 | `revdeck threads <N>` | обсуждения |
 | `revdeck findings <N> set --file f.json` | записать замечания |
@@ -213,6 +217,24 @@ API загрузки вложений, поэтому кнопка там отк
 ответом. Текст попадает в `revdeck_context` / MCP, но никогда не публикуется в GitLab или GitHub.
 Решение по замечанию хранится отдельно.
 
+## Два сценария
+
+У revdeck две процедуры ревью, и команда теперь называет сценарий явно:
+
+```bash
+revdeck review 42     # чужой MR: Review.md
+revdeck feedback 42   # свой MR: Feedback.md
+revdeck open 42       # только открыть; сценарий остаётся на выбор
+```
+
+Те же глаголы работают в команде харнесса: `/revdeck review 42` и `/revdeck feedback 42`.
+Сгенерированный файл команды разбирает первый аргумент, а `revdeck_context` / `revdeck context` с
+`--scenario review|feedback` передаёт тот же выбор в контекст агента. В контексте отмечено, ваш ли это
+MR (`это ваш MR` / `чужой MR`), поэтому `open` может подсказать подходящую команду, когда пользователь
+платформы известен. Сценарий клиентский: он не сохраняется в ревью, демоне или базе. Существующие
+проекты получают новый роутер после повторного `revdeck init`; изменённый вручную командный файл
+остаётся нетронутым.
+
 ## Многоагентное ревью
 
 Независимые ревьюеры настраиваются в `.revdeck.yml`:
@@ -224,7 +246,8 @@ review:
 ```
 
 Лид-агент читает план из `revdeck_context`, запускает по субагенту на роль/шард и выдаёт каждому
-`revdeck context <N> --role <роль> --shard i/N` (MCP-инструмент принимает те же `role` и `shard`).
+`revdeck context <N> --scenario review|feedback --role <роль> --shard i/N` (MCP-инструмент принимает те
+же `scenario`, `role` и `shard`).
 Воркеры возвращают замечания JSON и не пишут в revdeck; лид дедуплицирует по `file:line:title` и один
 раз записывает итоговые summary/findings.
 
@@ -311,7 +334,8 @@ HTTP: достаточно `revdeck daemon restart`, потому что `daemon
 `approval_id`, который создаёт человек в UI или CLI на хосте; у моста агента нет `publish.approve`.
 
 Промпты `review-mr`, `close-feedback` и `review-feature` доступны в клиентах, поддерживающих
-MCP prompts. В харнессах без MCP используйте CLI — возможности те же. Матрица адаптеров и `/`-команд: [docs/ru/integrations.md](docs/ru/integrations.md).
+MCP prompts; они соответствуют `/revdeck review`, `/revdeck feedback` и работе с фичей. В харнессах
+без MCP используйте CLI — возможности те же. Матрица адаптеров и `/`-команд: [docs/ru/integrations.md](docs/ru/integrations.md).
 
 ## Правила проекта
 
