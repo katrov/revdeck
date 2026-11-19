@@ -1,5 +1,7 @@
 # Scenario: findings on your own MR
 
+Command: `/revdeck feedback <N|URL>` (CLI: `revdeck feedback <N|URL>`).
+
 The goal is to close every open finding together with the human: fix the code, reply, or disagree
 with justification.
 

@@ -106,7 +106,9 @@ export async function runInit(rootInput: string, options: InitOptions): Promise<
     writers.out('');
     writers.out(tr('Дальше:', 'Next:'));
     writers.out('  revdeck doctor');
-    writers.out(`  revdeck open ${tr('<номер или ссылка>', '<number or URL>')}`);
+    writers.out(`  revdeck review ${tr('<номер>', '<number>')}   ${tr('чужой MR', "someone else's MR")}`);
+    writers.out(`  revdeck feedback ${tr('<номер>', '<number>')} ${tr('свой MR', 'your MR')}`);
+    writers.out(`  revdeck open ${tr('<номер или ссылка>', '<number or URL>')}   ${tr('без сценария', 'no scenario')}`);
     writers.out('  revdeck ui');
 }
 
@@ -121,6 +123,61 @@ interface AdapterSpec {
 }
 
 function commandMd(locale: Locale): string {
+    if (locale === 'ru') {
+        return `---
+description: "Ревью MR/PR: review — чужой, feedback — свой"
+argument-hint: "review <N|URL> | feedback <N|URL> | open <N|URL>"
+---
+
+Режим — первый аргумент вызова:
+- \`review <N|URL>\` — чужой MR, процедура \`Review.md\` из skill revdeck;
+- \`feedback <N|URL>\` — свой MR, процедура \`Feedback.md\` из skill revdeck;
+- \`open <N|URL>\` или без режима — только открыть; сценарий определи по строке «это ваш MR» в
+  контексте, при неясности задай один вопрос.
+
+Открой ревью и получи контекст с тем же сценарием: MCP \`revdeck_context\` с
+\`scenario=review|feedback\` (CLI: \`revdeck context <N> --scenario review|feedback\`). Черновики
+замечаний и ответов записывай инструментами; публикует человек.
+`;
+    }
+    return `---
+description: "Review a MR/PR: review for someone else's, feedback for your own"
+argument-hint: "review <N|URL> | feedback <N|URL> | open <N|URL>"
+---
+
+The first argument is the mode:
+- \`review <N|URL>\` — someone else's MR; follow \`Review.md\` from the revdeck skill;
+- \`feedback <N|URL>\` — your own MR; follow \`Feedback.md\` from the revdeck skill;
+- \`open <N|URL>\` or no mode — only open; infer the scenario from the "your MR" line in the context,
+  and ask once if it is unclear.
+
+Open the review and get the context with the same scenario: MCP \`revdeck_context\` with
+\`scenario=review|feedback\` (CLI: \`revdeck context <N> --scenario review|feedback\`). Write draft
+findings and replies with the tools; a human publishes them.
+`;
+}
+
+function commandToml(locale: Locale): string {
+    if (locale === 'ru') {
+        return 'description = "Ревью MR/PR: review — чужой, feedback — свой"\n' +
+            'prompt = """Режим — первый аргумент: {{args}}\n' +
+            '- review <N|URL> — чужой MR, процедура Review.md из skill revdeck;\n' +
+            '- feedback <N|URL> — свой MR, процедура Feedback.md из skill revdeck;\n' +
+            '- open <N|URL> или без режима — только открыть; сценарий определи по контексту.\n' +
+            'Открой ревью и получи контекст с тем же сценарием (revdeck_context scenario=review|feedback). ' +
+            'Черновики записывай инструментами; публикует человек."""\n';
+    }
+    return 'description = "Review a MR/PR: review for someone else\'s, feedback for your own"\n' +
+        'prompt = """The first argument is the mode: {{args}}\n' +
+        "- review <N|URL> — someone else's MR; follow Review.md from the revdeck skill;\n" +
+        '- feedback <N|URL> — your own MR; follow Feedback.md from the revdeck skill;\n' +
+        '- open <N|URL> or no mode — only open; infer the scenario from the context.\n' +
+        'Open the review and get the context with the same scenario (revdeck_context scenario=review|feedback). ' +
+        'Write drafts with the tools; a human publishes them."""\n';
+}
+
+/** Ровно то, что старые версии init писали в командные файлы. */
+function legacyCommandMd(locale: Locale): string {
     if (locale === 'ru') {
         return `---
 description: Открыть ревью MR/PR и разобрать замечания
@@ -139,13 +196,22 @@ revdeck skill. Write draft findings and replies with the tools; a human publishe
 `;
 }
 
-function commandToml(locale: Locale): string {
+function legacyCommandToml(locale: Locale): string {
     if (locale === 'ru') {
         return 'description = "Открыть ревью MR/PR и разобрать замечания"\n' +
             'prompt = """Запусти `revdeck context <номер>` (или MCP revdeck_context) и веди ревью по skill revdeck."""\n';
     }
     return 'description = "Open a MR/PR review and work through the discussion"\n' +
         'prompt = """Run `revdeck context <number>` (or MCP revdeck_context) and follow the revdeck skill."""\n';
+}
+
+function isLegacyCommandFile(content: string, adapter: string): boolean {
+    const normalize = (text: string): string => text.replace(/\r\n/g, '\n').trim();
+    const current = normalize(content);
+    const candidates = adapter === 'gemini'
+        ? [legacyCommandToml('ru'), legacyCommandToml('en')]
+        : [legacyCommandMd('ru'), legacyCommandMd('en')];
+    return candidates.some((candidate) => normalize(candidate) === current);
 }
 
 const SPECS: Record<string, AdapterSpec> = {
@@ -194,12 +260,19 @@ async function installAdapter(
     if (spec.mcp) await mergeMcpJson(path.join(root, spec.mcp), root, mcp);
     for (const file of spec.files ?? []) {
         const target = path.join(root, file.path);
+        const content = typeof file.content === 'string' ? file.content : file.content(locale);
         if (existsSync(target)) {
+            const existing = await readFile(target, 'utf8').catch(() => null);
+            if (existing !== null && isLegacyCommandFile(existing, adapter)) {
+                await writeFile(target, content);
+                writers.out(`✔ ${path.relative(root, target)} ${tr('обновлена команда revdeck', 'revdeck command updated')}`);
+                continue;
+            }
             writers.out(`! ${path.relative(root, target)} ${tr('уже есть: не перезаписываю', 'already exists: not overwriting')}`);
             continue;
         }
         await mkdir(path.dirname(target), { recursive: true });
-        await writeFile(target, typeof file.content === 'string' ? file.content : file.content(locale));
+        await writeFile(target, content);
         writers.out(`✔ ${path.relative(root, target)}`);
     }
     if (adapter === 'dsh') {

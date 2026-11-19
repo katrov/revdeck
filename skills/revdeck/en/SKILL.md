@@ -1,6 +1,6 @@
 ---
 name: revdeck
-description: "Review a merge/pull request with the local revdeck. Two scenarios: work through and close the findings on your own MR/PR, or review someone else's. Use when asked to work through review comments, respond to findings, fix code according to review, or check an MR/PR/branch/diff."
+description: "Review a merge/pull request with the local revdeck. Two scenarios: `review` for someone else's MR/PR, `feedback` for findings on your own. Use when asked to work through review comments, respond to findings, fix code according to review, or check an MR/PR/branch/diff."
 ---
 
 # MR/PR code review
@@ -20,6 +20,8 @@ capabilities.
 | Task | MCP | CLI |
 |---|---|---|
 | Open a review | `revdeck_open` | `revdeck open <N\|URL>` |
+| Your own MR (feedback) | `revdeck_context scenario=feedback` | `revdeck feedback <N\|URL>` |
+| Someone else's MR (review) | `revdeck_context scenario=review` | `revdeck review <N\|URL>` |
 | Context and rules | `revdeck_context` | `revdeck context <N>` |
 | Threads | `revdeck_threads` | `revdeck threads <N>` |
 | Diff | `revdeck_diff` | `revdeck diff <N> [--file]` |
@@ -43,11 +45,16 @@ raw `root`, another server, the daemon database, or the CLI `--all` flag.
 
 ## Workflow
 
-1. Determine the scenario. If the request is unclear, ask one question:
-   - **Findings on your own MR** — `Feedback.md`.
-   - **Reviewing someone else's MR, branch, or diff** — `Review.md`.
-   - **A feature spanning several projects** — `Feature.md`; call `revdeck_feature` first.
-2. Open the review and get the context: `revdeck_open`, then `revdeck_context`.
+An explicit invocation fixes the scenario: `/revdeck review 442` for someone else's MR,
+`/revdeck feedback 442` for your own. Without a mode, the scenario comes from the MR author line in
+the context.
+
+1. Determine the scenario:
+   - **your own MR** — the `feedback <N|URL>` command or the "your MR" line in the context → `Feedback.md`;
+   - **someone else's MR, branch, or diff** — the `review <N|URL>` command or the "someone else's MR" line → `Review.md`;
+   - **a feature spanning several projects** — `Feature.md`; call `revdeck_feature` first;
+   - the author and the current user are unknown — ask one question.
+2. Open the review and get the context: `revdeck_open`, then `revdeck_context` with `scenario=review|feedback`.
    The context already contains the summary, files, **effective project rules** (documents and
    sections selected for the changed paths), threads, existing findings, and comments from the
    human. Call the `revdeck_rules` MCP tool separately only if the rules were not included in the
@@ -65,9 +72,9 @@ Act as the lead:
 
 1. Read `agents` and `roles` from the context.
 2. Spawn one subagent per role/shard if the harness supports subagents (`Task` in Claude Code, a
-   workflow in DSH, or the equivalent). Give each: `revdeck_context` with the `role` and `shard` from
-   the plan, and tell it to return a JSON findings array plus a short summary. A worker must **not**
-   call `revdeck_draft_findings`, `revdeck_set_summary` or `revdeck_draft_reply`.
+   workflow in DSH, or the equivalent). Give each: `revdeck_context` with the same `scenario`, `role`
+   and `shard` from the plan, and tell it to return a JSON findings array plus a short summary. A
+   worker must **not** call `revdeck_draft_findings`, `revdeck_set_summary` or `revdeck_draft_reply`.
 3. If there is no subagent support, run the roles sequentially and keep their results separate.
 4. Deduplicate by `file:line:title` (prefer the higher level), then write the final summary and findings
    **once** as the lead. The UI shows that single merged result.

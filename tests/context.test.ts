@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderContext, type RulesPayload } from '../src/context.js';
+import { contextPayload, renderContext, type RulesPayload } from '../src/context.js';
 import type { ReviewView } from '../src/daemon/view.js';
 
 const review = {
@@ -65,5 +65,41 @@ describe('multi-agent context', () => {
         expect(text).not.toContain('src/b.ts');
         expect(text).toContain('Do not call revdeck_draft_findings');
         expect(text).toContain('§6, §10');
+    });
+});
+
+describe('review scenario context', () => {
+    it('puts the explicit review procedure at the top', () => {
+        const text = renderContext(review, rules, { scenario: 'review' });
+        expect(text).toContain("Scenario: reviewing someone else's MR");
+        expect(text).toContain('Procedure: `Review.md`');
+        expect(contextPayload(review, rules, 'review')).toMatchObject({
+            scenario: 'review',
+            suggestedScenario: null,
+        });
+    });
+
+    it('puts the explicit feedback procedure at the top', () => {
+        const text = renderContext(review, rules, { scenario: 'feedback' });
+        expect(text).toContain('Scenario: feedback on your own MR');
+        expect(text).toContain('Procedure: `Feedback.md`');
+        expect(contextPayload(review, rules, 'feedback')).toMatchObject({
+            scenario: 'feedback',
+            suggestedScenario: null,
+        });
+    });
+
+    it('marks the current user own MR and suggests feedback', () => {
+        const own = { ...review, user: { username: 'author', name: 'Author' } } as ReviewView;
+        const text = renderContext(own, rules);
+        expect(text).toContain('author · your MR');
+        expect(contextPayload(own, rules)).toMatchObject({ scenario: null, suggestedScenario: 'feedback' });
+    });
+
+    it('suggests review for someone else MR', () => {
+        const foreign = { ...review, user: { username: 'reviewer', name: 'Reviewer' } } as ReviewView;
+        const text = renderContext(foreign, rules);
+        expect(text).toContain("someone else's MR");
+        expect(contextPayload(foreign, rules)).toMatchObject({ suggestedScenario: 'review' });
     });
 });

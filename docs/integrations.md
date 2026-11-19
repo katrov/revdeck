@@ -5,7 +5,7 @@
 revdeck has two portable layers and one adapter layer:
 
 - **MCP** (stdio) — the `revdeck_*` tools work in any MCP-capable client.
-- **CLI** — the same capabilities without MCP: `revdeck open/context/findings/reply/publish`.
+- **CLI** — the same capabilities without MCP: `revdeck review/feedback/open/context/findings/reply/publish`.
 - **`/` command** — each harness has its own; `revdeck init` creates the right file.
 
 A full integration = MCP + skill (procedures) + command (entry point). Without MCP, the CLI and
@@ -28,7 +28,23 @@ Comment attachments are uploaded by the host daemon. GitLab uses project uploads
 absolute URL; GitHub has no public attachment API, so the editor asks for a URL instead.
 
 `revdeck init --adapters dsh,claude` explicitly enables the adapters you need. A repeated `init`
-does not overwrite existing command files and does not clobber other keys in `.mcp.json`.
+upgrades a command file that still matches the old generated template and leaves a customized file
+alone; it does not clobber other keys in `.mcp.json`.
+
+## Explicit scenario commands
+
+The generated `/revdeck` command takes the mode as its first argument:
+
+| Invocation | Scenario |
+|---|---|
+| `/revdeck review 442` | Someone else's MR: follow `Review.md` |
+| `/revdeck feedback 442` | Your own MR: follow `Feedback.md` |
+| `/revdeck open 442` | Neutral load; the context marks whether the MR is yours |
+
+The same verbs exist in the CLI (`revdeck review 442`, `revdeck feedback 442`) and in MCP as
+`revdeck_context` with `scenario=review|feedback`. `revdeck open` prints the matching next command when
+the platform user and the MR author are known. The scenario is not persisted: it is an argument of the
+call, not a property of the review.
 
 The skill has one canonical copy: `.agents/skills/revdeck` (including `agents/openai.yaml` for OpenAI
 harnesses). Claude gets only `.claude/skills/revdeck/SKILL.md`, a symlink to

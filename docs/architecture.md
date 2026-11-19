@@ -54,6 +54,10 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
    executes only the items included in the approved plan.
 6. Background sync every 2 minutes refreshes open reviews and broadcasts SSE events to the UI.
 
+`revdeck review 42` and `revdeck feedback 42` are thin CLI wrappers over the same `reviews.open` +
+`rules.get` path. The scenario is a client-side context option: it shapes the agent instructions but
+is not stored in the review, the daemon or the database.
+
 ## Data model
 
 - `Project` — a repository: `key = platform:host/project` (normalized for comparison), display values,

@@ -1,5 +1,7 @@
 # Scenario: reviewing someone else's MR, branch, or diff
 
+Command: `/revdeck review <N|URL>` (CLI: `revdeck review <N|URL>`).
+
 The goal is to find real defects and violations of the repository rules and produce a verifiable list
 of findings. The human publishes them.
 
