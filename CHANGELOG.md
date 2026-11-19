@@ -4,7 +4,14 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.10.0] - 2026-11-19
+
+### Added
+
+- Threads and Findings are virtualized when a review has more than 30 items. The list measures pages
+  of 10 cards and renders only the pages intersecting the scroll container plus one page of overscan;
+  focused cards stay mounted, and deep links scroll to the target page. Small reviews keep the previous
+  full render.
 
 ### Performance
 
@@ -18,10 +25,6 @@ All notable changes to this project are documented here. The format is based on
   review, feature and project events reload only their own scope instead of every list, and project,
   review, feature, feature-detail and reaction lists are compared before assignment so an unchanged
   list does not re-render the sidebar or feature pages.
-- Threads and Findings are virtualized when a review has more than 30 items. The list measures pages
-  of 10 cards and renders only the pages intersecting the scroll container plus one page of overscan;
-  focused cards stay mounted, and deep links scroll to the target page. Small reviews keep the previous
-  full render.
 
 ## [0.9.0] - 2026-11-19
 
