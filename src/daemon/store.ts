@@ -175,6 +175,12 @@ function reviewItem(row: Row): ReviewListItem {
 
 export class Store {
     readonly db: DatabaseSync;
+    /**
+     * Последний разобранный снимок. UI и фоновый sync многократно читают одно
+     * ревью; повторный JSON.parse большого diff занимает сотни миллисекунд.
+     * Один снимок — компромисс между скоростью и памятью.
+     */
+    private snapshotCache: { id: string; syncedAt: string; snapshot: ReviewSnapshot } | null = null;
 
     constructor(file: string) {
         if (file !== ':memory:') mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
@@ -815,6 +821,7 @@ export class Store {
                 snapshot.syncedAt,
             );
         this.db.prepare('UPDATE reviews SET synced_at = ? WHERE id = ?').run(snapshot.syncedAt, id);
+        this.snapshotCache = null;
     }
 
     listReviews(project?: string): ReviewListItem[] {
@@ -827,8 +834,28 @@ export class Store {
     getReview(id: string): { row: ReviewRow; snapshot: ReviewSnapshot } | null {
         const row = this.db.prepare('SELECT * FROM reviews WHERE id = ?').get(id) as Row | undefined;
         if (!row) return null;
-        const data = this.db.prepare('SELECT * FROM review_data WHERE review_id = ?').get(id) as Row | undefined;
-        if (!data) return null;
+        const meta = this.db.prepare('SELECT synced_at FROM review_data WHERE review_id = ?').get(id) as Row | undefined;
+        if (!meta) return null;
+        const syncedAt = text(meta, 'synced_at');
+        let snapshot: ReviewSnapshot;
+        if (this.snapshotCache?.id === id && this.snapshotCache.syncedAt === syncedAt) {
+            snapshot = this.snapshotCache.snapshot;
+        } else {
+            // Большой diff_json читаем из SQLite только при промахе кеша.
+            const data = this.db.prepare('SELECT * FROM review_data WHERE review_id = ?').get(id) as Row | undefined;
+            if (!data) return null;
+            snapshot = {
+                diff: json<DiffFile[]>(data, 'diff_json', []),
+                threads: json<Thread[]>(data, 'threads_json', []),
+                reactions: json<Reaction[]>(data, 'reactions_json', []),
+                user: json<User | null>(data, 'user_json', null),
+                config: json<ReviewConfig>(data, 'config_json', {} as ReviewConfig),
+                configPath: data.config_path ? String(data.config_path) : null,
+                errors: json<string[]>(data, 'errors_json', []),
+                syncedAt,
+            };
+            this.snapshotCache = { id, syncedAt, snapshot };
+        }
         return {
             row: {
                 id: text(row, 'id'),
@@ -845,16 +872,7 @@ export class Store {
                 synced_at: text(row, 'synced_at'),
                 root: text(row, 'root'),
             },
-            snapshot: {
-                diff: json<DiffFile[]>(data, 'diff_json', []),
-                threads: json<Thread[]>(data, 'threads_json', []),
-                reactions: json<Reaction[]>(data, 'reactions_json', []),
-                user: json<User | null>(data, 'user_json', null),
-                config: json<ReviewConfig>(data, 'config_json', {} as ReviewConfig),
-                configPath: data.config_path ? String(data.config_path) : null,
-                errors: json<string[]>(data, 'errors_json', []),
-                syncedAt: text(data, 'synced_at'),
-            },
+            snapshot,
         };
     }
 
@@ -922,6 +940,7 @@ export class Store {
 
     removeReview(id: string): void {
         this.db.prepare('DELETE FROM reviews WHERE id = ?').run(id);
+        if (this.snapshotCache?.id === id) this.snapshotCache = null;
     }
 
     // --- summary ---

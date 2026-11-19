@@ -6,6 +6,7 @@
     import { t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
     import MarkdownEditor from './MarkdownEditor.svelte';
+    import VirtualList from './VirtualList.svelte';
 
     let levelFilter = $state<'all' | Level>('all');
     let statusFilter = $state<'all' | 'open' | 'published'>('all');
@@ -139,7 +140,16 @@
     </button>
 </div>
 
-{#each findings as finding (finding.id)}
+{#if findings.length}
+<VirtualList
+    items={findings}
+    keyOf={(finding) => finding.id}
+    estimate={420}
+    pageSize={10}
+    threshold={30}
+    focusKey={app.focus?.kind === 'finding' ? app.focus.id : null}
+>
+    {#snippet item(finding)}
     {@const decision = app.review?.decisions[finding.id]?.decision ?? finding.decision}
     <section class="card" id={`finding-${finding.id}`} class:highlight={app.focus?.kind === 'finding' && app.focus.id === finding.id}>
         <div class="card-head">
@@ -206,9 +216,11 @@
             <span class="muted small">{truncate(finding.fingerprint, 16)}</span>
         </div>
     </section>
+    {/snippet}
+</VirtualList>
 {:else}
     <p class="muted">
         {t('Замечаний нет. Агент запишет их через', 'No findings yet. The agent writes them via')}
         <span class="mono">revdeck_draft_findings</span>.
     </p>
-{/each}
+{/if}

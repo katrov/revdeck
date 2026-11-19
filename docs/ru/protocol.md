@@ -161,7 +161,7 @@ Human-only методы возвращают `CAPABILITY` на мосту: `publ
 | GET | `/api/state?review=` | снимок для UI |
 | GET | `/api/diff?review=&file=` | hunks файла |
 | GET | `/api/rules?review=` | правила |
-| GET | `/api/events` | SSE: `review`, `feature`, `project` |
+| GET | `/api/events` | SSE: `review`, `feature`, `project`, `heartbeat` |
 | POST | `/api/reviews/open`, `/api/reviews/refresh` | открыть/обновить |
 | POST | `/api/drafts`, `/api/findings`, `/api/summary`, `/api/decisions` | черновики |
 | POST | `/api/notes` | `action: add/update/delete` |

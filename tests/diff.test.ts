@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findNewLine, linePosition, parseUnifiedDiff, snippetAround } from '../src/core/diff.js';
+import { createSnippetReader, findNewLine, linePosition, parseUnifiedDiff, snippetAround } from '../src/core/diff.js';
 
 const PATCH = `diff --git a/src/app.ts b/src/app.ts
 index 1111111..2222222 100644
@@ -134,5 +134,15 @@ rename to renamed.ts
         // Контекстная строка требует old_line для GitLab.
         expect(linePosition(files, 'src/app.ts', 14)?.oldLine).toBe(13);
         expect(findNewLine(files, 'src/app.ts', 999)).toBeUndefined();
+    });
+
+    it('builds one snippet reader for all threads', () => {
+        const files = parseUnifiedDiff(PATCH);
+        const read = createSnippetReader(files);
+        expect(read('src/app.ts', 13, 1)).toEqual(snippetAround(files, 'src/app.ts', 13, 1));
+        expect(read('src/app.ts', 13, 4)).toEqual(snippetAround(files, 'src/app.ts', 13, 4));
+        expect(read('src/app.ts', 999, 1)).toBeNull();
+        expect(read('missing.ts', 13, 1)).toBeNull();
+        expect(read('src/app.ts', null, 1)).toBeNull();
     });
 });

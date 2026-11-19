@@ -37,7 +37,13 @@ The core guarantees:
   commits, diff, threads, notes and reactions.
 - Open a review by number, URL, project reference or the current branch; multiple reviews can be
   opened in one call.
-- Local triage queue with cached snapshots; background sync and SSE keep the UI fresh.
+- Local triage queue with cached snapshots; background sync and SSE keep the UI fresh. The UI opens a
+  review from the cached snapshot immediately; a stale snapshot is refreshed in the background, so
+  opening never waits for `glab`/`gh`. Background reloads merge into the current review, so tab loaders
+  such as Rules, Analytics and Diff are not restarted on every SSE/poll tick. SSE heartbeats gate the
+  polling fallback, and review, feature and project events reload only their own scope.
+- Threads and findings are virtualized above 30 cards: measured pages of 10 render only when visible,
+  focused cards stay mounted, and deep links scroll to the target page.
 - Unified diff with per-file hunks, line numbers in old/new versions, changed-file filters and
   viewed-state per review.
 - Threads: read, reply, resolve, react; line comments from the human; reactions on MR/PR and notes.

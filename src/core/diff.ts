@@ -236,6 +236,10 @@ export function snippetAround(files: DiffFile[], path: string, line: number | nu
     const flat: DiffLine[] = file.hunks.flatMap((hunk) => hunk.lines);
     const target = flat.findIndex((item) => item.newLine === line);
     if (target < 0) return null;
+    return snippetAt(flat, target, line, radius);
+}
+
+function snippetAt(flat: DiffLine[], target: number, line: number, radius: number): SnippetLine[] {
     return flat
         .slice(Math.max(0, target - radius), target + radius + 1)
         .map((item) => ({
@@ -245,6 +249,38 @@ export function snippetAround(files: DiffFile[], path: string, line: number | nu
             text: item.text.length > 400 ? `${item.text.slice(0, 400)}…` : item.text,
             target: item.newLine === line,
         }));
+}
+
+/**
+ * Один проход по файлу на все сниппеты: ReviewView строит snippet для каждого
+ * треда и замечания, и повторный flatMap+findIndex на каждый элемент заметно
+ * тормозит открытие больших ревью.
+ */
+export function createSnippetReader(files: DiffFile[]): (path: string, line: number | null, radius?: number) => SnippetLine[] | null {
+    const cache = new Map<string, { flat: DiffLine[]; byNewLine: Map<number, number> } | null>();
+    return (path, line, radius = 6) => {
+        if (line == null) return null;
+        let entry = cache.get(path);
+        if (entry === undefined) {
+            const file = findFile(files, path);
+            if (!file) {
+                entry = null;
+            } else {
+                const flat = file.hunks.flatMap((hunk) => hunk.lines);
+                const byNewLine = new Map<number, number>();
+                for (let index = 0; index < flat.length; index += 1) {
+                    const value = flat[index]!.newLine;
+                    if (value !== null && !byNewLine.has(value)) byNewLine.set(value, index);
+                }
+                entry = { flat, byNewLine };
+            }
+            cache.set(path, entry);
+        }
+        if (!entry) return null;
+        const target = entry.byNewLine.get(line);
+        if (target === undefined) return null;
+        return snippetAt(entry.flat, target, line, radius);
+    };
 }
 
 /** Позиция для GitLab: неизменённая строка требует и old_line, добавленная — только new_line. */

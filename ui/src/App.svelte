@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { app, applyRoute, bootstrap, flushPendingReload, loadFeature, loadFeatures, loadProjects, loadReview, loadReviews, notify, setActiveProject, setTab, showFeaturesHome, showHelp, showProjectsHome, subscribe, writeHash } from './lib/state.svelte';
+    import { app, applyRoute, bootstrap, flushPendingReload, forgetReview, loadFeature, loadFeatures, loadProjects, loadReview, loadReviews, notify, setActiveProject, setTab, showFeaturesHome, showHelp, showProjectsHome, subscribe, writeHash } from './lib/state.svelte';
     import { removeProject as removeProjectApi, removeReview as removeReviewApi } from './lib/api';
     import type { ProjectSummary, ReviewListItem } from './lib/types';
     import type { Tab } from './lib/types';
@@ -81,6 +81,7 @@
         if (!confirm(t(`Удалить #${item.number} из списка? Это не удалит MR на платформе.`, `Remove #${item.number} from the list? This does not delete the MR on the platform.`))) return;
         try {
             await removeReviewApi(item.id);
+            forgetReview(item.id);
             const wasCurrent = app.review?.id === item.id;
             await loadProjects();
             await loadReviews();

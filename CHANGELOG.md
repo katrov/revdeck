@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Performance
+
+- Opening an already-synced review no longer waits for `glab`/`gh`: `/api/state` returns the cached
+  snapshot immediately and refreshes a stale one in the background, with the update delivered over
+  SSE. The UI also caches the last four review states for instant switching. Snapshot reads, thread
+  and finding snippets are now built once per view, and a one-entry snapshot cache avoids reparsing
+  a large diff on every request. Background reloads merge into the current review instead of replacing
+  it, so the Rules, Analytics and Diff tabs no longer restart their loaders on every SSE/poll tick.
+- SSE now sends a named heartbeat and the UI only falls back to polling after 35 seconds without one;
+  review, feature and project events reload only their own scope instead of every list, and project,
+  review, feature, feature-detail and reaction lists are compared before assignment so an unchanged
+  list does not re-render the sidebar or feature pages.
+- Threads and Findings are virtualized when a review has more than 30 items. The list measures pages
+  of 10 cards and renders only the pages intersecting the scroll container plus one page of overscan;
+  focused cards stay mounted, and deep links scroll to the target page. Small reviews keep the previous
+  full render.
+
 ## [0.9.0] - 2026-11-19
 
 ### Added

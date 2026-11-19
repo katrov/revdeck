@@ -44,6 +44,10 @@ and a web UI. Platform tokens stay on the host.
   members. Publishing stays per review and per human approval.
 - **Any harness.** MCP tools for MCP clients, the same capabilities over CLI, and a skill that carries
   the review procedure.
+- **Fast reopen.** The UI serves a review from the local snapshot and refreshes a stale one in the
+  background; opening never waits for `glab`/`gh`, and background reloads do not restart tab loaders.
+- **Large lists stay light.** Threads and findings render only visible pages; focus, editors and deep
+  links keep working, and small reviews are rendered in full.
 
 ## How it works
 
