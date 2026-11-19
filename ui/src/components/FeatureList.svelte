@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
     import { getFeatures } from '../lib/api';
     import { app, errorText, loadFeature } from '../lib/state.svelte';
     import { projectColor } from '../lib/projects';
@@ -30,12 +29,10 @@
         }
     }
 
-    onMount(() => {
-        void load();
-    });
-
     $effect(() => {
-        if (app.featureRevision > 0) void load();
+        // Revision меняется только когда loadFeatures действительно получил другой список.
+        app.featureRevision;
+        void load();
     });
 </script>
 

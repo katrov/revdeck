@@ -162,7 +162,7 @@ human socket.
 | GET | `/api/state?review=` | snapshot for the UI |
 | GET | `/api/diff?review=&file=` | file hunks |
 | GET | `/api/rules?review=` | rules |
-| GET | `/api/events` | SSE: `review`, `feature`, `project` |
+| GET | `/api/events` | SSE: `review`, `feature`, `project`, `heartbeat` |
 | POST | `/api/reviews/open`, `/api/reviews/refresh` | open/refresh |
 | POST | `/api/drafts`, `/api/findings`, `/api/summary`, `/api/decisions` | drafts |
 | POST | `/api/notes` | `action: add/update/delete` |

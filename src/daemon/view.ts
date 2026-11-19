@@ -1,4 +1,4 @@
-import { diffStats, snippetAround, type SnippetLine } from '../core/diff.js';
+import { createSnippetReader, diffStats, type SnippetLine } from '../core/diff.js';
 import type { DiffFile, Finding, Review, ReviewSummary, Thread } from '../core/types.js';
 
 export interface ReviewFileSummary {
@@ -45,15 +45,16 @@ export function fileSummaries(diff: DiffFile[]): ReviewFileSummary[] {
 
 export function toReviewView(review: Review, now = Date.now()): ReviewView {
     const { diff, threads, findings, ...rest } = review;
+    const snippet = createSnippetReader(diff);
     return {
         ...rest,
         threads: threads.map((thread) => ({
             ...thread,
-            snippet: thread.path && thread.line ? snippetAround(diff, thread.path, thread.line, 4) : null,
+            snippet: thread.path && thread.line ? snippet(thread.path, thread.line, 4) : null,
         })),
         findings: findings.map((finding) => ({
             ...finding,
-            snippet: finding.file && finding.line ? snippetAround(diff, finding.file, finding.line, 4) : null,
+            snippet: finding.file && finding.line ? snippet(finding.file, finding.line, 4) : null,
         })),
         files: fileSummaries(diff),
         stats: diffStats(diff),

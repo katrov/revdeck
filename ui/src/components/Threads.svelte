@@ -6,6 +6,7 @@
     import Markdown from './Markdown.svelte';
     import Reactions from './Reactions.svelte';
     import MarkdownEditor from './MarkdownEditor.svelte';
+    import VirtualList from './VirtualList.svelte';
 
     let filter = $state<'open' | 'all'>('open');
     let selected = $state<string[]>([]);
@@ -170,7 +171,16 @@
     </button>
 </div>
 
-{#each threads as thread (thread.id)}
+{#if threads.length}
+<VirtualList
+    items={threads}
+    keyOf={(thread) => thread.id}
+    estimate={360}
+    pageSize={10}
+    threshold={30}
+    focusKey={app.focus?.kind === 'thread' ? app.focus.id : null}
+>
+    {#snippet item(thread)}
     {@const draft = draftOf(thread.id)}
     {@const busy = saving.includes(thread.id)}
     <section class="card" id={`thread-${thread.id}`} class:highlight={app.focus?.kind === 'thread' && app.focus.id === thread.id}>
@@ -309,8 +319,10 @@
             </details>
         </div>
     </section>
+    {/snippet}
+</VirtualList>
 {:else}
     <p class="muted">
         {filter === 'open' ? t('Открытых тредов нет.', 'No open threads.') : t('Тредов нет.', 'No threads.')}
     </p>
-{/each}
+{/if}

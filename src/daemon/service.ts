@@ -136,6 +136,8 @@ export class ReviewService {
     private readonly syncIntervalMs: number;
     private timer: NodeJS.Timeout | null = null;
     private syncing = false;
+    /** Ревью, которые уже обновляются: не запускаем параллельный refresh из UI и sync. */
+    private readonly refreshing = new Set<string>();
 
     constructor(options: ServiceOptions) {
         this.store = options.store;
@@ -320,13 +322,18 @@ export class ReviewService {
             };
         });
         // Черновики для тредов, которых уже нет, сохраняем: они видны как устаревшие.
+        const threadIds = new Set(threads.map((thread) => thread.id));
         for (const [threadId, draft] of draftMap) {
-            if (!threads.some((thread) => thread.id === threadId)) drafts.push(draft);
+            if (!threadIds.has(threadId)) drafts.push(draft);
         }
-        const findings = applyDecisions(this.store.listFindings(id), this.store.listDecisions(id)).sort(
+        const decisions = this.store.listDecisions(id);
+        const findings = applyDecisions(this.store.listFindings(id), decisions).sort(
             (a, b) => levelOrder(a.level) - levelOrder(b.level) || a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0),
         );
-        const groups = computeGroups(snapshot.diff, this.configOf(id)?.review?.groups ?? []);
+        // snapshot.config уже загружен вместе с diff и threads: не читаем snapshot повторно.
+        const config = snapshot.config;
+        const groups = computeGroups(snapshot.diff, config.review?.groups ?? []);
+        const readOnly = process.env.REVDECK_READ_ONLY === '1' || config.review?.readOnly === true;
         return {
             id,
             info,
@@ -338,11 +345,11 @@ export class ReviewService {
             findings,
             drafts,
             notes: this.store.listNotes(id),
-            decisions: this.store.listDecisions(id),
+            decisions,
             user: snapshot.user,
             syncedAt: snapshot.syncedAt,
             errors: snapshot.errors,
-            readOnly: this.isReadOnly(id),
+            readOnly,
         };
     }
 
@@ -806,15 +813,15 @@ export class ReviewService {
         return this.now().getTime() - new Date(stored.snapshot.syncedAt).getTime() > this.refreshTtlMs;
     }
 
-    async refreshIfStale(id: string): Promise<ReviewView> {
-        if (this.isStale(id)) {
-            try {
-                await this.refreshReview(id);
-            } catch {
-                // Ошибка фонового обновления не должна ломать чтение кеша.
-            }
-        }
-        return this.getView(id);
+    /** Не блокирует ответ: обновляет снимок в фоне, UI получит его через SSE. */
+    refreshInBackground(id: string): void {
+        if (!this.isStale(id) || this.refreshing.has(id)) return;
+        this.refreshing.add(id);
+        void this.refreshReview(id)
+            .catch(() => undefined)
+            .finally(() => {
+                this.refreshing.delete(id);
+            });
     }
 
     diffFile(id: string, file: string): { path: string; status: string; binary: boolean; hunks: unknown[] } | null {
@@ -1541,12 +1548,16 @@ export class ReviewService {
                 const chunk = reviews.slice(index, index + 2);
                 await Promise.allSettled(
                     chunk.map(async (item) => {
+                        if (this.refreshing.has(item.id)) return;
                         const age = this.now().getTime() - new Date(item.syncedAt).getTime();
                         if (age < this.syncIntervalMs / 2) return;
+                        this.refreshing.add(item.id);
                         try {
                             await this.refreshReview(item.id);
                         } catch {
                             // Фоновое обновление не должно останавливать остальные ревью.
+                        } finally {
+                            this.refreshing.delete(item.id);
                         }
                     }),
                 );

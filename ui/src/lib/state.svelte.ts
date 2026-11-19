@@ -44,10 +44,54 @@ export const app = $state({
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 let reloadTimer: ReturnType<typeof setTimeout> | null = null;
 let reloadPending = false;
+type ReloadScope = 'review' | 'feature' | 'project';
+const pendingReloadScopes = new Set<ReloadScope>();
 let loadRequest = 0;
 let featureRequest = 0;
 let reviewFeaturesRequest = 0;
 let routeEpoch = 0;
+
+interface CachedReviewState {
+    review: ReviewView;
+    reviews: ReviewListItem[];
+}
+/** Последние открытые ревью: переключение назад не ждёт /api/state. */
+const reviewCache = new Map<string, CachedReviewState>();
+const REVIEW_CACHE_LIMIT = 4;
+
+export function forgetReview(id: string): void {
+    reviewCache.delete(id);
+}
+
+function rememberReview(state: CachedReviewState): void {
+    const id = state.review.id;
+    reviewCache.delete(id);
+    reviewCache.set(id, state);
+    while (reviewCache.size > REVIEW_CACHE_LIMIT) {
+        const oldest = reviewCache.keys().next().value;
+        if (!oldest) break;
+        reviewCache.delete(oldest);
+    }
+}
+
+/** Дешёвое сравнение небольших списков, чтобы не перерисовывать сайдбар зря. */
+function sameJson(left: unknown, right: unknown): boolean {
+    return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/** syncedAt меняется на каждом sync; для сайдбара важны только видимые поля. */
+function sameReviewList(left: ReviewListItem[], right: ReviewListItem[]): boolean {
+    const signature = (list: ReviewListItem[]): string =>
+        JSON.stringify(list.map((item) => [item.id, item.number, item.title, item.author, item.project, item.projectKey, item.state]));
+    return signature(left) === signature(right);
+}
+
+/** lastActivity — это MAX(synced_at); сама по себе она не требует перерисовки списка. */
+function sameProjectList(left: ProjectSummary[], right: ProjectSummary[]): boolean {
+    const signature = (list: ProjectSummary[]): string =>
+        JSON.stringify(list.map((item) => [item.key, item.title, item.host, item.project, item.reviews, item.roots, item.updatedAt]));
+    return signature(left) === signature(right);
+}
 
 /** Не перезагружаем ревью, пока пользователь печатает: SSE/поллинг не должны затирать текст. */
 export function isEditingText(): boolean {
@@ -127,7 +171,8 @@ export function togglePinnedProject(key: string): void {
 
 export async function loadProjects(): Promise<void> {
     try {
-        app.projects = (await getProjects()).projects;
+        const next = (await getProjects()).projects;
+        if (!sameProjectList(next, app.projects)) app.projects = next;
         if (app.activeProject && !app.projects.some((project) => project.key === app.activeProject)) {
             app.activeProject = app.projects[0]?.key ?? null;
             storeProject(app.activeProject);
@@ -143,7 +188,8 @@ export async function loadProjects(): Promise<void> {
 
 export async function loadReviews(): Promise<void> {
     try {
-        app.reviews = (await getReviews(app.activeProject ?? undefined)).reviews;
+        const next = (await getReviews(app.activeProject ?? undefined)).reviews;
+        if (!sameReviewList(next, app.reviews)) app.reviews = next;
     } catch (error) {
         app.error = errorText(error);
     }
@@ -151,7 +197,9 @@ export async function loadReviews(): Promise<void> {
 
 export async function loadFeatures(): Promise<void> {
     try {
-        app.features = (await getFeatures(app.activeProject ?? undefined)).features;
+        const next = (await getFeatures(app.activeProject ?? undefined)).features;
+        if (sameJson(next, app.features)) return;
+        app.features = next;
         app.featureRevision += 1;
     } catch (error) {
         app.error = errorText(error);
@@ -162,9 +210,11 @@ export async function loadReviewFeatures(review: string): Promise<void> {
     const request = ++reviewFeaturesRequest;
     try {
         const result = (await getFeaturesForReview(review)).features;
-        if (request === reviewFeaturesRequest && app.review?.id === review) app.reviewFeatures = result;
+        if (request === reviewFeaturesRequest && app.review?.id === review && !sameJson(result, app.reviewFeatures)) {
+            app.reviewFeatures = result;
+        }
     } catch {
-        if (request === reviewFeaturesRequest && app.review?.id === review) app.reviewFeatures = [];
+        if (request === reviewFeaturesRequest && app.review?.id === review && app.reviewFeatures.length) app.reviewFeatures = [];
     }
 }
 
@@ -176,7 +226,7 @@ export async function loadFeature(id: string, options: { push?: boolean } = {}):
         const { feature } = await getFeature(id);
         if (request !== featureRequest || epoch !== routeEpoch) return;
         app.error = '';
-        app.feature = feature;
+        if (!sameJson(feature, app.feature)) app.feature = feature;
         app.featuresHome = false;
         app.help = false;
         app.review = null;
@@ -249,6 +299,7 @@ export async function adoptOpenedReview(review: ReviewView): Promise<void> {
     app.review = review;
     await loadProjects();
     await loadReviews();
+    rememberReview({ review, reviews: app.reviews });
     void loadReviewFeatures(review.id);
     void loadFeatures();
     writeHash(true);
@@ -279,45 +330,73 @@ export function showHelp(push = true): void {
     writeHash(push);
 }
 
+function applyReviewState(state: CachedReviewState, push: boolean, hydrate: boolean, force = false): void {
+    const key = projectKeyFromReviewId(state.review.id);
+    if (key !== app.activeProject) {
+        app.activeProject = key;
+        storeProject(key);
+    }
+    app.projectsHome = false;
+    app.featuresHome = false;
+    app.help = false;
+    app.feature = null;
+    app.featureContext = '';
+    const current = app.review;
+    const switching = !current || current.id !== state.review.id;
+    if (force || switching) {
+        app.review = state.review;
+    } else if (current !== state.review) {
+        // Фоновый reload не должен менять identity app.review: иначе все эффекты,
+        // завязанные на app.review?.id (Rules, Analytics, Diff), перезапускаются
+        // и страница мигает «Загрузка…» каждые несколько секунд.
+        Object.assign(current, state.review);
+    }
+    if (switching) app.reviewFeatures = [];
+    const nextReviews = state.reviews.filter((item) => item.projectKey === key);
+    if (!sameReviewList(nextReviews, app.reviews)) app.reviews = nextReviews;
+    if (!app.diffFile || !state.review.files.some((file) => file.path === app.diffFile)) {
+        app.diffFile = state.review.files[0]?.path ?? null;
+    }
+    if (hydrate) {
+        void loadReviewFeatures(state.review.id);
+        // Передаём proxied app.review, иначе запись note.reactions в сырой объект
+        // не уведомит Svelte и реакции не появятся до ручного переключения.
+        if (app.review) void loadReactions(app.review);
+    }
+    writeHash(push);
+}
+
 export async function loadReview(id: string, options: { refresh?: boolean; silent?: boolean; push?: boolean } = {}): Promise<void> {
     const request = ++loadRequest;
     ++featureRequest;
     const epoch = routeEpoch;
-    if (!options.silent) app.loading = true;
+    const push = options.push ?? !options.refresh;
+    // При переключении на другое ревью показываем последний снимок сразу,
+    // не дожидаясь ответа /api/state. Свежие данные придут следом.
+    const cached = !options.refresh && app.review?.id !== id ? reviewCache.get(id) : undefined;
+    if (cached) applyReviewState(cached, push, false);
+    if (!options.silent) app.loading = !cached;
     app.error = '';
     try {
         const data = options.refresh ? await refreshReview(id) : await getState(id);
         if (request !== loadRequest || epoch !== routeEpoch) return;
-        const key = projectKeyFromReviewId(data.review.id);
-        if (key !== app.activeProject) {
-            app.activeProject = key;
-            storeProject(key);
-        }
-        app.projectsHome = false;
-        app.featuresHome = false;
-        app.help = false;
-        app.feature = null;
-        app.featureContext = '';
-        app.review = data.review;
-        app.reviews = data.reviews.filter((item) => item.projectKey === key);
-        void loadReviewFeatures(data.review.id);
-        if (!app.diffFile || !data.review.files.some((file) => file.path === app.diffFile)) {
-            app.diffFile = data.review.files[0]?.path ?? null;
-        }
-        // Передаём proxied app.review, иначе запись note.reactions в сырой объект
-        // не уведомит Svelte и реакции не появятся до ручного переключения.
-        if (app.review) void loadReactions(app.review);
-        writeHash(options.push ?? !options.refresh);
+        applyReviewState(data, cached ? false : push, true, options.refresh === true);
+        rememberReview({ review: app.review ?? data.review, reviews: data.reviews });
     } catch (error) {
         if (request !== loadRequest || epoch !== routeEpoch) return;
         app.error = errorText(error);
         if (!options.silent) notify(app.error, 'error');
     } finally {
-        if (request === loadRequest) app.loading = false;
+        if (request === loadRequest) {
+            app.loading = false;
+            // Событие, пришедшее во время загрузки, не должно потеряться.
+            if (reloadPending || pendingReloadScopes.size) scheduleReload();
+        }
     }
 }
 
-export function scheduleReload(): void {
+export function scheduleReload(scope?: ReloadScope): void {
+    if (scope) pendingReloadScopes.add(scope);
     if (isEditingText()) {
         reloadPending = true;
         return;
@@ -333,25 +412,67 @@ export function scheduleReload(): void {
             return;
         }
         if (app.loading) return;
-        const id = app.review?.id;
-        if (id) void loadReview(id, { silent: true, push: false });
-        const featureId = app.feature?.id;
-        if (featureId) void loadFeature(featureId, { push: false });
-        void loadProjects();
-        void loadReviews();
-        void loadFeatures();
+        // Без явного scope (поллинг-страховка) обновляем всё; SSE-событие
+        // обновляет только затронутую часть.
+        const scopes: Set<ReloadScope> = pendingReloadScopes.size
+            ? new Set(pendingReloadScopes)
+            : new Set<ReloadScope>(['review', 'feature', 'project']);
+        pendingReloadScopes.clear();
+        reloadPending = false;
+        const reviewScope = scopes.has('review');
+        const featureScope = scopes.has('feature');
+        const projectScope = scopes.has('project');
+        if (reviewScope) {
+            const id = app.review?.id;
+            if (id) void loadReview(id, { silent: true, push: false });
+        }
+        if (featureScope) {
+            void loadFeatures();
+            const featureId = app.feature?.id;
+            if (featureId) void loadFeature(featureId, { push: false });
+            // Участие ревью в фиче влияет на бейджи в его заголовке.
+            const reviewId = app.review?.id;
+            if (reviewId) void loadReviewFeatures(reviewId);
+        }
+        if (projectScope) {
+            // Сначала проекты: от них зависит activeProject для списка ревью.
+            void loadProjects().then(() => {
+                void loadReviews();
+                if (!featureScope) void loadFeatures();
+            });
+        } else if (reviewScope) {
+            void loadReviews();
+            void loadProjects();
+        }
     }, 350);
 }
 
 export function subscribe(): () => void {
     const source = new EventSource('/api/events');
-    source.addEventListener('review', () => scheduleReload());
-    source.addEventListener('feature', () => scheduleReload());
-    source.addEventListener('hello', () => undefined);
-    // Страховка на случай, если SSE не доходит (прокси, devcontainer):
-    // агент пишет черновики, UI подхватывает их без ручного «Обновить».
+    let lastEventAt = Date.now();
+    const markAlive = (): void => {
+        lastEventAt = Date.now();
+    };
+    source.addEventListener('review', () => {
+        markAlive();
+        scheduleReload('review');
+    });
+    source.addEventListener('feature', () => {
+        markAlive();
+        scheduleReload('feature');
+    });
+    source.addEventListener('project', () => {
+        markAlive();
+        scheduleReload('project');
+    });
+    source.addEventListener('hello', markAlive);
+    source.addEventListener('heartbeat', markAlive);
+    // Страховка только для действительно мёртвого/забуференного SSE: пока идут
+    // heartbeat'ы, поллинг не нужен и не дёргает /api/state каждые 10 секунд.
     const poll = setInterval(() => {
-        if (document.visibilityState === 'visible') scheduleReload();
+        if (document.visibilityState !== 'visible') return;
+        if (Date.now() - lastEventAt < 35_000) return;
+        scheduleReload();
     }, 10_000);
     return () => {
         source.close();
@@ -527,7 +648,10 @@ async function loadReactions(review: ReviewView): Promise<void> {
     try {
         const { reactions } = await getReactions(review.id, notes.map((note) => note.id));
         if (app.review?.id !== review.id) return;
-        for (const note of notes) note.reactions = reactions[note.id] ?? [];
+        for (const note of notes) {
+            const next = reactions[note.id] ?? [];
+            if (!sameJson(note.reactions, next)) note.reactions = next;
+        }
     } catch {
         // Реакции не критичны для чтения ревью.
     }

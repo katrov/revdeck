@@ -53,6 +53,8 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
    `publish.approve` → `publish.commit`. The bridge has no approve/commit (`CAPABILITY`); the daemon
    executes only the items included in the approved plan.
 6. Background sync every 2 minutes refreshes open reviews and broadcasts SSE events to the UI.
+7. The UI reads a review from the cached snapshot (`/api/state`); a stale snapshot is refreshed in the
+   background and the update arrives over SSE, so opening never waits for the platform.
 
 `revdeck review 42` and `revdeck feedback 42` are thin CLI wrappers over the same `reviews.open` +
 `rules.get` path. The scenario is a client-side context option: it shapes the agent instructions but
@@ -142,6 +144,12 @@ documents declared in `context.sources` of each repository (`context.maxBytes` c
 
 - The diff is parsed on the server; the UI receives files as a list and hunks one file at a time.
 - Review state does not contain the full diff; SSE reports changes and the UI refetches the state.
+- Opening a review returns the cached snapshot; a stale snapshot is refreshed in the background. A
+  one-entry parsed-snapshot cache and one snippet index per view keep large reviews cheap.
+- SSE heartbeats gate the polling fallback; review/feature/project events reload only their scope, and
+  unchanged lists are not reassigned in the UI.
+- Threads and findings use a measured, page-windowed virtual list in the UI; only visible pages are in
+  the DOM, while focus, editors and deep links stay pinned.
 - Snippets for threads and findings are computed on the server and size-limited.
 - Rule context size is controlled by `rules.maxDocumentBytes` and `rules.maxTotalBytes` (`0` =
   unlimited); MCP context can additionally be capped by the `max_bytes` parameter.

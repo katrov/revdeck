@@ -210,7 +210,9 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                 service.events.on('review', reviewListener);
                 service.events.on('feature', featureListener);
                 service.events.on('project', projectListener);
-                const heartbeat = setInterval(() => res.write(': ping\n\n'), 25_000);
+                // Named event, not a comment: the UI uses it to tell a live SSE from a
+                // buffered/blocked stream and skips its polling fallback while it ticks.
+                const heartbeat = setInterval(() => res.write('event: heartbeat\ndata: {}\n\n'), 25_000);
                 heartbeat.unref?.();
                 req.on('close', () => {
                     clearInterval(heartbeat);
@@ -244,7 +246,9 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                     reply(res, 400, { ok: false, error: 'нужен параметр review' });
                     return;
                 }
-                const view = await service.refreshIfStale(review);
+                // Отдаём кеш сразу; устаревший снимок обновляется в фоне и приходит через SSE.
+                const view = service.getView(review);
+                service.refreshInBackground(review);
                 reply(res, 200, { ok: true, review: view, reviews: service.listReviews() });
                 return;
             }
