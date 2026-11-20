@@ -18,6 +18,7 @@ import { sanitizeBody, normalizeMediaLinks } from '../core/sanitize.js';
 import { attachmentSpec, decodeAttachment, matchesSignature } from '../core/attachments.js';
 import { mergeFindings, validateFinding, applyDecisions, fingerprintOf, levelOrder } from '../core/findings.js';
 import { canonicalJson } from '../core/canonical.js';
+import type { QualityMetrics } from '../core/metrics.js';
 import { plural, resolveOutputLanguage, tr } from '../core/locale.js';
 import type { Locale } from '../core/locale.js';
 import { reviewId as makeReviewId } from '../core/refs.js';
@@ -25,6 +26,7 @@ import { projectKey } from '../core/projects.js';
 import { REACTIONS } from '../core/types.js';
 import type { ReviewConfig } from '../core/config.js';
 import type {
+    AgentMessage,
     Approval,
     Decision,
     DiffFile,
@@ -38,6 +40,8 @@ import type {
     PublishResult,
     PublishResultItem,
     CheckResult,
+    ReviewEvent,
+    ReviewEventActor,
     Reaction,
     ReplyDraft,
     Review,
@@ -72,6 +76,8 @@ export interface OpenOptions {
     project?: string;
     host?: string;
     branch?: string;
+    /** Кто открыл ревью; нужно для метрик. */
+    actor?: ReviewEventActor;
 }
 
 export interface PublishPreview {
@@ -138,6 +144,8 @@ export class ReviewService {
     private syncing = false;
     /** Ревью, которые уже обновляются: не запускаем параллельный refresh из UI и sync. */
     private readonly refreshing = new Set<string>();
+    /** Временные снимки для просмотра MR/PR без создания ревью. */
+    private readonly previews = new Map<string, { ref: ReviewRef; view: ReviewView; diff: DiffFile[]; at: number }>();
 
     constructor(options: ServiceOptions) {
         this.store = options.store;
@@ -188,12 +196,13 @@ export class ReviewService {
             );
         }
         const provider = await this.providerFactory(ref, root);
-        await this.refresh(id, root, provider, loaded);
+        await this.refresh(id, root, provider, loaded, options.actor ?? 'system');
         this.store.audit(id, 'review.open', { ref, root });
+        this.event(id, options.actor ?? 'system', 'review.opened', { ref });
         return this.getReview(id);
     }
 
-    async refreshReview(id: string): Promise<Review> {
+    async refreshReview(id: string, actor: ReviewEventActor = 'system'): Promise<Review> {
         const meta = this.store.getReview(id);
         if (!meta) throw new Error(tr(`ревью ${id} не найдено: сначала откройте его`, `review ${id} not found: open it first`));
         const loaded = await loadConfig(meta.row.root).catch((error) => ({
@@ -205,7 +214,7 @@ export class ReviewService {
             { platform: meta.row.platform as Platform, host: meta.row.host, project: meta.row.project, number: meta.row.number },
             meta.row.root,
         );
-        await this.refresh(id, meta.row.root, provider, loaded);
+        await this.refresh(id, meta.row.root, provider, loaded, actor);
         return this.getReview(id);
     }
 
@@ -223,9 +232,11 @@ export class ReviewService {
         root: string,
         provider: Provider,
         loaded: { config: ReviewConfig; path: string | null; warnings: string[] },
+        actor: ReviewEventActor = 'system',
     ): Promise<void> {
         const errors: string[] = [...loaded.warnings];
         const previous = this.store.getReview(id)?.snapshot;
+        const oldInfo = this.store.info(id);
         let info: ReviewInfo;
         try {
             info = await provider.info();
@@ -239,6 +250,13 @@ export class ReviewService {
             diff = await provider.diff();
         } catch (error) {
             errors.push(`diff: ${redact(messageOf(error))}`);
+            if (info.merge) {
+                info.merge = {
+                    ...info.merge,
+                    state: 'unknown',
+                    detail: `${info.merge.detail} · diff not refreshed`.trim(),
+                };
+            }
         }
         let threads: Thread[] = previous?.threads ?? [];
         try {
@@ -272,6 +290,24 @@ export class ReviewService {
         });
         if (diff.length) this.markStaleFindings(id, diff);
         this.recordVersion(id, info, diff);
+        if (
+            !oldInfo ||
+            oldInfo.state !== info.state ||
+            oldInfo.commit.base !== info.commit.base ||
+            oldInfo.commit.head !== info.commit.head ||
+            previous?.diff.length !== diff.length
+        ) {
+            this.event(id, actor, 'review.synced', {
+                state: info.state,
+                base: info.commit.base,
+                head: info.commit.head,
+                files: diff.length,
+            });
+        }
+        if (info.state !== oldInfo?.state) {
+            if (info.state === 'merged') this.event(id, 'system', 'review.merged', { mergedAt: info.mergedAt ?? syncedAt });
+            else if (info.state === 'closed') this.event(id, 'system', 'review.closed', { closedAt: info.closedAt ?? syncedAt });
+        }
         this.emit(id);
     }
 
@@ -345,6 +381,7 @@ export class ReviewService {
             findings,
             drafts,
             notes: this.store.listNotes(id),
+            agentMessages: this.store.listAgentMessages(id),
             decisions,
             user: snapshot.user,
             syncedAt: snapshot.syncedAt,
@@ -435,6 +472,174 @@ export class ReviewService {
                     title: finding.title,
                     note: decisions[finding.id]?.note ?? finding.note,
                 })),
+        };
+    }
+
+    async openPreview(input: OpenOptions & { root: string; force?: boolean }): Promise<ReviewView> {
+        const root = findRepoRoot(input.root);
+        const loaded = await loadConfig(root);
+        const ref = await resolveReviewRef({
+            root,
+            config: loaded.config,
+            ...(input.input ? { input: input.input } : {}),
+            ...(input.platform ? { platform: input.platform } : {}),
+            ...(input.project ? { project: input.project } : {}),
+            ...(input.host ? { host: input.host } : {}),
+            ...(input.branch ? { branch: input.branch } : {}),
+        });
+        const id = `preview-${createHash('sha256').update(`${ref.platform}|${ref.host}|${ref.project}|${ref.number}`).digest('hex').slice(0, 16)}`;
+        const cached = this.previews.get(id);
+        if (!input.force && cached && this.now().getTime() - cached.at < 60 * 60_000) return cached.view;
+        const provider = await this.providerFactory(ref, root);
+        const errors: string[] = [];
+        const [info, diff] = await Promise.all([provider.info(), provider.diff()]);
+        let threads: Thread[] = [];
+        try {
+            threads = await provider.threads();
+        } catch (error) {
+            errors.push(redact(messageOf(error)));
+        }
+        const review: Review = {
+            id,
+            info,
+            diff,
+            threads,
+            reactions: [],
+            groups: [],
+            summary: null,
+            findings: [],
+            drafts: [],
+            notes: [],
+            agentMessages: [],
+            decisions: {},
+            user: null,
+            syncedAt: this.now().toISOString(),
+            errors,
+            readOnly: true,
+        };
+        const view = toReviewView(review, this.now().getTime());
+        this.previews.set(id, { ref, view, diff, at: this.now().getTime() });
+        while (this.previews.size > 8) {
+            const oldest = [...this.previews.entries()].sort((left, right) => left[1].at - right[1].at)[0];
+            if (!oldest) break;
+            this.previews.delete(oldest[0]);
+        }
+        return view;
+    }
+
+    previewById(id: string): ReviewView | null {
+        const cached = this.previews.get(id);
+        if (!cached || this.now().getTime() - cached.at >= 60 * 60_000) return null;
+        return cached.view;
+    }
+
+    qualityMetrics(project = '', fromInput?: string, toInput?: string): QualityMetrics {
+        const now = this.now();
+        const to = toInput && Number.isFinite(Date.parse(toInput)) ? new Date(toInput).toISOString() : now.toISOString();
+        const fromDefault = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const from = fromInput && Number.isFinite(Date.parse(fromInput)) ? new Date(fromInput).toISOString() : fromDefault;
+        const reviews = this.store
+            .listReviews(project || undefined)
+            .filter((review) => review.syncedAt >= from && review.syncedAt <= to);
+        const events = reviews.flatMap((review) => this.store.listEvents(review.id, from, to));
+        const reviewFindings = reviews.map((review) => ({
+            findings: this.store.listFindings(review.id),
+            decisions: this.store.listDecisions(review.id),
+        }));
+        const findings = reviewFindings.flatMap((item) => item.findings);
+        const decisionByFinding = new Map<Finding, Decision | null>();
+        for (const item of reviewFindings) {
+            for (const finding of item.findings) {
+                decisionByFinding.set(finding, item.decisions[finding.id]?.decision ?? finding.decision);
+            }
+        }
+        const decisionOf = (finding: Finding): Decision | null => decisionByFinding.get(finding) ?? null;
+        const accepted = findings.filter((finding) => decisionOf(finding) === 'accept').length;
+        const rejected = findings.filter((finding) => decisionOf(finding) === 'reject').length;
+        const discussed = findings.filter((finding) => decisionOf(finding) === 'discuss').length;
+        const published = findings.filter((finding) => finding.status === 'published').length;
+        const pending = findings.length - accepted - rejected - discussed;
+        let reviewsWithCoverage = 0;
+        let reviewsWithUnknowns = 0;
+        let coverageItems = 0;
+        let unknownItems = 0;
+        let duplicates = 0;
+        let ruleCandidates = 0;
+        for (const review of reviews) {
+            const summary = this.store.getSummary(review.id);
+            if (summary?.coverage?.length) {
+                reviewsWithCoverage += 1;
+                coverageItems += summary.coverage.length;
+            }
+            if (summary?.unknowns?.length) {
+                reviewsWithUnknowns += 1;
+                unknownItems += summary.unknowns.length;
+            }
+            duplicates += summary?.duplicates?.length ?? 0;
+            ruleCandidates += summary?.ruleCandidates?.length ?? 0;
+        }
+        const firstOf = (id: string, type: string): number | null => {
+            const event = events.find((item) => item.reviewId === id && item.type === type);
+            return event ? Date.parse(event.at) : null;
+        };
+        const toFirst: number[] = [];
+        const cycles: number[] = [];
+        for (const review of reviews) {
+            const opened = firstOf(review.id, 'review.opened');
+            const drafted = firstOf(review.id, 'findings.drafted');
+            const finished = firstOf(review.id, 'publish.committed') ?? firstOf(review.id, 'review.merged');
+            if (opened !== null && drafted !== null && drafted >= opened) toFirst.push(drafted - opened);
+            if (opened !== null && finished !== null && finished >= opened) cycles.push(finished - opened);
+        }
+        const median = (values: number[]): number | null => {
+            if (!values.length) return null;
+            const sorted = [...values].sort((a, b) => a - b);
+            const middle = Math.floor(sorted.length / 2);
+            return sorted.length % 2 ? sorted[middle]! : Math.round((sorted[middle - 1]! + sorted[middle]!) / 2);
+        };
+        const count = (type: string): number => events.filter((event) => event.type === type).length;
+        const actor = (name: ReviewEvent['actor']): number => events.filter((event) => event.actor === name).length;
+        return {
+            project,
+            from,
+            to,
+            generatedAt: now.toISOString(),
+            reviews: {
+                total: reviews.length,
+                open: reviews.filter((review) => review.state === 'opened' || review.state === 'open').length,
+                merged: reviews.filter((review) => review.state === 'merged').length,
+                closed: reviews.filter((review) => review.state === 'closed').length,
+            },
+            findings: {
+                total: findings.length,
+                accepted,
+                rejected,
+                discussed,
+                pending,
+                published,
+                withRule: findings.filter((finding) => Boolean(finding.rule)).length,
+            },
+            rates: {
+                acceptance: accepted + rejected ? accepted / (accepted + rejected) : null,
+                publish: findings.length ? published / findings.length : null,
+                ruleGrounded: findings.length ? findings.filter((finding) => Boolean(finding.rule)).length / findings.length : null,
+            },
+            coverage: { reviewsWithCoverage, reviewsWithUnknowns, coverageItems, unknownItems },
+            process: { duplicates, ruleCandidates },
+            timing: {
+                reviewsWithFirstFinding: toFirst.length,
+                medianTimeToFirstFindingMs: median(toFirst),
+                medianCycleTimeMs: median(cycles),
+            },
+            activity: {
+                findingsDrafted: count('findings.drafted'),
+                summariesSaved: count('summary.saved'),
+                decisionsSaved: count('decisions.saved'),
+                publishes: count('publish.committed'),
+                checks: count('checks.run'),
+            },
+            actors: { human: actor('human'), agent: actor('agent'), system: actor('system') },
+            events: events.length,
         };
     }
 
@@ -825,6 +1030,11 @@ export class ReviewService {
     }
 
     diffFile(id: string, file: string): { path: string; status: string; binary: boolean; hunks: unknown[] } | null {
+        const preview = this.previews.get(id);
+        if (preview && this.now().getTime() - preview.at < 60 * 60_000) {
+            const found = preview.diff.find((item) => item.path === file);
+            return found ? { path: found.path, status: found.status, binary: found.binary, hunks: found.hunks } : null;
+        }
         const stored = this.store.getReview(id);
         if (!stored) return null;
         const found = stored.snapshot.diff.find((item) => item.path === file);
@@ -834,10 +1044,11 @@ export class ReviewService {
 
     // ---------------------------------------------------------------- summary
 
-    setSummary(id: string, input: unknown): ReviewSummary {
+    setSummary(id: string, input: unknown, actor: ReviewEventActor = 'system'): ReviewSummary {
         this.requireReview(id);
         this.assertWritable(id);
         const value = (input ?? {}) as Record<string, unknown>;
+        const previous = this.store.getSummary(id);
         const list = (item: unknown, limit: number): string[] =>
             (Array.isArray(item) ? item : [])
                 .map((entry) => String(entry ?? '').trim())
@@ -850,15 +1061,28 @@ export class ReviewService {
             summary: String(value.summary ?? '').slice(0, 20_000),
             changes: list(value.changes, 100),
             focus: list(value.focus, 100),
+            coverage: value.coverage === undefined ? (previous?.coverage ?? []) : list(value.coverage, 200),
+            unknowns: value.unknowns === undefined ? (previous?.unknowns ?? []) : list(value.unknowns, 100),
+            duplicates: value.duplicates === undefined ? (previous?.duplicates ?? []) : list(value.duplicates, 100),
+            ruleCandidates: value.ruleCandidates === undefined ? (previous?.ruleCandidates ?? []) : list(value.ruleCandidates, 100),
         };
         this.store.setSummary(id, summary);
+        this.event(id, actor, 'summary.saved', {
+            title: summary.title,
+            changes: summary.changes.length,
+            focus: summary.focus.length,
+            coverage: summary.coverage?.length ?? 0,
+            unknowns: summary.unknowns?.length ?? 0,
+            duplicates: summary.duplicates?.length ?? 0,
+            ruleCandidates: summary.ruleCandidates?.length ?? 0,
+        });
         this.emit(id);
         return summary;
     }
 
     // ---------------------------------------------------------------- findings
 
-    setFindings(id: string, raw: unknown): Finding[] {
+    setFindings(id: string, raw: unknown, actor: ReviewEventActor = 'system'): Finding[] {
         this.assertWritable(id);
         const review = this.getReview(id);
         if (!Array.isArray(raw)) throw new Error(tr('findings: ожидался массив', 'findings: expected an array'));
@@ -874,6 +1098,15 @@ export class ReviewService {
                 continue;
             }
             const known = (value.id ? knownIds.has(value.id) : false) || knownPrints.has(fingerprintOf(value));
+            if (!known && (value.level === 'blocker' || value.level === 'major') && !value.body) {
+                errors.push(
+                    tr(
+                        `#${index + 1}: для уровня ${value.level} нужен body — что сломано и как воспроизводится`,
+                        `#${index + 1}: level ${value.level} requires body — what breaks and how to reproduce it`,
+                    ),
+                );
+                continue;
+            }
             // Новое замечание обязано ссылаться на строку diff. Известное (например, стало stale
             // после новых коммитов) сохраняем, иначе UI не смог бы пересохранить свой же набор.
             if (!known) {
@@ -892,11 +1125,20 @@ export class ReviewService {
         if (errors.length) throw new Error(tr(`замечания отклонены:\n${errors.join('\n')}`, `findings rejected:\n${errors.join('\n')}`));
         const merged = mergeFindings(this.store.listFindings(id), drafts, { now: this.now().toISOString() });
         this.store.replaceFindings(id, merged);
+        this.event(id, actor, 'findings.drafted', {
+            count: drafts.length,
+            levels: drafts.reduce<Record<string, number>>((out, finding) => {
+                out[finding.level] = (out[finding.level] ?? 0) + 1;
+                return out;
+            }, {}),
+            files: new Set(drafts.map((finding) => finding.file)).size,
+            withRule: drafts.filter((finding) => Boolean(finding.rule)).length,
+        });
         this.emit(id);
         return merged;
     }
 
-    setDecisions(id: string, raw: unknown): Record<string, { decision: Decision | null; note: string }> {
+    setDecisions(id: string, raw: unknown, actor: ReviewEventActor = 'system'): Record<string, { decision: Decision | null; note: string }> {
         this.requireReview(id);
         this.assertWritable(id);
         const patch: Record<string, { decision: Decision | null; note: string }> = {};
@@ -910,6 +1152,14 @@ export class ReviewService {
             };
         }
         this.store.setDecisions(id, patch);
+        this.event(id, actor, 'decisions.saved', {
+            count: Object.keys(patch).length,
+            decisions: Object.values(patch).reduce<Record<string, number>>((out, item) => {
+                const key = item.decision ?? 'pending';
+                out[key] = (out[key] ?? 0) + 1;
+                return out;
+            }, {}),
+        });
         this.emit(id);
         return this.store.listDecisions(id);
     }
@@ -1164,6 +1414,24 @@ export class ReviewService {
         this.emit(id);
     }
 
+    // ---------------------------------------------------------------- agent messages
+
+    addAgentMessage(id: string, text: string, role: AgentMessage['role']): AgentMessage {
+        this.requireReview(id);
+        this.assertWritable(id);
+        const body = String(text ?? '').trim().slice(0, 16_000);
+        if (!body) throw new Error(tr('сообщение пустое', 'the message is empty'));
+        const message: AgentMessage = {
+            id: `m-${Date.now().toString(36)}-${randomBytes(3).toString('hex')}`,
+            role: role === 'agent' ? 'agent' : 'human',
+            text: body,
+            createdAt: this.now().toISOString(),
+        };
+        this.store.addAgentMessage(id, message);
+        this.emit(id);
+        return message;
+    }
+
     // ---------------------------------------------------------------- publish
 
     previewPublish(id: string, kind: PublishKind, ids: string[]): PublishPreview {
@@ -1401,6 +1669,11 @@ export class ReviewService {
             ok: results.filter((item) => item.ok).length,
             failed: results.filter((item) => !item.ok).length,
         });
+        this.event(id, 'human', 'publish.committed', {
+            kind: approval.kind,
+            ok: results.filter((item) => item.ok).length,
+            failed: results.filter((item) => !item.ok).length,
+        });
         this.emit(id);
         // Свежие треды и статусы подтянутся следующим обновлением; UI уже видит posted.
         return { reviewId: id, results, startedAt, finishedAt };
@@ -1526,6 +1799,12 @@ export class ReviewService {
             }
         }
         this.store.audit(id, 'checks.run', { count: results.length });
+        this.event(id, 'human', 'checks.run', {
+            count: results.length,
+            passed: results.filter((item) => item.status === 'passed').length,
+            failed: results.filter((item) => item.status === 'failed').length,
+            errors: results.filter((item) => item.status === 'error').length,
+        });
         return results;
     }
 
@@ -1568,6 +1847,23 @@ export class ReviewService {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    private event(
+        reviewId: string,
+        actor: ReviewEventActor,
+        type: string,
+        payload: unknown,
+        extra: { findingId?: string; threadId?: string; ruleRef?: string; commitSha?: string } = {},
+    ): void {
+        this.store.recordEvent({
+            at: this.now().toISOString(),
+            reviewId,
+            actor,
+            type,
+            payload,
+            ...extra,
+        });
+    }
 
     private emit(id: string): void {
         this.events.emit('review', { reviewId: id, at: this.now().toISOString() });

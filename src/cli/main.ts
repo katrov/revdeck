@@ -67,8 +67,11 @@ const OPTIONS = {
     line: { type: 'string' },
     id: { type: 'string' },
     toAgent: { type: 'boolean', default: true },
+    asAgent: { type: 'boolean', default: false },
     all: { type: 'boolean', default: false },
     lang: { type: 'string' },
+    from: { type: 'string' },
+    to: { type: 'string' },
     role: { type: 'string' },
     shard: { type: 'string' },
     title: { type: 'string' },
@@ -115,6 +118,8 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
   revdeck summary <N> [--file <json>]      выжимка MR
   revdeck reply <N> --thread <id> (--body <текст> | --body-file <файл> | -) [--resolve] [--publish --yes]
   revdeck notes <N> <list|add|update|delete|reply>
+  revdeck messages <N> [list|ask|reply] [--text <текст>] [--as-agent]   вопросы агенту по ревью
+  revdeck metrics [проект] [--from <ISO>] [--to <ISO>]   метрики качества
   revdeck react <N> --note <id> --emoji <name>   поставить или снять реакцию
   revdeck attach <N> --file <путь>               загрузить картинку/видео в платформу
   revdeck publish <N> [--kind reply|finding|note] [--ids a,b] [--yes]
@@ -152,6 +157,8 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
   revdeck summary <N> [--file <json>]      review summary
   revdeck reply <N> --thread <id> (--body <text> | --body-file <file> | -) [--resolve] [--publish --yes]
   revdeck notes <N> <list|add|update|delete|reply>
+  revdeck messages <N> [list|ask|reply] [--text <text>] [--as-agent]   review-level questions to the agent
+  revdeck metrics [project] [--from <ISO>] [--to <ISO>]   quality metrics
   revdeck react <N> --note <id> --emoji <name>   add or remove a reaction
   revdeck attach <N> --file <path>               upload an image/video to the platform
   revdeck publish <N> [--kind reply|finding|note] [--ids a,b] [--yes]
@@ -282,6 +289,10 @@ async function main(): Promise<void> {
             return reply(positionals[0], values);
         case 'notes':
             return notes(positionals[0], positionals[1] ?? 'list', values);
+        case 'messages':
+            return messages(positionals[0], positionals[1] ?? 'list', values);
+        case 'metrics':
+            return metrics(positionals[0], values);
         case 'react':
             return react(positionals[0], values);
         case 'attach':
@@ -351,10 +362,15 @@ async function resolveReview(client: DaemonClient, root: string, arg: string | u
 
 function formatInfo(review: ReviewView): string[] {
     const info = review.info;
+    const merge = info.merge;
+    const mergeLine = merge && merge.state !== 'clean'
+        ? `${tr('мерж', 'merge')}: ${merge.state} → ${merge.targetBranch || '?'}${merge.detail ? ` (${merge.detail})` : ''}`
+        : null;
     return [
         `#${info.ref.number} ${info.title}`,
         `${info.webUrl}`,
         `${info.ref.project} · ${info.sourceBranch} → ${info.targetBranch} · ${info.state}${info.draft ? ' · draft' : ''} · ${tr('автор', 'by')} ${info.author}`,
+        ...(mergeLine ? [mergeLine] : []),
         `${review.stats.files} ${plural(review.stats.files, 'файл', 'файла', 'файлов', 'file', 'files')}, +${review.stats.additions} −${review.stats.deletions} · ${tr('обновлено', 'updated')} ${when(review.syncedAt)}${review.stale ? tr(' (устарело)', ' (stale)') : ''}`,
     ];
 }
@@ -1032,6 +1048,61 @@ async function notes(arg: string | undefined, action: string, values: Values): P
         for (const note of review.notes) {
             writers.out(`${note.file}:${note.line} · ${note.toAgent ? tr('агенту', 'to agent') : tr('себе', 'private')} · ${note.id}`);
             writers.out(`  ${truncate(note.text, 300)}${note.agentReply ? `\n  → ${truncate(note.agentReply, 300)}` : ''}`);
+        }
+    });
+}
+
+async function metrics(project: string | undefined, values: Values): Promise<void> {
+    await withClient(async ({ client }) => {
+        const result = await client.request<{ metrics: Record<string, unknown> }>('metrics.get', {
+            ...(project || values.project ? { project: project || values.project } : {}),
+            ...(values.from ? { from: values.from } : {}),
+            ...(values.to ? { to: values.to } : {}),
+        });
+        if (values.json) return printJson(result.metrics);
+        const data = result.metrics as {
+            from: string;
+            to: string;
+            reviews: { total: number; open: number; merged: number; closed: number };
+            findings: { total: number; accepted: number; rejected: number; published: number; withRule: number };
+            rates: { acceptance: number | null; publish: number | null; ruleGrounded: number | null };
+            coverage: { reviewsWithCoverage: number; coverageItems: number };
+            timing: { medianTimeToFirstFindingMs: number | null; medianCycleTimeMs: number | null };
+            events: number;
+        };
+        const pct = (value: number | null): string => (value === null ? '—' : `${Math.round(value * 100)}%`);
+        const duration = (value: number | null): string => (value === null ? '—' : `${Math.round(value / 60000)}m`);
+        writers.out(`${data.from} … ${data.to} · ${data.events} events`);
+        writers.out(`reviews: ${data.reviews.total} (open ${data.reviews.open}, merged ${data.reviews.merged}, closed ${data.reviews.closed})`);
+        writers.out(`findings: ${data.findings.total}, accepted ${data.findings.accepted}, rejected ${data.findings.rejected}, published ${data.findings.published}, with rule ${data.findings.withRule}`);
+        writers.out(`acceptance ${pct(data.rates.acceptance)} · publish ${pct(data.rates.publish)} · rule-grounded ${pct(data.rates.ruleGrounded)}`);
+        writers.out(`coverage: ${data.coverage.reviewsWithCoverage} reviews / ${data.coverage.coverageItems} items`);
+        writers.out(`median time to first finding ${duration(data.timing.medianTimeToFirstFindingMs)} · cycle ${duration(data.timing.medianCycleTimeMs)}`);
+    });
+}
+
+async function messages(arg: string | undefined, action: string, values: Values): Promise<void> {
+    await withClient(async ({ client }) => {
+        const { review } = await resolveReview(client, findRepoRoot(), reviewArg(values, arg), values);
+        if (action === 'ask' || action === 'reply') {
+            const text = typeof values.text === 'string' ? values.text : '';
+            if (!text.trim()) fail(tr('нужен --text', '--text is required'));
+            const { message } = await client.request<{ message: { id: string; role: string; text: string; createdAt: string } }>('messages.add', {
+                review: review.id,
+                text,
+                ...(values.asAgent ? { asAgent: true } : {}),
+            });
+            if (values.json) return printJson(message);
+            writers.out(`${message.role === 'agent' ? tr('ответ агента', 'agent reply') : tr('вопрос агенту', 'question to the agent')} ${tr('сохранён', 'saved')}: ${message.id}`);
+            return;
+        }
+        if (action !== 'list') usage([tr('revdeck messages <N> [list|ask|reply] [--text <текст>] [--as-agent]', 'revdeck messages <N> [list|ask|reply] [--text <text>] [--as-agent]')]);
+        const messages = review.agentMessages ?? [];
+        if (values.json) return printJson({ messages });
+        if (!messages.length) writers.out(tr('сообщений агенту нет', 'no messages to the agent'));
+        for (const message of messages) {
+            writers.out(`${message.role} · ${when(message.createdAt)} · ${message.id}`);
+            writers.out(`  ${truncate(message.text, 500)}`);
         }
     });
 }

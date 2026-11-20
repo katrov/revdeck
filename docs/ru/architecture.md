@@ -68,6 +68,12 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
 - `ReviewRef` — платформа, хост, проект, номер. `reviewId` — `platform:host/project!number`.
 - `DiffFile`/`Hunk`/`DiffLine` — номера строк по старой и новой версии; `line` замечания всегда по
   новому файлу.
+- `previews` — in-memory снимки с TTL для просмотра MR/PR; используют `info`/`diff`/`threads`
+  провайдера и не попадают в SQLite или список ревью.
+- `review_events` — append-only журнал качества (актор, тип, finding/thread/rule, payload); метрики
+  читают его, а не только текущий снимок.
+- `ReviewInfo.merge` — mergeability на момент sync: target, база/head diff, детали платформы и
+  `clean`/`conflict`/`behind`/`unknown`/`unavailable`. Это отдельно от merge-base diff.
 - `Thread`/`Note` — общая модель обсуждений.
 - `Finding` — замечание с `id`, `fingerprint`, уровнем, файлом/строкой, текстом и статусом
   (`draft`, `accepted`, `rejected`, `published`, `fixed`, `stale`).

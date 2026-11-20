@@ -274,6 +274,22 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                 reply(res, 200, { ok: true, reactions: await service.reactions(review, noteIds) });
                 return;
             }
+            if (req.method === 'GET' && url.pathname === '/api/metrics') {
+                reply(res, 200, {
+                    ok: true,
+                    metrics: service.qualityMetrics(
+                        url.searchParams.get('project') ?? '',
+                        url.searchParams.get('from') ?? undefined,
+                        url.searchParams.get('to') ?? undefined,
+                    ),
+                });
+                return;
+            }
+            if (req.method === 'GET' && url.pathname === '/api/messages') {
+                const review = url.searchParams.get('review') ?? '';
+                reply(res, 200, { ok: true, messages: service.getReview(review).agentMessages });
+                return;
+            }
             if (req.method === 'GET' && url.pathname === '/api/versions') {
                 const review = url.searchParams.get('review') ?? '';
                 reply(res, 200, { ok: true, versions: service.listVersions(review) });
@@ -329,6 +345,23 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                         reply(res, 200, { ok: true, removedReviews, projects: service.listProjects() });
                         return;
                     }
+                    case '/api/previews/open': {
+                        const root = String(body.root ?? '');
+                        if (!root) throw Object.assign(new Error('нужен root рабочей копии'), { status: 400 });
+                        const input = String(body.input ?? '');
+                        if (!input) throw Object.assign(new Error('нужен номер или ссылка на MR/PR'), { status: 400 });
+                        const preview = await service.openPreview({
+                            root,
+                            input,
+                            ...(typeof body.platform === 'string' ? { platform: body.platform as 'gitlab' | 'github' } : {}),
+                            ...(typeof body.project === 'string' ? { project: body.project } : {}),
+                            ...(typeof body.host === 'string' ? { host: body.host } : {}),
+                            ...(typeof body.branch === 'string' ? { branch: body.branch } : {}),
+                            ...(body.force === true ? { force: true } : {}),
+                        });
+                        reply(res, 200, { ok: true, preview });
+                        return;
+                    }
                     case '/api/reviews/open': {
                         const root = String(body.root ?? '');
                         if (!root) throw Object.assign(new Error('нужен root рабочей копии'), { status: 400 });
@@ -338,6 +371,7 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                             ...(typeof body.project === 'string' ? { project: body.project } : {}),
                             ...(typeof body.host === 'string' ? { host: body.host } : {}),
                             ...(typeof body.branch === 'string' ? { branch: body.branch } : {}),
+                            actor: 'human',
                         });
                         reply(res, 200, { ok: true, review: service.getView(opened.id), reviews: service.listReviews() });
                         return;
@@ -348,7 +382,7 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                         return;
                     }
                     case '/api/reviews/refresh': {
-                        const updated = await service.refreshReview(review);
+                        const updated = await service.refreshReview(review, 'human');
                         reply(res, 200, { ok: true, review: service.getView(updated.id), reviews: service.listReviews() });
                         return;
                     }
@@ -384,18 +418,23 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                         return;
                     }
                     case '/api/findings': {
-                        const findings = service.setFindings(review, body.findings);
+                        const findings = service.setFindings(review, body.findings, 'human');
                         reply(res, 200, { ok: true, findings });
                         return;
                     }
                     case '/api/summary': {
-                        const summary = service.setSummary(review, body.summary);
+                        const summary = service.setSummary(review, body.summary, 'human');
                         reply(res, 200, { ok: true, summary });
                         return;
                     }
                     case '/api/decisions': {
-                        const decisions = service.setDecisions(review, body.decisions);
+                        const decisions = service.setDecisions(review, body.decisions, 'human');
                         reply(res, 200, { ok: true, decisions });
+                        return;
+                    }
+                    case '/api/messages': {
+                        const message = service.addAgentMessage(review, String(body.text ?? ''), 'human');
+                        reply(res, 200, { ok: true, message });
                         return;
                     }
                     case '/api/notes': {

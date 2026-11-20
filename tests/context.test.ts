@@ -89,6 +89,60 @@ describe('review scenario context', () => {
         });
     });
 
+    it('keeps the target branch and merge state visible', () => {
+        const withMerge = {
+            ...review,
+            info: {
+                ...review.info,
+                merge: {
+                    state: 'conflict',
+                    targetBranch: 'main',
+                    detail: 'conflict · cannot_be_merged',
+                    checkedAt: '2026-01-01T00:00:00Z',
+                    baseSha: 'a'.repeat(40),
+                    headSha: 'b'.repeat(40),
+                },
+            },
+        } as ReviewView;
+        const text = renderContext(withMerge, rules);
+        expect(text).toContain('Branch and comparison base');
+        expect(text).toContain('Merges into: `main`');
+        expect(text).toContain('Merge status: conflict');
+        expect(text).toContain('Conflict with target');
+        expect(contextPayload(withMerge, rules)).toMatchObject({ merge: { state: 'conflict', targetBranch: 'main' } });
+    });
+
+    it('does not require merge status for a local diff without a target', () => {
+        const local = { ...review, info: { ...review.info, targetBranch: '' } } as ReviewView;
+        const text = renderContext(local, rules);
+        expect(text).toContain('not applicable (local diff)');
+        expect(text).not.toContain('No merge status was reported');
+    });
+
+    it('shows the review mode and risk reasons', () => {
+        const risky = {
+            ...review,
+            risk: { level: 'high', mode: 'full', files: 2, changedLines: 2000, reasons: ['security-sensitive:src/auth.ts'] },
+        } as unknown as ReviewView;
+        const text = renderContext(risky, rules);
+        expect(text).toContain('Review mode: full');
+        expect(text).toContain('security-sensitive:src/auth.ts');
+    });
+
+    it('includes review-level questions and agent replies', () => {
+        const withMessages = {
+            ...review,
+            agentMessages: [
+                { id: 'm1', role: 'human', text: 'Explain the task', createdAt: '2026-01-01T00:00:00Z' },
+                { id: 'm2', role: 'agent', text: 'It adds b', createdAt: '2026-01-01T00:01:00Z' },
+            ],
+        } as unknown as ReviewView;
+        const text = renderContext(withMessages, rules);
+        expect(text).toContain('Messages to the agent (2)');
+        expect(text).toContain('Explain the task');
+        expect(text).toContain('It adds b');
+    });
+
     it('marks the current user own MR and suggests feedback', () => {
         const own = { ...review, user: { username: 'author', name: 'Author' } } as ReviewView;
         const text = renderContext(own, rules);

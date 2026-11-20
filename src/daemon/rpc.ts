@@ -198,11 +198,12 @@ export async function dispatch(
                 ...(typeof params.project === 'string' ? { project: params.project } : {}),
                 ...(typeof params.host === 'string' ? { host: params.host } : {}),
                 ...(typeof params.branch === 'string' ? { branch: params.branch } : {}),
+                actor: policy.name,
             });
             return { review: service.getView(review.id), reviews: service.listReviews() };
         }
         case 'reviews.refresh': {
-            const review = await service.refreshReview(String(params.review ?? ''));
+            const review = await service.refreshReview(String(params.review ?? ''), policy.name);
             return { review: service.getView(review.id), reviews: service.listReviews() };
         }
         case 'reviews.remoteList': {
@@ -222,6 +223,14 @@ export async function dispatch(
             return { version: service.getVersion(String(params.review ?? ''), Number(params.id ?? 0)) };
         case 'secrets.get':
             return service.secrets(String(params.review ?? ''));
+        case 'metrics.get':
+            return {
+                metrics: service.qualityMetrics(
+                    String(params.project ?? ''),
+                    typeof params.from === 'string' ? params.from : undefined,
+                    typeof params.to === 'string' ? params.to : undefined,
+                ),
+            };
         case 'analytics.get':
             return service.analytics(String(params.review ?? ''));
         case 'reviews.remove':
@@ -259,13 +268,13 @@ export async function dispatch(
         case 'drafts.put':
             return { draft: service.setDraft(String(params.review ?? ''), String(params.threadId ?? ''), (params.patch ?? {}) as Record<string, never>) };
         case 'findings.put':
-            return { findings: service.setFindings(String(params.review ?? ''), params.findings) };
+            return { findings: service.setFindings(String(params.review ?? ''), params.findings, policy.name) };
         case 'findings.list':
             return { findings: service.getReview(String(params.review ?? '')).findings };
         case 'summary.put':
-            return { summary: service.setSummary(String(params.review ?? ''), params.summary) };
+            return { summary: service.setSummary(String(params.review ?? ''), params.summary, policy.name) };
         case 'decisions.put':
-            return { decisions: service.setDecisions(String(params.review ?? ''), params.decisions) };
+            return { decisions: service.setDecisions(String(params.review ?? ''), params.decisions, policy.name) };
         case 'notes.add':
             return {
                 note: service.addNote(String(params.review ?? ''), {
@@ -290,6 +299,16 @@ export async function dispatch(
         case 'notes.delete':
             service.deleteNote(String(params.review ?? ''), String(params.noteId ?? ''));
             return { ok: true };
+        case 'messages.list':
+            return { messages: service.getReview(String(params.review ?? '')).agentMessages };
+        case 'messages.add':
+            return {
+                message: service.addAgentMessage(
+                    String(params.review ?? ''),
+                    String(params.text ?? ''),
+                    policy.name === 'agent' || params.asAgent === true ? 'agent' : 'human',
+                ),
+            };
         case 'publish.preview':
             return {
                 preview: service.previewPublish(

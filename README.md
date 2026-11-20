@@ -46,6 +46,15 @@ and a web UI. Platform tokens stay on the host.
   the review procedure.
 - **Fast reopen.** The UI serves a review from the local snapshot and refreshes a stale one in the
   background; opening never waits for `glab`/`gh`, and background reloads do not restart tab loaders.
+- **Read-only MR/PR preview.** Open an MR/PR from the “Open review” dialog with “Preview only”:
+  description, diff and discussions are available, but findings, comments, reactions and publishing
+  are disabled. Previews are cached in memory and do not create a review or metrics event.
+- **Risk-sized review.** The context computes a conservative fast/full profile from the diff and the
+  changed paths; small docs/code changes get a short pass, while auth, migrations, CI, contracts and
+  large diffs require the full procedure.
+- **Merge-aware review.** Every open MR/PR review keeps its target branch, diff base/head and merge
+  state. Conflict or "behind target" is surfaced before findings, so a clean merge-base diff is not
+  mistaken for a mergeable MR. Local diffs and snapshots from older versions may not have merge info.
 - **Large lists stay light.** Threads and findings render only visible pages; focus, editors and deep
   links keep working, and small reviews are rendered in full.
 
@@ -141,6 +150,8 @@ Russian READMEs live in this repository; translation fixes are welcome.
 | `revdeck reply <N> --thread <id> --body …` | draft a reply |
 | `revdeck publish <N> [--yes]` | preview or publish after confirmation |
 | `revdeck notes <N> …` | line comments from the human |
+| `revdeck messages <N> [list\|ask\|reply] [--as-agent]` | review-level questions to the agent and its replies |
+| `revdeck metrics [project]` | project-level quality metrics and review cycle |
 | `revdeck react <N> --note <id> --emoji <name>` | toggle a reaction on a platform comment |
 | `revdeck attach <N> --file <image-or-video>` | upload an attachment and print its markdown link |
 | `revdeck rules [--explain <path>]` | effective rules |
@@ -348,7 +359,7 @@ otherwise it can start a second daemon inside the container.
 
 Tools: `revdeck_status`, `revdeck_list`, `revdeck_open`, `revdeck_context`, `revdeck_threads`,
 `revdeck_diff`, `revdeck_rules`, `revdeck_draft_reply`, `revdeck_draft_findings`,
-`revdeck_set_summary`, `revdeck_notes`, `revdeck_feature`, `revdeck_feature_note`,
+`revdeck_set_summary`, `revdeck_notes`, `revdeck_messages`, `revdeck_feature`, `revdeck_feature_note`,
 `revdeck_publish_preview`, `revdeck_publish`.
 
 Publishing requires an `approval_id` created by the human UI or the host CLI. The agent bridge has no

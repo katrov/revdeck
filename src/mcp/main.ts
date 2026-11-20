@@ -125,9 +125,13 @@ const reviewSchema = z.string().min(1).describe('Review: id (gitlab:host/project
 
 function summarize(review: ReviewView): string {
     const info = review.info;
+    const merge = info.merge
+        ? `merge: ${info.merge.state} → ${info.merge.targetBranch || '?'}${info.merge.detail ? ` (${info.merge.detail})` : ''}`
+        : null;
     return [
         `${info.ref.platform}:${info.ref.project}#${info.ref.number} — ${info.title}`,
         `${info.sourceBranch} → ${info.targetBranch} · ${info.state} · by ${info.author}`,
+        ...(merge ? [merge] : []),
         `${review.files.length} files, +${review.stats.additions} −${review.stats.deletions}, ${review.threads.length} threads, ${review.findings.length} findings`,
         info.webUrl,
     ].join('\n');
@@ -563,6 +567,7 @@ server.registerTool(
                         body: z.string(),
                         comment: z.string().optional().describe('Ready-to-post comment text; defaults to body'),
                         agentNote: z.string().optional().describe('Private note for the agent; never published'),
+                        rule: z.string().optional().describe('Rule document#section that grounds the finding; used for metrics'),
                     }),
                 )
                 .describe('The complete findings list, not only new ones'),
@@ -583,7 +588,9 @@ server.registerTool(
     'revdeck_set_summary',
     {
         title: 'Review summary',
-        description: 'Write the MR summary: goal, changes, focus. Shown in the UI and in the context.',
+        description:
+            'Write the MR summary: goal, changes, focus, what was actually checked (coverage), what could not be checked (unknowns), skipped duplicates and rule candidates. ' +
+            'Shown in the UI and in the context.',
         inputSchema: {
             review: reviewSchema,
             title: z.string().optional(),
@@ -591,14 +598,28 @@ server.registerTool(
             summary: z.string().optional(),
             changes: z.array(z.string()).optional(),
             focus: z.array(z.string()).optional(),
+            coverage: z.array(z.string()).optional().describe('Files, commands, manual scenarios actually checked'),
+            unknowns: z.array(z.string()).optional().describe('What could not be checked and why (no checkout, tests not run, etc.)'),
+            duplicates: z.array(z.string()).optional().describe('Findings skipped because they already exist in threads'),
+            ruleCandidates: z.array(z.string()).optional().describe('Proposed repository rule candidates'),
         },
     },
-    async ({ review, title, scope, summary, changes, focus }) => {
+    async ({ review, title, scope, summary, changes, focus, coverage, unknowns, duplicates, ruleCandidates }) => {
         try {
             await scopedReview(review);
             const { summary: saved } = await call<{ summary: unknown }>('summary.put', {
                 review,
-                summary: { title: title ?? '', scope: scope ?? '', summary: summary ?? '', changes: changes ?? [], focus: focus ?? [] },
+                summary: {
+                    title: title ?? '',
+                    scope: scope ?? '',
+                    summary: summary ?? '',
+                    changes: changes ?? [],
+                    focus: focus ?? [],
+                    coverage: coverage ?? [],
+                    unknowns: unknowns ?? [],
+                    duplicates: duplicates ?? [],
+                    ruleCandidates: ruleCandidates ?? [],
+                },
             });
             return ok('Summary saved.', { summary: saved });
         } catch (error) {
@@ -629,6 +650,35 @@ server.registerTool(
             }
             const { review: view } = await call<{ review: ReviewView }>('reviews.get', { review });
             return ok(JSON.stringify(view.notes, null, 2), { notes: view.notes });
+        } catch (error) {
+            return failure(error);
+        }
+    },
+);
+
+server.registerTool(
+    'revdeck_messages',
+    {
+        title: 'Review messages',
+        description:
+            'Questions from the human on the review Overview and the agent replies. These messages are private to revdeck and are never published. ' +
+            'Use list to read them (they are also in revdeck_context) and reply to answer the latest question.',
+        inputSchema: {
+            review: reviewSchema,
+            action: z.enum(['list', 'reply']).default('list'),
+            text: z.string().min(1).optional().describe('Reply text when action=reply'),
+        },
+    },
+    async ({ review, action, text }) => {
+        try {
+            await scopedReview(review);
+            if (action === 'reply') {
+                if (!text) return ok('reply requires text.');
+                const { message } = await call<{ message: unknown }>('messages.add', { review, text });
+                return ok('Reply saved on the review. It is not published.', { message });
+            }
+            const { review: view } = await call<{ review: ReviewView }>('reviews.get', { review });
+            return ok(JSON.stringify(view.agentMessages ?? [], null, 2), { messages: view.agentMessages ?? [] });
         } catch (error) {
             return failure(error);
         }

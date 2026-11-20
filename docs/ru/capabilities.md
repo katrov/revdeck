@@ -42,6 +42,19 @@ agent (MCP/CLI) ──unix socket──▶ revdeck daemon ──glab/gh──▶
   вливаются в текущее ревью, поэтому загрузчики вкладок (Rules, Analytics, Diff) не перезапускаются на
   каждый SSE/поллинг. Heartbeat'ы SSE отключают поллинг-страховку, а события review/feature/project
   обновляют только свою часть.
+- Просмотр MR/PR без ревью: `POST /api/previews/open` получает info, diff и треды в короткоживущий кэш;
+  preview-маршрут скрывает замечания, комментарии, реакции и публикацию и не создаёт запись ревью
+  или событие метрик.
+- Метрики качества по проекту считаются из append-only журнала `review_events`: acceptance,
+  publish и rule-grounded, полнота coverage, время до первого замечания, цикл ревью, дубли/кандидаты в правила и акторы.
+  Замечание может нести ссылку `rule`; события включают opened/synced, summary, findings, decisions,
+  publish и checks.
+- Контекст ревью несёт консервативный профиль риска (`low`/`medium`/`high`, режим `fast`/`full`) по
+  путям и размеру diff. Выжимка хранит `coverage` и `unknowns`, поэтому пустой список замечаний не
+  принимается за полностью проверенное ревью.
+- Ревью сохраняет контекст мержа: target, базу/head diff и mergeability платформы
+  (`clean`/`conflict`/`behind`/`unknown`/`unavailable`). Контекст и UI показывают конфликт или
+  отставание от target до того, как агент сделает выводы.
 - Треды и замечания виртуализируются после 30 карточек: измеренные страницы по 10 рендерятся только
   при попадании во viewport, карточка с фокусом остаётся в DOM, deep-link прокручивает к нужной странице.
 - Unified diff с hunks по файлам, номерами строк в старой/новой версии, фильтром файлов и отметкой
@@ -66,7 +79,7 @@ agent (MCP/CLI) ──unix socket──▶ revdeck daemon ──glab/gh──▶
 ## Интерфейсы агента
 
 - **MCP-сервер** поверх stdio: status, list, open, context, threads, diff, rules, draft replies,
-  draft findings, summary, line notes, feature context/notes, publish preview и publish.
+  draft findings, summary, line notes, сообщения агенту, feature context/notes, publish preview и publish.
 - **CLI** с теми же возможностями для харнессов без MCP.
 - **Явные точки входа сценариев**: `revdeck review` / `revdeck feedback` и `/revdeck review|feedback`
   фиксируют «чужой MR» или «свой MR» до старта агента. `revdeck_context` принимает

@@ -28,6 +28,7 @@ const AGENT_METHODS = new Set([
     'versions.get',
     'secrets.get',
     'analytics.get',
+    'metrics.get',
     'diff.get',
     'rules.get',
     'features.list',
@@ -44,6 +45,8 @@ const AGENT_METHODS = new Set([
     'notes.add',
     'notes.update',
     'notes.delete',
+    'messages.list',
+    'messages.add',
     'publish.preview',
 ]);
 

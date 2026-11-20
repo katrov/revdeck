@@ -1,5 +1,5 @@
 import { tmpdir } from 'node:os';
-import type { DiffFile, Note, Platform, Reaction, ReviewInfo, ReviewRef, Thread, UploadedAttachment, User } from '../core/types.js';
+import type { DiffFile, MergeInfo, MergeState, Note, Platform, Reaction, ReviewInfo, ReviewRef, Thread, UploadedAttachment, User } from '../core/types.js';
 import { parseUnifiedDiff } from '../core/diff.js';
 import { ProviderError } from '../core/errors.js';
 import { run as realRun, type Runner } from '../core/exec.js';
@@ -20,6 +20,7 @@ interface GhPull {
     state: string;
     draft?: boolean;
     merged_at?: string | null;
+    closed_at?: string | null;
     html_url: string;
     updated_at: string;
     changed_files?: number;
@@ -27,6 +28,8 @@ interface GhPull {
     deletions?: number;
     head: { ref: string; sha: string };
     base: { ref: string; sha: string };
+    mergeable?: boolean | null;
+    mergeable_state?: string | null;
 }
 
 interface GhFile {
@@ -73,6 +76,40 @@ interface GqlThreads {
             };
         } | null;
     } | null;
+}
+
+
+/** GitHub считает mergeable асинхронно; null/unknown нельзя выдавать за clean. */
+function githubMergeInfo(pr: GhPull): MergeInfo {
+    const targetBranch = String(pr.base?.ref ?? '');
+    const detail = String(pr.mergeable_state ?? (pr.mergeable === null ? 'unknown' : pr.mergeable === undefined ? 'not reported' : `mergeable=${pr.mergeable}`));
+    let state: MergeState;
+    if (pr.mergeable === false || pr.mergeable_state === 'dirty') {
+        state = 'conflict';
+    } else if (pr.mergeable_state === 'behind') {
+        state = 'behind';
+    } else if (
+        pr.mergeable === null ||
+        pr.mergeable === undefined ||
+        pr.mergeable_state === 'unknown' ||
+        pr.mergeable_state === 'blocked' ||
+        pr.mergeable_state === 'unstable' ||
+        pr.mergeable_state === 'draft'
+    ) {
+        state = 'unknown';
+    } else if (pr.mergeable === true) {
+        state = 'clean';
+    } else {
+        state = 'unavailable';
+    }
+    return {
+        state,
+        targetBranch,
+        detail,
+        checkedAt: new Date().toISOString(),
+        ...(pr.base?.sha ? { targetSha: pr.base.sha, baseSha: pr.base.sha } : {}),
+        ...(pr.head?.sha ? { headSha: pr.head.sha } : {}),
+    };
 }
 
 const THREADS_QUERY = `query($owner: String!, $name: String!, $number: Int!, $after: String) {
@@ -194,8 +231,11 @@ export class GitHubProvider implements Provider {
             sourceBranch: String(pr.head?.ref ?? ''),
             targetBranch: String(pr.base?.ref ?? ''),
             webUrl: String(pr.html_url ?? ''),
+            merge: githubMergeInfo(pr),
             commit: { base: String(pr.base?.sha ?? ''), start: String(pr.base?.sha ?? ''), head: String(pr.head?.sha ?? '') },
             updatedAt: String(pr.updated_at ?? ''),
+            ...(pr.merged_at ? { mergedAt: pr.merged_at } : {}),
+            ...(pr.closed_at ? { closedAt: pr.closed_at } : {}),
             stats: {
                 files: Number(pr.changed_files ?? 0),
                 additions: Number(pr.additions ?? 0),

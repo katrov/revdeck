@@ -5,6 +5,11 @@ Command: `/revdeck feedback <N|URL>` (CLI: `revdeck feedback <N|URL>`).
 The goal is to close every open finding together with the human: fix the code, reply, or disagree
 with justification.
 
+Before working through threads, check the "Branch and comparison base" section: target, diff
+snapshot and merge status. If a target is present and status is `conflict` or `behind`, update the
+branch first; with `unknown` or "not checked", verify the target. A local diff without an MR has no
+target.
+
 ## Steps
 
 1. Get the context (`revdeck_context` / `revdeck context`) and make sure the working branch matches

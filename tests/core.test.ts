@@ -185,6 +185,7 @@ describe('findings', () => {
 
     it('validates drafts', () => {
         expect(validateFinding({ file: 'a', title: 't', body: 'b' }).value?.level).toBe('question');
+        expect(validateFinding({ file: 'a', title: 't', body: '', comment: 'x', level: 'major' }).value?.level).toBe('major');
         expect(validateFinding({ file: '', title: 't', body: 'b' }).error).toMatch(/file/);
         expect(validateFinding({ file: 'a', title: 't', body: 'b', level: 'high' }).error).toMatch(/level/);
         expect(validateFinding({ file: 'a', title: 't', body: 'b', line: 0 }).error).toMatch(/line/);

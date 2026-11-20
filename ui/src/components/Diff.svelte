@@ -191,7 +191,7 @@
     const fileNotes = $derived((app.review?.notes ?? []).filter((note) => note.file === file));
 
     function pickLine(lineNumber: number | null): void {
-        if (!lineNumber) return;
+        if (!lineNumber || app.preview) return;
         noteTarget = { line: lineNumber };
         noteText = '';
     }
@@ -316,7 +316,7 @@
                 </div>
             {/if}
 
-            {#if noteTarget}
+            {#if noteTarget && !app.preview}
                 <div class="note-composer">
                     <div class="spread" style="margin-bottom: 6px">
                         <strong>{t('Комментарий к строке', 'Comment on line')} {noteTarget.line}</strong>
@@ -346,13 +346,13 @@
                                     <button class="btn icon" type="button" title={t('Скопировать путь', 'Copy path')} aria-label={t('Скопировать путь', 'Copy path')} onclick={() => copyPath(note.file, note.line)}>⧉</button>
                                 </span>
                                 <button class="btn icon" type="button" title={t('Скопировать ссылку на комментарий', 'Copy comment link')} onclick={() => copyFocusLink({ kind: 'note', id: note.id }, 'diff')}>🔗</button>
-                                {#if !note.posted && editingNote !== note.id}
+                                {#if !app.preview && !note.posted && editingNote !== note.id}
                                     <button class="btn icon" type="button" title={t('Редактировать', 'Edit')} disabled={noteBusy !== null} onclick={() => startNoteEdit(note)}>✎</button>
                                     <button class="btn icon" type="button" title={t('Удалить', 'Delete')} disabled={noteBusy !== null} onclick={() => void removeNote(note)}>🗑</button>
                                 {/if}
                                 {#if note.posted}<span class="badge ok">{t('опубликовано', 'published')}</span>{/if}
                                 {#if note.agentReply}<span class="badge">{t('ответ агента', 'agent reply')}</span>{/if}
-                                {#if note.agentReply && editingAgent !== note.id}
+                                {#if !app.preview && note.agentReply && editingAgent !== note.id}
                                     <button class="btn icon" type="button" title={t('Редактировать ответ агента', 'Edit agent reply')} disabled={noteBusy !== null} onclick={() => startAgentEdit(note)}>✎</button>
                                 {/if}
                             </div>

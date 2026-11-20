@@ -206,6 +206,17 @@ async function open() {
 setLocale('ru');
 
 describe('ReviewService', () => {
+    it('previews an MR without creating a review', async () => {
+        const preview = await service.openPreview({ root, input: 'https://gitlab.com/group/proj/-/merge_requests/7' });
+        expect(preview.id).toMatch(/^preview-/);
+        expect(preview.readOnly).toBe(true);
+        expect(preview.files).toHaveLength(2);
+        expect(preview.threads).toHaveLength(1);
+        expect(service.listReviews()).toHaveLength(0);
+        expect(service.qualityMetrics().reviews.total).toBe(0);
+        expect(service.diffFile(preview.id, 'src/app.ts')?.hunks).toHaveLength(1);
+    });
+
     it('opens a review and builds a view with snippets', async () => {
         const review = await open();
         expect(review.id).toBe('gitlab:gitlab.com/group/proj!7');
@@ -296,10 +307,27 @@ rules: { sources: [AGENTS.md] }
 
     it('stores summary and validates findings against the diff', async () => {
         const review = await open();
-        service.setSummary(review.id, { title: 'Add b', scope: 'main...feature', summary: 'Добавляет b.', changes: ['b'], focus: ['зачем b'] });
+        service.setSummary(review.id, {
+            title: 'Add b',
+            scope: 'main...feature',
+            summary: 'Добавляет b.',
+            changes: ['b'],
+            focus: ['зачем b'],
+            coverage: ['src/app.ts — прочитан'],
+            unknowns: ['тесты не запускались'],
+            duplicates: ['уже в треде'],
+            ruleCandidates: ['правило для src'],
+        });
         expect(service.getReview(review.id).summary?.summary).toBe('Добавляет b.');
+        expect(service.getReview(review.id).summary).toMatchObject({
+            coverage: ['src/app.ts — прочитан'],
+            unknowns: ['тесты не запускались'],
+            duplicates: ['уже в треде'],
+            ruleCandidates: ['правило для src'],
+        });
 
         expect(() => service.setFindings(review.id, [{ file: 'src/app.ts', line: 99, title: 'x', body: 'y' }])).toThrow(/не входит в diff/);
+        expect(() => service.setFindings(review.id, [{ level: 'major', file: 'src/app.ts', line: 2, title: 'x', body: '', comment: 'x' }])).toThrow(/body/);
         const saved = service.setFindings(review.id, [
             {
                 level: 'major',
@@ -400,6 +428,38 @@ rules: { sources: [AGENTS.md] }
         expect(service.getReview(review.id).threads[0]!.notes.find((note) => note.id === 'mine')!.body).toBe('new text');
         await service.deleteComment(review.id, 'mine');
         expect(service.getReview(review.id).threads[0]!.notes.some((note) => note.id === 'mine')).toBe(false);
+    });
+
+    it('stores review-level questions and agent replies', async () => {
+        const review = await open();
+        const question = service.addAgentMessage(review.id, '  Explain the task  ', 'human');
+        expect(question).toMatchObject({ role: 'human', text: 'Explain the task' });
+        const answer = service.addAgentMessage(review.id, 'It adds b', 'agent');
+        expect(answer.role).toBe('agent');
+        expect(service.getReview(review.id).agentMessages).toEqual([question, answer]);
+    });
+
+    it('aggregates quality metrics from events and current decisions', async () => {
+        const review = await open();
+        service.setSummary(
+            review.id,
+            { title: 'x', scope: 'y', summary: 'z', changes: [], focus: [], coverage: ['src/app.ts'], unknowns: ['tests'] },
+            'agent',
+        );
+        service.setFindings(
+            review.id,
+            [{ level: 'major', file: 'src/app.ts', line: 2, title: 'x', body: 'y', rule: 'AGENTS.md#review' }],
+            'agent',
+        );
+        service.setDecisions(review.id, { [service.getReview(review.id).findings[0]!.id]: { decision: 'accept', note: 'ok' } }, 'human');
+        const metrics = service.qualityMetrics();
+        expect(metrics.events).toBeGreaterThan(0);
+        expect(metrics.findings).toMatchObject({ total: 1, accepted: 1, withRule: 1 });
+        expect(metrics.coverage).toMatchObject({ reviewsWithCoverage: 1, coverageItems: 1, unknownItems: 1 });
+        expect(metrics.process).toMatchObject({ duplicates: 0, ruleCandidates: 0 });
+        expect(metrics.rates.acceptance).toBe(1);
+        expect(metrics.actors.agent).toBeGreaterThan(0);
+        expect(metrics.actors.human).toBeGreaterThan(0);
     });
 
     it('loads and toggles reactions on the MR/PR itself', async () => {

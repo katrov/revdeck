@@ -42,6 +42,19 @@ The core guarantees:
   opening never waits for `glab`/`gh`. Background reloads merge into the current review, so tab loaders
   such as Rules, Analytics and Diff are not restarted on every SSE/poll tick. SSE heartbeats gate the
   polling fallback, and review, feature and project events reload only their own scope.
+- Read-only MR/PR preview: `POST /api/previews/open` fetches info, diff and threads into a short-lived in-memory
+  cache; the preview route hides findings, comments, reactions and publishing, and never creates a
+  review record or metrics event.
+- Project-level quality metrics are computed from an append-only `review_events` log: acceptance,
+  publish and rule-grounded rates, coverage completeness, time to first finding, review cycle, duplicates/rule candidates and
+  actor counts. Findings may carry a `rule` reference; review events include opened/synced, summary,
+  findings, decisions, publish and checks.
+- Review context carries a conservative risk profile (`low`/`medium`/`high`, `fast`/`full`) derived from
+  the changed paths and diff size. The summary records `coverage` and `unknowns`, so an empty findings
+  list is not mistaken for a fully checked review.
+- Reviews keep their merge context: target branch, diff base/head and platform mergeability
+  (`clean`/`conflict`/`behind`/`unknown`/`unavailable`). Context and UI surface conflicts or a branch
+  behind target before the agent draws conclusions.
 - Threads and findings are virtualized above 30 cards: measured pages of 10 render only when visible,
   focused cards stay mounted, and deep links scroll to the target page.
 - Unified diff with per-file hunks, line numbers in old/new versions, changed-file filters and
@@ -66,7 +79,8 @@ The core guarantees:
 ## Agent interfaces
 
 - **MCP server** over stdio with tools for status, list, open, context, threads, diff, rules, draft
-  replies, draft findings, summary, line notes, feature context/notes, publish preview and publish.
+  replies, draft findings, summary, line notes, review messages to the agent, feature context/notes,
+  publish preview and publish.
 - **CLI** with the same capabilities for harnesses without MCP.
 - **Explicit scenario entry points**: `revdeck review` / `revdeck feedback` and `/revdeck review|feedback`
   fix "someone else's MR" or "your own MR" before the agent starts. `revdeck_context` takes

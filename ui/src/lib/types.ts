@@ -6,6 +6,54 @@ export type Decision = 'accept' | 'reject' | 'discuss';
 export type Platform = 'gitlab' | 'github';
 export type Tab = 'overview' | 'threads' | 'findings' | 'diff' | 'rules' | 'analytics';
 
+export type MergeState = 'clean' | 'conflict' | 'behind' | 'unknown' | 'unavailable';
+
+export interface MergeInfo {
+    state: MergeState;
+    targetBranch: string;
+    detail: string;
+    checkedAt: string;
+    targetSha?: string;
+    baseSha?: string;
+    headSha?: string;
+    conflictFiles?: string[];
+}
+
+export type ReviewRiskLevel = 'low' | 'medium' | 'high';
+export type ReviewMode = 'fast' | 'full';
+
+export interface QualityMetrics {
+    project: string;
+    from: string;
+    to: string;
+    generatedAt: string;
+    reviews: { total: number; open: number; merged: number; closed: number };
+    findings: {
+        total: number;
+        accepted: number;
+        rejected: number;
+        discussed: number;
+        pending: number;
+        published: number;
+        withRule: number;
+    };
+    rates: { acceptance: number | null; publish: number | null; ruleGrounded: number | null };
+    coverage: { reviewsWithCoverage: number; reviewsWithUnknowns: number; coverageItems: number; unknownItems: number };
+    process: { duplicates: number; ruleCandidates: number };
+    timing: { reviewsWithFirstFinding: number; medianTimeToFirstFindingMs: number | null; medianCycleTimeMs: number | null };
+    activity: { findingsDrafted: number; summariesSaved: number; decisionsSaved: number; publishes: number; checks: number };
+    actors: { human: number; agent: number; system: number };
+    events: number;
+}
+
+export interface ReviewRisk {
+    level: ReviewRiskLevel;
+    mode: ReviewMode;
+    files: number;
+    changedLines: number;
+    reasons: string[];
+}
+
 export interface ReviewInfo {
     ref: { platform: Platform; host: string; project: string; number: number };
     title: string;
@@ -18,6 +66,7 @@ export interface ReviewInfo {
     targetBranch: string;
     webUrl: string;
     projectId?: number;
+    merge?: MergeInfo;
     commit: { base: string; start: string; head: string };
     updatedAt: string;
     stats: { files: number; additions: number; deletions: number };
@@ -70,6 +119,7 @@ export interface Finding {
     title: string;
     body: string;
     comment: string;
+    rule?: string;
     status: FindingStatus;
     discussionId: string | null;
     publishedAt: string | null;
@@ -91,6 +141,15 @@ export interface ReplyDraft {
     resolved: boolean;
     error: string;
     updatedAt: string;
+}
+
+export type AgentMessageRole = 'human' | 'agent';
+
+export interface AgentMessage {
+    id: string;
+    role: AgentMessageRole;
+    text: string;
+    createdAt: string;
 }
 
 export interface LineNote {
@@ -116,6 +175,10 @@ export interface ReviewSummary {
     summary: string;
     changes: string[];
     focus: string[];
+    coverage?: string[];
+    unknowns?: string[];
+    duplicates?: string[];
+    ruleCandidates?: string[];
 }
 
 export interface FileSummary {
@@ -137,6 +200,7 @@ export interface ReviewView {
     findings: Finding[];
     drafts: ReplyDraft[];
     notes: LineNote[];
+    agentMessages: AgentMessage[];
     decisions: Record<string, { decision: Decision | null; note: string }>;
     user: { username: string; name: string } | null;
     syncedAt: string;
@@ -144,6 +208,7 @@ export interface ReviewView {
     readOnly: boolean;
     files: FileSummary[];
     stats: { files: number; additions: number; deletions: number };
+    risk: ReviewRisk;
     stale: boolean;
 }
 
@@ -194,6 +259,13 @@ export interface FeatureNote {
 export interface FeatureDetail extends FeatureSummary {
     members: FeatureMember[];
     notes: FeatureNote[];
+}
+
+export interface PreviewRef {
+    platform: Platform;
+    host: string;
+    project: string;
+    number: number;
 }
 
 export interface ReviewListItem {

@@ -4,7 +4,9 @@ import path from 'node:path';
 import type { ReviewConfig } from '../core/config.js';
 import type {
     Decision,
+    AgentMessage,
     DiffFile,
+    ReviewEvent,
     Finding,
     Reaction,
     LineNote,
@@ -231,6 +233,10 @@ export class Store {
                 summary TEXT NOT NULL,
                 changes_json TEXT NOT NULL,
                 focus_json TEXT NOT NULL,
+                coverage_json TEXT NOT NULL DEFAULT '[]',
+                unknowns_json TEXT NOT NULL DEFAULT '[]',
+                duplicates_json TEXT NOT NULL DEFAULT '[]',
+                rule_candidates_json TEXT NOT NULL DEFAULT '[]',
                 updated_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS findings (
@@ -250,6 +256,7 @@ export class Store {
                 decision TEXT,
                 note TEXT NOT NULL,
                 agent_note TEXT NOT NULL DEFAULT '',
+                rule_ref TEXT NOT NULL DEFAULT '',
                 publish_error TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (review_id, id)
@@ -286,6 +293,14 @@ export class Store {
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (review_id, id)
             );
+            CREATE TABLE IF NOT EXISTS agent_messages (
+                review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+                id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                text TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (review_id, id)
+            );
             CREATE TABLE IF NOT EXISTS decisions (
                 review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
                 finding_id TEXT NOT NULL,
@@ -312,6 +327,20 @@ export class Store {
                 detail TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS audit_review ON audit(review_id, at);
+            CREATE TABLE IF NOT EXISTS review_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                at TEXT NOT NULL,
+                review_id TEXT,
+                actor TEXT NOT NULL,
+                type TEXT NOT NULL,
+                finding_id TEXT,
+                thread_id TEXT,
+                rule_ref TEXT,
+                commit_sha TEXT,
+                payload_json TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS review_events_review ON review_events(review_id, at);
+            CREATE INDEX IF NOT EXISTS review_events_type ON review_events(type, at);
             CREATE TABLE IF NOT EXISTS projects (
                 key TEXT PRIMARY KEY,
                 platform TEXT NOT NULL,
@@ -373,12 +402,28 @@ export class Store {
         if (!findingColumns.some((column) => text(column, 'name') === 'agent_note')) {
             this.db.exec("ALTER TABLE findings ADD COLUMN agent_note TEXT NOT NULL DEFAULT ''");
         }
+        if (!findingColumns.some((column) => text(column, 'name') === 'rule_ref')) {
+            this.db.exec("ALTER TABLE findings ADD COLUMN rule_ref TEXT NOT NULL DEFAULT ''");
+        }
         const dataColumns = this.db.prepare('PRAGMA table_info(review_data)').all() as Row[];
         if (!dataColumns.some((column) => text(column, 'name') === 'reactions_json')) {
             this.db.exec("ALTER TABLE review_data ADD COLUMN reactions_json TEXT NOT NULL DEFAULT '[]'");
         }
         if (!dataColumns.some((column) => text(column, 'name') === 'user_json')) {
             this.db.exec("ALTER TABLE review_data ADD COLUMN user_json TEXT NOT NULL DEFAULT 'null'");
+        }
+        const summaryColumns = this.db.prepare('PRAGMA table_info(summaries)').all() as Row[];
+        if (!summaryColumns.some((column) => text(column, 'name') === 'coverage_json')) {
+            this.db.exec("ALTER TABLE summaries ADD COLUMN coverage_json TEXT NOT NULL DEFAULT '[]'");
+        }
+        if (!summaryColumns.some((column) => text(column, 'name') === 'unknowns_json')) {
+            this.db.exec("ALTER TABLE summaries ADD COLUMN unknowns_json TEXT NOT NULL DEFAULT '[]'");
+        }
+        if (!summaryColumns.some((column) => text(column, 'name') === 'duplicates_json')) {
+            this.db.exec("ALTER TABLE summaries ADD COLUMN duplicates_json TEXT NOT NULL DEFAULT '[]'");
+        }
+        if (!summaryColumns.some((column) => text(column, 'name') === 'rule_candidates_json')) {
+            this.db.exec("ALTER TABLE summaries ADD COLUMN rule_candidates_json TEXT NOT NULL DEFAULT '[]'");
         }
         const reviewColumns = this.db.prepare('PRAGMA table_info(reviews)').all() as Row[];
         if (!reviewColumns.some((column) => text(column, 'name') === 'project_key')) {
@@ -563,6 +608,7 @@ export class Store {
         const reviews = Number(countRow?.count ?? 0);
         this.transaction(() => {
             this.db.prepare('DELETE FROM approvals WHERE review_id IN (SELECT id FROM reviews WHERE project_key = ?)').run(key);
+            this.db.prepare('DELETE FROM review_events WHERE review_id IN (SELECT id FROM reviews WHERE project_key = ?)').run(key);
             this.db.prepare('DELETE FROM reviews WHERE project_key = ?').run(key);
             this.db.prepare('DELETE FROM projects WHERE key = ?').run(key);
         });
@@ -939,6 +985,7 @@ export class Store {
     }
 
     removeReview(id: string): void {
+        this.db.prepare('DELETE FROM review_events WHERE review_id = ?').run(id);
         this.db.prepare('DELETE FROM reviews WHERE id = ?').run(id);
         if (this.snapshotCache?.id === id) this.snapshotCache = null;
     }
@@ -954,19 +1001,38 @@ export class Store {
             summary: text(row, 'summary'),
             changes: json<string[]>(row, 'changes_json', []),
             focus: json<string[]>(row, 'focus_json', []),
+            coverage: json<string[]>(row, 'coverage_json', []),
+            unknowns: json<string[]>(row, 'unknowns_json', []),
+            duplicates: json<string[]>(row, 'duplicates_json', []),
+            ruleCandidates: json<string[]>(row, 'rule_candidates_json', []),
         };
     }
 
     setSummary(id: string, summary: ReviewSummary): void {
         this.db
             .prepare(
-                `INSERT INTO summaries (review_id, title, scope, summary, changes_json, focus_json, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                `INSERT INTO summaries (review_id, title, scope, summary, changes_json, focus_json, coverage_json, unknowns_json, duplicates_json, rule_candidates_json, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(review_id) DO UPDATE SET
                    title = excluded.title, scope = excluded.scope, summary = excluded.summary,
-                   changes_json = excluded.changes_json, focus_json = excluded.focus_json, updated_at = excluded.updated_at`,
+                   changes_json = excluded.changes_json, focus_json = excluded.focus_json,
+                   coverage_json = excluded.coverage_json, unknowns_json = excluded.unknowns_json,
+                   duplicates_json = excluded.duplicates_json, rule_candidates_json = excluded.rule_candidates_json,
+                   updated_at = excluded.updated_at`,
             )
-            .run(id, summary.title, summary.scope, summary.summary, JSON.stringify(summary.changes), JSON.stringify(summary.focus), new Date().toISOString());
+            .run(
+                id,
+                summary.title,
+                summary.scope,
+                summary.summary,
+                JSON.stringify(summary.changes),
+                JSON.stringify(summary.focus),
+                JSON.stringify(summary.coverage ?? []),
+                JSON.stringify(summary.unknowns ?? []),
+                JSON.stringify(summary.duplicates ?? []),
+                JSON.stringify(summary.ruleCandidates ?? []),
+                new Date().toISOString(),
+            );
     }
 
     // --- findings ---
@@ -989,6 +1055,7 @@ export class Store {
             decision: row.decision ? (String(row.decision) as Decision) : null,
             note: text(row, 'note'),
             agentNote: text(row, 'agent_note'),
+            ...(text(row, 'rule_ref') ? { rule: text(row, 'rule_ref') } : {}),
             publishError: text(row, 'publish_error'),
         }));
     }
@@ -997,8 +1064,8 @@ export class Store {
         this.transaction(() => {
             this.db.prepare('DELETE FROM findings WHERE review_id = ?').run(id);
             const insert = this.db.prepare(
-                `INSERT INTO findings (review_id, id, fingerprint, level, file, line, end_line, title, body, comment, status, discussion_id, published_at, decision, note, agent_note, publish_error, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO findings (review_id, id, fingerprint, level, file, line, end_line, title, body, comment, status, discussion_id, published_at, decision, note, agent_note, rule_ref, publish_error, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             );
             const now = new Date().toISOString();
             for (const finding of findings) {
@@ -1019,6 +1086,7 @@ export class Store {
                     finding.decision,
                     finding.note,
                     finding.agentNote ?? '',
+                    finding.rule ?? '',
                     finding.publishError,
                     now,
                 );
@@ -1030,7 +1098,7 @@ export class Store {
         this.db
             .prepare(
                 `UPDATE findings SET level = ?, file = ?, line = ?, end_line = ?, title = ?, body = ?, comment = ?,
-                   status = ?, discussion_id = ?, published_at = ?, decision = ?, note = ?, agent_note = ?, publish_error = ?, updated_at = ?
+                   status = ?, discussion_id = ?, published_at = ?, decision = ?, note = ?, agent_note = ?, rule_ref = ?, publish_error = ?, updated_at = ?
                  WHERE review_id = ? AND id = ?`,
             )
             .run(
@@ -1047,6 +1115,7 @@ export class Store {
                 finding.decision,
                 finding.note,
                 finding.agentNote ?? '',
+                finding.rule ?? '',
                 finding.publishError,
                 new Date().toISOString(),
                 id,
@@ -1157,6 +1226,24 @@ export class Store {
         this.db.prepare('DELETE FROM notes WHERE review_id = ? AND id = ?').run(id, noteId);
     }
 
+    // --- agent messages ---
+
+    listAgentMessages(id: string): AgentMessage[] {
+        const rows = this.db.prepare('SELECT * FROM agent_messages WHERE review_id = ? ORDER BY created_at, rowid').all(id) as Row[];
+        return rows.map((row) => ({
+            id: text(row, 'id'),
+            role: text(row, 'role') === 'agent' ? 'agent' : 'human',
+            text: text(row, 'text'),
+            createdAt: text(row, 'created_at'),
+        }));
+    }
+
+    addAgentMessage(id: string, message: AgentMessage): void {
+        this.db
+            .prepare('INSERT INTO agent_messages (review_id, id, role, text, created_at) VALUES (?, ?, ?, ?, ?)')
+            .run(id, message.id, message.role, message.text, message.createdAt);
+    }
+
     // --- decisions ---
 
     listDecisions(id: string): Record<string, { decision: Decision | null; note: string }> {
@@ -1209,6 +1296,56 @@ export class Store {
 
     markApprovalUsed(id: string): void {
         this.db.prepare('UPDATE approvals SET used_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+    }
+
+    // --- review events (quality metrics) ---
+
+    recordEvent(input: Omit<ReviewEvent, 'id'>): void {
+        this.db
+            .prepare(
+                `INSERT INTO review_events (at, review_id, actor, type, finding_id, thread_id, rule_ref, commit_sha, payload_json)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+                input.at,
+                input.reviewId,
+                input.actor,
+                input.type,
+                input.findingId ?? null,
+                input.threadId ?? null,
+                input.ruleRef ?? null,
+                input.commitSha ?? null,
+                JSON.stringify(input.payload ?? null),
+            );
+    }
+
+    listEvents(reviewId: string, from?: string, to?: string, limit = 5000): ReviewEvent[] {
+        const clauses = ['review_id = ?'];
+        const params: (string | number)[] = [reviewId];
+        if (from) {
+            clauses.push('at >= ?');
+            params.push(from);
+        }
+        if (to) {
+            clauses.push('at <= ?');
+            params.push(to);
+        }
+        params.push(limit);
+        const rows = this.db
+            .prepare(`SELECT * FROM review_events WHERE ${clauses.join(' AND ')} ORDER BY id ASC LIMIT ?`)
+            .all(...params) as Row[];
+        return rows.map((row) => ({
+            id: Number(row.id),
+            at: text(row, 'at'),
+            reviewId: row.review_id ? String(row.review_id) : null,
+            actor: text(row, 'actor') as ReviewEvent['actor'],
+            type: text(row, 'type'),
+            ...(row.finding_id ? { findingId: String(row.finding_id) } : {}),
+            ...(row.thread_id ? { threadId: String(row.thread_id) } : {}),
+            ...(row.rule_ref ? { ruleRef: String(row.rule_ref) } : {}),
+            ...(row.commit_sha ? { commitSha: String(row.commit_sha) } : {}),
+            payload: json<unknown>(row, 'payload_json', null),
+        }));
     }
 
     // --- audit ---
