@@ -1,4 +1,5 @@
 import { createSnippetReader, diffStats, type SnippetLine } from '../core/diff.js';
+import { assessReviewRisk, type ReviewRisk } from '../core/risk.js';
 import type { DiffFile, Finding, Review, ReviewSummary, Thread } from '../core/types.js';
 
 export interface ReviewFileSummary {
@@ -25,6 +26,7 @@ export interface ReviewView extends Omit<Review, 'diff' | 'threads' | 'findings'
     findings: ReviewFindingView[];
     stale: boolean;
     stats: { files: number; additions: number; deletions: number };
+    risk: ReviewRisk;
 }
 
 export const STALE_AFTER_MS = 90_000;
@@ -46,6 +48,8 @@ export function fileSummaries(diff: DiffFile[]): ReviewFileSummary[] {
 export function toReviewView(review: Review, now = Date.now()): ReviewView {
     const { diff, threads, findings, ...rest } = review;
     const snippet = createSnippetReader(diff);
+    const files = fileSummaries(diff);
+    const stats = diffStats(diff);
     return {
         ...rest,
         threads: threads.map((thread) => ({
@@ -56,8 +60,9 @@ export function toReviewView(review: Review, now = Date.now()): ReviewView {
             ...finding,
             snippet: finding.file && finding.line ? snippet(finding.file, finding.line, 4) : null,
         })),
-        files: fileSummaries(diff),
-        stats: diffStats(diff),
+        files,
+        stats,
+        risk: assessReviewRisk(files, stats),
         stale: now - new Date(review.syncedAt).getTime() > STALE_AFTER_MS,
     };
 }

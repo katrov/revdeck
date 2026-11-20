@@ -25,8 +25,21 @@
         }),
     );
 
+    const EMPTY_DRAFT: ReplyDraft = {
+        threadId: '',
+        body: '',
+        resolve: false,
+        noteForAgent: '',
+        agentAction: '',
+        posted: '',
+        replied: false,
+        resolved: false,
+        error: '',
+        updatedAt: '',
+    };
+
     function draftOf(threadId: string): ReplyDraft {
-        return draftFor(threadId)!;
+        return draftFor(threadId) ?? { ...EMPTY_DRAFT, threadId };
     }
 
     function scheduleSave(threadId: string): void {
@@ -165,10 +178,12 @@
     <button class="btn" class:primary={filter === 'all'} onclick={() => (filter = 'all')}>{t('Все', 'All')}</button>
     <span class="muted small">{threads.length} {t('из', 'of')} {app.review?.threads.length ?? 0}</span>
     <div style="flex: 1"></div>
-    <button class="btn" onclick={selectAllChanged} disabled={!changedDrafts.length}>{t('Выбрать изменённые', 'Select changed')}</button>
-    <button class="btn primary" onclick={publishSelected} disabled={!changedDrafts.length && !selected.length}>
-        {t('Опубликовать', 'Publish')} {selected.length ? `(${selected.length})` : ''}
-    </button>
+    {#if !app.preview}
+        <button class="btn" onclick={selectAllChanged} disabled={!changedDrafts.length}>{t('Выбрать изменённые', 'Select changed')}</button>
+        <button class="btn primary" onclick={publishSelected} disabled={!changedDrafts.length && !selected.length}>
+            {t('Опубликовать', 'Publish')} {selected.length ? `(${selected.length})` : ''}
+        </button>
+    {/if}
 </div>
 
 {#if threads.length}
@@ -185,13 +200,15 @@
     {@const busy = saving.includes(thread.id)}
     <section class="card" id={`thread-${thread.id}`} class:highlight={app.focus?.kind === 'thread' && app.focus.id === thread.id}>
         <div class="card-head">
-            <input
-                type="checkbox"
-                checked={selected.includes(thread.id)}
-                onchange={() => toggleSelected(thread.id)}
-                aria-label={t('Выбрать тред', 'Select thread')}
-                style="width: auto"
-            />
+            {#if !app.preview}
+                <input
+                    type="checkbox"
+                    checked={selected.includes(thread.id)}
+                    onchange={() => toggleSelected(thread.id)}
+                    aria-label={t('Выбрать тред', 'Select thread')}
+                    style="width: auto"
+                />
+            {/if}
             <div class="grow">
                 <div class="card-title">
                     {thread.resolved ? t('Закрыт', 'Resolved') : t('Открыт', 'Open')}
@@ -208,7 +225,7 @@
                     {t('обновлён', 'updated')} {relativeTime(thread.updatedAt)}
                 </div>
             </div>
-            {#if !thread.resolved}
+            {#if !app.preview && !thread.resolved}
                 <button class="btn" type="button" title={t('Закрыть тред: откроется подтверждение публикации', 'Close thread: a publish confirmation opens')} onclick={() => void closeThread(thread.id)}>{t('Закрыть тред', 'Close thread')}</button>
             {/if}
             <button class="btn icon" type="button" title={t('Скопировать ссылку на тред', 'Copy thread link')} onclick={() => copyFocusLink({ kind: 'thread', id: thread.id }, 'threads')}>🔗</button>
@@ -222,14 +239,14 @@
                 <div>
                     <div class="spread">
                         <div class="muted small"><strong style="color: var(--text)">{note.author}</strong> · {relativeTime(note.createdAt)}</div>
-                        {#if canEdit(note) && editingNote !== note.id}
+                        {#if !app.preview && canEdit(note) && editingNote !== note.id}
                             <div class="row" style="gap: 2px">
                                 <button class="btn icon" type="button" title={t('Редактировать', 'Edit')} disabled={noteBusy !== null} onclick={() => startEdit(note)}>✎</button>
                                 <button class="btn icon" type="button" title={t('Удалить', 'Delete')} disabled={noteBusy !== null} onclick={() => void removeNote(note)}>🗑</button>
                             </div>
                         {/if}
                     </div>
-                    {#if editingNote === note.id}
+                    {#if editingNote === note.id && !app.preview}
                         <MarkdownEditor bind:value={editBody} rows={2} />
                         <div class="row end" style="margin-top: 4px">
                             <button class="btn" type="button" onclick={() => (editingNote = null)}>{t('Отмена', 'Cancel')}</button>
@@ -237,7 +254,7 @@
                         </div>
                     {:else}
                         <div class="md"><Markdown source={note.body} /></div>
-                        <Reactions reviewId={app.review!.id} {note} />
+                        {#if !app.preview}<Reactions reviewId={app.review!.id} {note} />{/if}
                     {/if}
                 </div>
             {/each}
@@ -258,6 +275,7 @@
             </details>
         {/if}
 
+        {#if !app.preview}
         <div class="stack" style="margin-top: 12px">
             <MarkdownEditor
                 bind:value={draft.body}
@@ -318,6 +336,7 @@
                 </div>
             </details>
         </div>
+        {/if}
     </section>
     {/snippet}
 </VirtualList>

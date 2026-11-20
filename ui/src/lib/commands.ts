@@ -197,6 +197,20 @@ export const COMMAND_GROUPS: CommandGroup[] = [
                 en: 'Human comments on diff lines. add creates a note; reply answers the agent.',
             },
             {
+                id: 'messages',
+                usage: 'revdeck messages <N> [list|ask|reply] [--text <text>]',
+                ru: 'Вопросы агенту по всему ревью и ответы агента. Сообщения не публикуются в платформу и попадают в контекст.',
+                en: 'Review-level questions to the agent and its replies. Messages are not published and are included in the agent context.',
+                example: 'revdeck messages 42 ask --text "Подробнее про задачу"',
+            },
+            {
+                id: 'metrics',
+                usage: 'revdeck metrics [project] [--from <ISO>] [--to <ISO>]',
+                ru: 'Метрики качества: acceptance, publish, rule-grounded, coverage, время до первого замечания. Агрегаты, без рейтинга людей.',
+                en: 'Quality metrics: acceptance, publish, rule-grounded, coverage, time to first finding. Aggregates, no people ranking.',
+                example: 'revdeck metrics gitlab:gitlab.com/group/proj --from 2026-01-01',
+            },
+            {
                 id: 'react',
                 usage: 'revdeck react <N> --note <id> --emoji <name>',
                 ru: 'Ставит или снимает реакцию на комментарий платформы.',

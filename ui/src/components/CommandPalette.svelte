@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { app, loadReview, notify, setTab, showHelp, showProjectsHome } from '../lib/state.svelte';
+    import { app, loadPreview, loadReview, notify, setTab, showHelp, showProjectsHome } from '../lib/state.svelte';
     import type { Tab } from '../lib/types';
     import { t } from '../lib/i18n.svelte';
 
@@ -40,9 +40,20 @@
             ['diff', 'Diff'],
             ['rules', t('Правила', 'Rules')],
         ];
-        for (const [id, label] of tabs) list.push({ id: `tab-${id}`, label: `${t('Перейти:', 'Go to:')} ${label}`, hint: '1–5', run: () => setTab(id) });
+        for (const [id, label] of tabs) {
+            if (app.preview && !['overview', 'threads', 'diff'].includes(id)) continue;
+            list.push({ id: `tab-${id}`, label: `${t('Перейти:', 'Go to:')} ${label}`, hint: '1–5', run: () => setTab(id) });
+        }
         if (review) {
-            list.push({ id: 'refresh', label: t('Обновить ревью', 'Refresh review'), hint: 'r', run: () => void loadReview(review.id, { refresh: true }) });
+            list.push({
+                id: 'refresh',
+                label: t('Обновить ревью', 'Refresh review'),
+                hint: 'r',
+                run: () =>
+                    app.preview && app.previewRef
+                        ? void loadPreview(app.previewRef, { tab: app.tab, refresh: true })
+                        : void loadReview(review.id, { refresh: true }),
+            });
             list.push({ id: 'publish', label: t('Опубликовать изменения', 'Publish changes'), hint: 'p', run: onpublish });
             list.push({
                 id: 'copy-context',

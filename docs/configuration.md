@@ -77,7 +77,11 @@ output:
 | `type` | `auto` | `auto` — inferred from the git remote; otherwise an explicit platform. `revdeck init` writes the remote platform, or `gitlab` when the host is not recognized (`--provider` overrides it) |
 | `host` | from the remote | host without a scheme |
 | `project` | from the remote | GitLab `group/project`, GitHub `owner/repo` |
-| `base` | `develop`/`main` | base for the local diff |
+| `base` | `develop`/`main` | base for the local diff; an open MR always uses its target branch from the platform |
+
+For an open MR the target is taken from the MR, not from `base`. The review context shows the target
+branch, the diff base/head and the platform merge status. `base` is only a fallback for reviewing a
+local branch/diff without an MR.
 
 Explicit CLI arguments (`--platform`, `--project`, `--host`) take precedence over the config, and the
 config takes precedence over the git remote. This way, tampering with `.git/config` cannot redirect the

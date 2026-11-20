@@ -1,10 +1,12 @@
 <script lang="ts">
     import { app, errorText } from '../lib/state.svelte';
-    import { getAnalytics } from '../lib/api';
+    import { getAnalytics, getQualityMetrics } from '../lib/api';
+    import type { QualityMetrics } from '../lib/types';
     import { t } from '../lib/i18n.svelte';
 
     type Analytics = Awaited<ReturnType<typeof getAnalytics>>['analytics'];
     let data = $state<Analytics | null>(null);
+    let quality = $state<QualityMetrics | null>(null);
     let loading = $state(true);
     let error = $state('');
 
@@ -23,9 +25,25 @@
             .finally(() => {
                 loading = false;
             });
+        void getQualityMetrics(app.activeProject ?? '')
+            .then((result) => {
+                quality = result.metrics;
+            })
+            .catch(() => {
+                quality = null;
+            });
     });
 
     const rate = $derived(data?.acceptanceRate == null ? '—' : `${Math.round(data.acceptanceRate * 100)}%`);
+    const pct = (value: number | null | undefined): string => (value == null ? '—' : `${Math.round(value * 100)}%`);
+    const duration = (value: number | null | undefined): string => {
+        if (value == null) return '—';
+        const total = Math.max(0, Math.round(value / 60000));
+        if (total < 60) return `${total}m`;
+        const hours = Math.floor(total / 60);
+        const minutes = total % 60;
+        return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+    };
 </script>
 
 {#if loading}
@@ -33,6 +51,29 @@
 {:else if error}
     <div class="alert error">{error}</div>
 {:else if data}
+    {#if quality}
+        <section class="card">
+            <div class="card-title">{t('Качество по проекту', 'Project quality')}</div>
+            <div class="muted small" style="margin-top: 4px">
+                {new Date(quality.from).toLocaleDateString()} — {new Date(quality.to).toLocaleDateString()} · {quality.events} {t('событий', 'events')}
+            </div>
+            <div class="stats" style="margin-top: 10px">
+                <div><div class="value">{quality.reviews.total}</div><div class="label">{t('ревью', 'reviews')}</div></div>
+                <div><div class="value">{pct(quality.rates.acceptance)}</div><div class="label">{t('принято из решённых', 'accepted / decided')}</div></div>
+                <div><div class="value">{pct(quality.rates.publish)}</div><div class="label">{t('опубликовано', 'published')}</div></div>
+                <div><div class="value">{pct(quality.rates.ruleGrounded)}</div><div class="label">{t('с правилом', 'with rule')}</div></div>
+                <div><div class="value">{quality.coverage.reviewsWithCoverage}/{quality.reviews.total}</div><div class="label">{t('с coverage', 'with coverage')}</div></div>
+                <div><div class="value">{duration(quality.timing.medianTimeToFirstFindingMs)}</div><div class="label">{t('до первого замечания', 'to first finding')}</div></div>
+                <div><div class="value">{duration(quality.timing.medianCycleTimeMs)}</div><div class="label">{t('цикл ревью', 'review cycle')}</div></div>
+                <div><div class="value">{quality.process.duplicates}</div><div class="label">{t('дублей', 'duplicates')}</div></div>
+                <div><div class="value">{quality.process.ruleCandidates}</div><div class="label">{t('кандидатов в правила', 'rule candidates')}</div></div>
+            </div>
+            <div class="muted small" style="margin-top: 8px">
+                {t('События', 'Events')}: {quality.actors.human} human · {quality.actors.agent} agent · {quality.actors.system} system
+            </div>
+        </section>
+    {/if}
+
     <section class="card">
         <div class="card-title">{t('Аналитика ревью', 'Review analytics')}</div>
         <div class="stats" style="margin-top: 10px">

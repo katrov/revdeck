@@ -69,6 +69,12 @@ is not stored in the review, the daemon or the database.
 - `ReviewRef` — platform, host, project, number. `reviewId` — `platform:host/project!number`.
 - `DiffFile`/`Hunk`/`DiffLine` — line numbers in the old and new versions; a finding's `line` always
   refers to the new file.
+- `previews` — in-memory, TTL-limited snapshots for read-only MR/PR viewing; they reuse provider
+  `info`/`diff`/`threads` and never enter SQLite or the review list.
+- `review_events` — append-only quality log (actor, type, finding/thread/rule, payload); metrics read
+  it instead of relying on the current snapshot.
+- `ReviewInfo.merge` — mergeability at the last sync: target branch, diff base/head, platform detail
+  and `clean`/`conflict`/`behind`/`unknown`/`unavailable`. It is separate from the merge-base diff.
 - `Thread`/`Note` — shared discussion model.
 - `Finding` — a review finding with `id`, `fingerprint`, severity, file/line, text, and status
   (`draft`, `accepted`, `rejected`, `published`, `fixed`, `stale`).

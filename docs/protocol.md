@@ -83,6 +83,9 @@ bridge is authorized by transport capability: `agent` may read and draft, but hu
 | `comments.delete` | `review`, `noteId` | delete an own platform comment |
 | `attachments.upload` | `review`, `name`, `contentType`, `data` (base64) | `name`, absolute `url`, `markdown` |
 | `notes.delete` | `review`, `noteId` | `{ok}` |
+| `messages.list` | `review` | review-level messages to the agent |
+| `messages.add` | `review`, `text` | new message; the role follows the client policy (`human`/`agent`) |
+| `metrics.get` | `project`, `from`, `to` | project-level quality metrics |
 | `publish.preview` | `review`, `kind`, `ids[]` | plan + warnings |
 | `publish.approve` | `review`, `kind`, `ids[]`, `hash` | `approvalId`, `expiresAt` |
 | `publish.commit` | `review`, `approvalId` | per-item results |
@@ -96,7 +99,7 @@ bridge is authorized by transport capability: `agent` may read and draft, but hu
   `reviews.*` (read/open/refresh), `diff.get`, `rules.get`, `features.list/get/context/forReview`,
   `features.addNote/updateNote/deleteNote` (author forced to `agent`; only own notes),
   `drafts.put`, `findings.put/list`, `summary.put`, `notes.*` (server-only publication fields ignored),
-  `publish.preview`, `projects.list`, `versions.*`, `analytics.get`, `secrets.get`.
+  `publish.preview`, `projects.list`, `versions.*`, `analytics.get`, `metrics.get`, `messages.list/add`, `secrets.get`.
 
 Human-only methods return `CAPABILITY` on the bridge: `publish.approve`, `publish.commit`,
 `checks.run`, `decisions.put`, `comments.update/delete`, `reactions.*`, `attachments.upload`,
@@ -160,10 +163,13 @@ human socket.
 | GET | `/api/reviews?project=` | review list, optionally scoped |
 | POST | `/api/projects/register`, `/update`, `/remove` | register, edit or delete a project |
 | GET | `/api/state?review=` | snapshot for the UI |
-| GET | `/api/diff?review=&file=` | file hunks |
+| GET | `/api/diff?review=&file=` | file hunks (including preview) |
 | GET | `/api/rules?review=` | rules |
 | GET | `/api/events` | SSE: `review`, `feature`, `project`, `heartbeat` |
 | POST | `/api/reviews/open`, `/api/reviews/refresh` | open/refresh |
+| POST | `/api/previews/open` | read-only MR/PR preview without creating a review |
+| GET | `/api/metrics?project=&from=&to=` | quality metrics |
+| GET/POST | `/api/messages?review=` | messages to the agent |
 | POST | `/api/drafts`, `/api/findings`, `/api/summary`, `/api/decisions` | drafts |
 | POST | `/api/notes` | `action: add/update/delete` |
 | GET | `/api/reactions?review=&notes=` | reactions for comment ids |

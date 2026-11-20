@@ -77,7 +77,10 @@ output:
 | `type` | `auto` | `auto` — по git remote; иначе явная платформа. `revdeck init` пишет платформу remote'а, а если хост не распознан — `gitlab` (`--provider` переопределяет) |
 | `host` | из remote | хост без схемы |
 | `project` | из remote | GitLab `group/project`, GitHub `owner/repo` |
-| `base` | `develop`/`main` | база для локального diff |
+| `base` | `develop`/`main` | база для локального diff; для открытого MR цель всегда берётся с платформы |
+
+Для открытого MR target берётся из MR, а не из `base`. Контекст ревью показывает target, базу/head
+diff и статус мержа платформы. `base` — только запасная база для ревью локальной ветки/diff без MR.
 
 Явные аргументы CLI (`--platform`, `--project`, `--host`) важнее конфига, конфиг важнее git remote.
 Так подмена `.git/config` не перенаправит ревью на чужой проект.

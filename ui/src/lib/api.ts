@@ -78,6 +78,9 @@ export const getReactions = (review: string, noteIds: string[]) =>
 export const toggleReaction = (review: string, noteId: string, emoji: string) =>
     api<{ active: boolean; reactions: import('./types').Reaction[] }>('/api/reactions', { body: { review, noteId, emoji } });
 
+export const addAgentMessage = (review: string, text: string) =>
+    api<{ message: import('./types').AgentMessage }>('/api/messages', { body: { review, text } });
+
 export const getVersions = (review: string) =>
     api<{ versions: { id: number; headSha: string; baseSha: string; createdAt: string; files: number; findings: number; additions: number; deletions: number }[] }>(
         `/api/versions?review=${encodeURIComponent(review)}`,
@@ -92,6 +95,13 @@ export const getSecrets = (review: string) =>
         scan: string;
         findings: { rule: string; title: string; file: string; line: number; preview: string }[];
     }>(`/api/secrets?review=${encodeURIComponent(review)}`);
+
+export const getQualityMetrics = (project: string, from?: string, to?: string) => {
+    const params = new URLSearchParams({ project });
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    return api<{ metrics: import('./types').QualityMetrics }>(`/api/metrics?${params.toString()}`);
+};
 
 export const getAnalytics = (review: string) =>
     api<{
@@ -111,6 +121,15 @@ export const getReviewReactions = (review: string) =>
 
 export const toggleReviewReaction = (review: string, emoji: string) =>
     api<{ active: boolean; reactions: import('./types').Reaction[] }>('/api/review-reactions', { body: { review, emoji } });
+
+export const openPreview = (
+    root: string,
+    input: string,
+    options: { platform?: string; project?: string; host?: string; branch?: string; force?: boolean } = {},
+) =>
+    api<{ preview: import('./types').ReviewView }>('/api/previews/open', {
+        body: { root, input, ...options },
+    });
 
 export const openReview = (root: string, input: string, options: { platform?: string; project?: string; host?: string; branch?: string } = {}) =>
     api<{ review: import('./types').ReviewView; reviews: import('./types').ReviewListItem[] }>('/api/reviews/open', {

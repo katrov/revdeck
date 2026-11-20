@@ -1,5 +1,5 @@
 import { tmpdir } from 'node:os';
-import { REACTIONS, type DiffFile, type Note, type Platform, type Reaction, type ReviewInfo, type ReviewRef, type Thread, type UploadedAttachment, type User } from '../core/types.js';
+import { REACTIONS, type DiffFile, type MergeInfo, type MergeState, type Note, type Platform, type Reaction, type ReviewInfo, type ReviewRef, type Thread, type UploadedAttachment, type User } from '../core/types.js';
 import { parseUnifiedDiff } from '../core/diff.js';
 import { ProviderError } from '../core/errors.js';
 import { redact } from '../core/redact.js';
@@ -50,7 +50,12 @@ interface GlMergeRequest {
     web_url: string;
     sha?: string;
     updated_at: string;
+    merged_at?: string | null;
+    closed_at?: string | null;
     changes_count?: string | null;
+    has_conflicts?: boolean;
+    merge_status?: string;
+    detailed_merge_status?: string;
     diff_refs?: { base_sha?: string; start_sha?: string; head_sha?: string } | null;
 }
 
@@ -66,6 +71,48 @@ interface GlDiffFile {
 }
 
 const EMPTY_SHA = '0000000000000000000000000000000000000000';
+
+/**
+ * GitLab отдаёт mergeability отдельно от diff. has_conflicts зависит от
+ * merge_status и может быть false, пока GitLab не пересчитал статус, поэтому
+ * смотрим оба поля и detailed_merge_status.
+ */
+function gitlabMergeInfo(mr: GlMergeRequest, baseSha: string, headSha: string): MergeInfo {
+    const targetBranch = String(mr.target_branch ?? '');
+    const detail = [mr.detailed_merge_status, mr.merge_status].filter(Boolean).join(' · ');
+    let state: MergeState;
+    if (
+        mr.has_conflicts === true ||
+        mr.merge_status === 'cannot_be_merged' ||
+        mr.merge_status === 'cannot_be_merged_recheck' ||
+        mr.detailed_merge_status === 'conflict'
+    ) {
+        state = 'conflict';
+    } else if (mr.detailed_merge_status === 'need_rebase') {
+        state = 'behind';
+    } else if (
+        mr.merge_status === 'unchecked' ||
+        mr.merge_status === 'checking' ||
+        mr.detailed_merge_status === 'unchecked' ||
+        mr.detailed_merge_status === 'checking' ||
+        mr.detailed_merge_status === 'preparing' ||
+        (Boolean(mr.detailed_merge_status) && mr.detailed_merge_status !== 'mergeable')
+    ) {
+        state = 'unknown';
+    } else if (mr.merge_status === 'can_be_merged' || mr.detailed_merge_status === 'mergeable') {
+        state = 'clean';
+    } else {
+        state = 'unavailable';
+    }
+    return {
+        state,
+        targetBranch,
+        detail: detail || 'not reported',
+        checkedAt: new Date().toISOString(),
+        ...(baseSha ? { baseSha } : {}),
+        ...(headSha ? { headSha } : {}),
+    };
+}
 
 export class GitLabProvider implements Provider {
     readonly platform: Platform = 'gitlab';
@@ -124,7 +171,7 @@ export class GitLabProvider implements Provider {
 
     async info(): Promise<ReviewInfo> {
         if (this.infoCache) return this.infoCache;
-        const mr = await this.json<GlMergeRequest>([this.endpoint('')]);
+        const mr = await this.json<GlMergeRequest>([query(this.endpoint(''), { with_merge_status_recheck: 'true' })]);
         const refs = mr.diff_refs ?? {};
         const base = refs.base_sha || mr.sha || EMPTY_SHA;
         const start = refs.start_sha || base;
@@ -142,8 +189,11 @@ export class GitLabProvider implements Provider {
             targetBranch: String(mr.target_branch ?? ''),
             webUrl: String(mr.web_url ?? ''),
             ...(typeof mr.project_id === 'number' ? { projectId: mr.project_id } : {}),
+            merge: gitlabMergeInfo(mr, base, head),
             commit: { base, start, head },
             updatedAt: String(mr.updated_at ?? ''),
+            ...(mr.merged_at ? { mergedAt: mr.merged_at } : {}),
+            ...(mr.closed_at ? { closedAt: mr.closed_at } : {}),
             stats: { files: Number.isFinite(files) ? files : 0, additions: 0, deletions: 0 },
         };
         this.infoCache = info;

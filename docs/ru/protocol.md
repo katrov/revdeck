@@ -83,6 +83,9 @@
 | `comments.delete` | `review`, `noteId` | удалить свой комментарий платформы |
 | `attachments.upload` | `review`, `name`, `contentType`, `data` (base64) | `name`, абсолютный `url`, `markdown` |
 | `notes.delete` | `review`, `noteId` | `{ok}` |
+| `messages.list` | `review` | сообщения агенту по ревью |
+| `messages.add` | `review`, `text` | новое сообщение; роль по политике клиента (`human`/`agent`) |
+| `metrics.get` | `project`, `from`, `to` | метрики качества по проекту |
 | `publish.preview` | `review`, `kind`, `ids[]` | план + предупреждения |
 | `publish.approve` | `review`, `kind`, `ids[]`, `hash` | `approvalId`, `expiresAt` |
 | `publish.commit` | `review`, `approvalId` | результаты по пунктам |
@@ -96,7 +99,7 @@
   `reviews.*` (чтение/open/refresh), `diff.get`, `rules.get`, `features.list/get/context/forReview`,
   `features.addNote/updateNote/deleteNote` (автор принудительно `agent`; только свои заметки),
   `drafts.put`, `findings.put/list`, `summary.put`, `notes.*` (серверные поля публикации
-  игнорируются), `publish.preview`, `projects.list`, `versions.*`, `analytics.get`, `secrets.get`.
+  игнорируются), `publish.preview`, `projects.list`, `versions.*`, `analytics.get`, `metrics.get`, `messages.list/add`, `secrets.get`.
 
 Human-only методы возвращают `CAPABILITY` на мосту: `publish.approve`, `publish.commit`,
 `checks.run`, `decisions.put`, `comments.update/delete`, `reactions.*`, `attachments.upload`,
@@ -159,10 +162,13 @@ Human-only методы возвращают `CAPABILITY` на мосту: `publ
 | GET | `/api/reviews?project=` | список ревью, опционально в скоупе |
 | POST | `/api/projects/register`, `/update`, `/remove` | зарегистрировать, изменить или удалить проект |
 | GET | `/api/state?review=` | снимок для UI |
-| GET | `/api/diff?review=&file=` | hunks файла |
+| GET | `/api/diff?review=&file=` | hunks файла (включая preview) |
 | GET | `/api/rules?review=` | правила |
 | GET | `/api/events` | SSE: `review`, `feature`, `project`, `heartbeat` |
 | POST | `/api/reviews/open`, `/api/reviews/refresh` | открыть/обновить |
+| POST | `/api/previews/open` | read-only просмотр MR/PR без создания ревью |
+| GET | `/api/metrics?project=&from=&to=` | метрики качества |
+| GET/POST | `/api/messages?review=` | сообщения агенту |
 | POST | `/api/drafts`, `/api/findings`, `/api/summary`, `/api/decisions` | черновики |
 | POST | `/api/notes` | `action: add/update/delete` |
 | GET | `/api/reactions?review=&notes=` | реакции для id комментариев |

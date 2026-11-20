@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { openReview } from '../lib/api';
-    import { adoptOpenedReview, app, errorText, notify } from '../lib/state.svelte';
+    import { openPreview, openReview } from '../lib/api';
+    import { adoptOpenedReview, adoptPreview, app, errorText, notify } from '../lib/state.svelte';
     import { t } from '../lib/i18n.svelte';
 
     let { onclose }: { onclose: () => void } = $props();
@@ -55,6 +55,40 @@
             app.diffFocus = null;
             await adoptOpenedReview(result.review);
             notify(t('Ревью открыто', 'Review opened'), 'ok');
+            onclose();
+        } catch (cause) {
+            error = errorText(cause);
+        } finally {
+            loading = false;
+        }
+    }
+
+    async function preview(): Promise<void> {
+        if (loading) return;
+        if (!root.trim()) {
+            error = t('Укажите путь к рабочей копии репозитория', 'Pass the repository working-copy path');
+            return;
+        }
+        if (!input.trim()) {
+            error = t('Укажите номер или ссылку на MR/PR', 'Pass an MR/PR number or URL');
+            return;
+        }
+        loading = true;
+        error = '';
+        try {
+            const result = await openPreview(root.trim(), input.trim(), {
+                ...(platform !== 'auto' ? { platform } : {}),
+                ...(project.trim() ? { project: project.trim() } : {}),
+                ...(host.trim() ? { host: host.trim() } : {}),
+                ...(branch.trim() ? { branch: branch.trim() } : {}),
+            });
+            try {
+                localStorage.setItem('revdeck.root', root.trim());
+            } catch {
+                // localStorage может быть недоступен.
+            }
+            adoptPreview(result.preview, root.trim());
+            notify(t('Открыт просмотр MR/PR', 'MR/PR preview opened'), 'ok');
             onclose();
         } catch (cause) {
             error = errorText(cause);
@@ -116,6 +150,7 @@
 
         <div class="row end" style="margin-top: 14px">
             <button class="btn" type="button" onclick={onclose} disabled={loading}>{t('Отмена', 'Cancel')}</button>
+            <button class="btn" type="button" onclick={() => void preview()} disabled={loading}>{t('Только посмотреть', 'Preview only')}</button>
             <button class="btn primary" type="submit" disabled={loading}>{loading ? t('Открываю…', 'Opening…') : t('Открыть', 'Open')}</button>
         </div>
         </form>

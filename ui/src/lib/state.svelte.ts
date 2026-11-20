@@ -1,5 +1,5 @@
-import { getFeature, getFeatureContext, getFeatures, getFeaturesForReview, getProjects, getReactions, getReviews, getState, refreshReview } from './api';
-import type { FeatureDetail, FeatureSummary, ProjectSummary, ReviewListItem, ReviewView, Tab } from './types';
+import { getFeature, getFeatureContext, getFeatures, getFeaturesForReview, getProjects, getReactions, getReviews, getState, openPreview as openPreviewApi, refreshReview } from './api';
+import type { FeatureDetail, FeatureSummary, PreviewRef, ProjectSummary, ReviewListItem, ReviewView, Tab } from './types';
 import { projectKeyFromReviewId } from './projects';
 import { i18n, localeTag, t } from './i18n.svelte';
 
@@ -30,6 +30,9 @@ export const app = $state({
     reviewFeatures: [] as FeatureSummary[],
     reviews: [] as ReviewListItem[],
     review: null as ReviewView | null,
+    /** Просмотр MR/PR без записи в ревью. */
+    preview: false,
+    previewRef: null as PreviewRef | null,
     tab: 'overview' as Tab,
     focus: null as Focus,
     loading: false,
@@ -124,6 +127,7 @@ export function errorText(error: unknown): string {
 }
 
 export function setTab(tab: Tab, push = true): void {
+    if (app.preview && !['overview', 'threads', 'diff'].includes(tab)) return;
     app.tab = tab;
     app.focus = null;
     writeHash(push);
@@ -230,6 +234,8 @@ export async function loadFeature(id: string, options: { push?: boolean } = {}):
         app.featuresHome = false;
         app.help = false;
         app.review = null;
+        app.preview = false;
+        app.previewRef = null;
         app.featureContext = '';
         app.projectSwitcher = false;
         writeHash(options.push ?? true);
@@ -249,6 +255,8 @@ export async function showFeaturesHome(push = true): Promise<void> {
     app.featuresHome = true;
     app.feature = null;
     app.review = null;
+    app.preview = false;
+    app.previewRef = null;
     app.help = false;
     app.featureContext = '';
     app.projectSwitcher = false;
@@ -273,6 +281,8 @@ export async function setActiveProject(key: string, selectFirst = true): Promise
         storeProject(key);
         if (app.review && projectKeyFromReviewId(app.review.id) !== key) {
             app.review = null;
+        app.preview = false;
+        app.previewRef = null;
             app.diffFile = null;
         }
     }
@@ -284,6 +294,8 @@ export async function setActiveProject(key: string, selectFirst = true): Promise
         await loadReview(first.id);
     } else if (!first) {
         app.review = null;
+        app.preview = false;
+        app.previewRef = null;
         writeHash(false);
     }
 }
@@ -296,6 +308,8 @@ export async function adoptOpenedReview(review: ReviewView): Promise<void> {
     app.featuresHome = false;
     app.help = false;
     app.feature = null;
+    app.preview = false;
+    app.previewRef = null;
     app.review = review;
     await loadProjects();
     await loadReviews();
@@ -313,6 +327,8 @@ export function showProjectsHome(push = true): void {
     app.featureContext = '';
     app.projectSwitcher = false;
     app.review = null;
+    app.preview = false;
+    app.previewRef = null;
     app.focus = null;
     writeHash(push);
 }
@@ -325,6 +341,8 @@ export function showHelp(push = true): void {
     app.featureContext = '';
     app.projectSwitcher = false;
     app.review = null;
+    app.preview = false;
+    app.previewRef = null;
     app.focus = null;
     app.diffFocus = null;
     writeHash(push);
@@ -341,6 +359,8 @@ function applyReviewState(state: CachedReviewState, push: boolean, hydrate: bool
     app.help = false;
     app.feature = null;
     app.featureContext = '';
+    app.preview = false;
+    app.previewRef = null;
     const current = app.review;
     const switching = !current || current.id !== state.review.id;
     if (force || switching) {
@@ -364,6 +384,91 @@ function applyReviewState(state: CachedReviewState, push: boolean, hydrate: bool
         if (app.review) void loadReactions(app.review);
     }
     writeHash(push);
+}
+
+export async function loadPreview(ref: PreviewRef, options: { tab?: Tab; push?: boolean; refresh?: boolean } = {}): Promise<void> {
+    const request = ++loadRequest;
+    ++featureRequest;
+    const epoch = routeEpoch;
+    app.loading = true;
+    app.error = '';
+    try {
+        if (!app.projects.length) await loadProjects();
+        const key = `${ref.platform}:${ref.host}/${ref.project}`;
+        const project = app.projects.find((item) => item.key === key);
+        let remembered = '';
+        try {
+            remembered = localStorage.getItem(`revdeck.previewRoot.${key}`) ?? '';
+        } catch {
+            // localStorage может быть недоступен.
+        }
+        const root = project?.roots[0] ?? app.reviews.find((item) => item.projectKey === key)?.root ?? remembered;
+        if (!root) throw new Error(t('Проект не зарегистрирован: добавьте рабочую копию.', 'The project is not registered: add a working copy.'));
+        const result = await openPreviewApi(root, String(ref.number), {
+            platform: ref.platform,
+            host: ref.host,
+            project: ref.project,
+            ...(options.refresh ? { force: true } : {}),
+        });
+        if (request !== loadRequest || epoch !== routeEpoch) return;
+        const same = app.preview && app.review?.id === result.preview.id;
+        const previousFile = app.diffFile;
+        app.preview = true;
+        app.previewRef = ref;
+        app.review = result.preview;
+        app.activeProject = key;
+        storeProject(key);
+        void loadReviews();
+        void loadFeatures();
+        app.projectsHome = false;
+        app.featuresHome = false;
+        app.help = false;
+        app.feature = null;
+        app.featureContext = '';
+        app.tab = options.tab && ['overview', 'threads', 'diff'].includes(options.tab) ? options.tab : 'overview';
+        if (!same) app.focus = null;
+        if (!same) app.diffFocus = null;
+        app.diffFile = previousFile && result.preview.files.some((file) => file.path === previousFile)
+            ? previousFile
+            : (result.preview.files[0]?.path ?? null);
+        writeHash(options.push ?? false);
+    } catch (error) {
+        if (request !== loadRequest || epoch !== routeEpoch) return;
+        app.review = null;
+        app.preview = false;
+        app.previewRef = null;
+        app.error = errorText(error);
+        notify(app.error, 'error');
+    } finally {
+        if (request === loadRequest) app.loading = false;
+    }
+}
+
+export function adoptPreview(view: ReviewView, root?: string): void {
+    const key = `${view.info.ref.platform}:${view.info.ref.host}/${view.info.ref.project}`;
+    if (root) {
+        try {
+            localStorage.setItem(`revdeck.previewRoot.${key}`, root);
+        } catch {
+            // localStorage может быть недоступен.
+        }
+    }
+    app.preview = true;
+    app.previewRef = { ...view.info.ref };
+    app.review = view;
+    app.projectsHome = false;
+    app.featuresHome = false;
+    app.help = false;
+    app.feature = null;
+    app.activeProject = `${view.info.ref.platform}:${view.info.ref.host}/${view.info.ref.project}`;
+    storeProject(app.activeProject);
+    void loadReviews();
+    void loadFeatures();
+    app.tab = 'overview';
+    app.focus = null;
+    app.diffFocus = null;
+    app.diffFile = view.files[0]?.path ?? null;
+    writeHash(true);
 }
 
 export async function loadReview(id: string, options: { refresh?: boolean; silent?: boolean; push?: boolean } = {}): Promise<void> {
@@ -422,7 +527,7 @@ export function scheduleReload(scope?: ReloadScope): void {
         const reviewScope = scopes.has('review');
         const featureScope = scopes.has('feature');
         const projectScope = scopes.has('project');
-        if (reviewScope) {
+        if (reviewScope && !app.preview) {
             const id = app.review?.id;
             if (id) void loadReview(id, { silent: true, push: false });
         }
@@ -484,6 +589,7 @@ const TABS: readonly Tab[] = ['overview', 'threads', 'findings', 'diff', 'rules'
 
 export interface Route {
     id: string | null;
+    view: PreviewRef | null;
     tab: Tab;
     focus: Focus;
     project: string | null;
@@ -493,14 +599,46 @@ export interface Route {
     help: boolean;
 }
 
+export function encodePreviewRef(ref: PreviewRef): string {
+    const bytes = new TextEncoder().encode(JSON.stringify(ref));
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodePreviewRef(value: string): PreviewRef | null {
+    try {
+        const binary = atob(value.replace(/-/g, '+').replace(/_/g, '/'));
+        const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+        const parsed = JSON.parse(new TextDecoder().decode(bytes)) as Partial<PreviewRef>;
+        if (
+            (parsed.platform === 'gitlab' || parsed.platform === 'github') &&
+            typeof parsed.host === 'string' &&
+            typeof parsed.project === 'string' &&
+            typeof parsed.number === 'number'
+        ) {
+            return { platform: parsed.platform, host: parsed.host, project: parsed.project, number: parsed.number };
+        }
+    } catch {
+        // Некорректная ссылка — обычный пустой маршрут.
+    }
+    return null;
+}
+
 export function parseHash(): Route {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-    const empty: Route = { id: null, tab: 'overview', focus: null, project: null, projects: false, feature: null, features: false, help: false };
+    const empty: Route = { id: null, view: null, tab: 'overview', focus: null, project: null, projects: false, feature: null, features: false, help: false };
     if (parts[0] === 'help') return { ...empty, help: true };
     if (parts[0] === 'projects') return { ...empty, projects: true };
     if (parts[0] === 'features') return { ...empty, features: true };
     if (parts[0] === 'f' && parts[1]) return { ...empty, feature: decodeURIComponent(parts[1]) };
     if (parts[0] === 'p' && parts[1]) return { ...empty, project: decodeURIComponent(parts[1]) };
+    if (parts[0] === 'view' && parts[1]) {
+        const view = decodePreviewRef(parts[1]);
+        if (!view) return empty;
+        const tab = TABS.includes(parts[2] as Tab) ? (parts[2] as Tab) : 'overview';
+        return { ...empty, view, tab };
+    }
     if (parts[0] !== 'r' || !parts[1]) return empty;
     const id = decodeURIComponent(parts[1]);
     const tab = TABS.includes(parts[2] as Tab) ? (parts[2] as Tab) : 'overview';
@@ -513,11 +651,12 @@ export function parseHash(): Route {
         const line = Number(rest[2]);
         if (Number.isInteger(line) && line > 0) focus = { kind: 'line', file: decodeURIComponent(rest[1]), line };
     }
-    return { id, tab, focus, project: null, projects: false, feature: null, features: false, help: false };
+    return { id, view: null, tab, focus, project: null, projects: false, feature: null, features: false, help: false };
 }
 
 export function hashFor(tab: Tab, focus: Focus): string {
     if (app.help) return '#/help';
+    if (app.preview && app.previewRef) return `#/view/${encodePreviewRef(app.previewRef)}/${tab}`;
     if (app.feature) return `#/f/${encodeURIComponent(app.feature.id)}`;
     if (app.featuresHome) return '#/features';
     const id = app.review?.id;
@@ -561,12 +700,23 @@ export function applyRoute(): void {
         app.diffFile = route.focus.file;
         app.diffFocus = { file: route.focus.file, line: route.focus.line };
     }
+    if (route.view) {
+        app.projectsHome = false;
+        app.featuresHome = false;
+        app.help = false;
+        app.feature = null;
+        app.previewRef = route.view;
+        void loadPreview(route.view, { tab: route.tab, push: false });
+        return;
+    }
     if (route.help) {
         app.help = true;
         app.projectsHome = false;
         app.featuresHome = false;
         app.feature = null;
         app.review = null;
+        app.preview = false;
+        app.previewRef = null;
         writeHash(false);
         return;
     }
@@ -575,6 +725,8 @@ export function applyRoute(): void {
         app.featuresHome = false;
         app.feature = null;
         app.review = null;
+        app.preview = false;
+        app.previewRef = null;
         writeHash(false);
         return;
     }
@@ -583,6 +735,8 @@ export function applyRoute(): void {
         app.featuresHome = true;
         app.feature = null;
         app.review = null;
+        app.preview = false;
+        app.previewRef = null;
         void loadReviews();
         void loadFeatures();
         writeHash(false);
@@ -602,6 +756,8 @@ export function applyRoute(): void {
             app.activeProject = route.project;
             storeProject(route.project);
             app.review = null;
+        app.preview = false;
+        app.previewRef = null;
             void loadReviews().then(async () => {
                 await loadFeatures();
                 const first = app.reviews[0];
@@ -683,6 +839,8 @@ export async function bootstrap(): Promise<void> {
         app.featuresHome = false;
         app.feature = null;
         app.review = null;
+        app.preview = false;
+        app.previewRef = null;
         await loadReviews();
         writeHash(false);
         return;
@@ -692,6 +850,8 @@ export async function bootstrap(): Promise<void> {
         app.featuresHome = false;
         app.feature = null;
         app.review = null;
+        app.preview = false;
+        app.previewRef = null;
         await loadReviews();
         writeHash(false);
         return;
@@ -701,6 +861,8 @@ export async function bootstrap(): Promise<void> {
         app.featuresHome = true;
         app.feature = null;
         app.review = null;
+        app.preview = false;
+        app.previewRef = null;
         await loadReviews();
         await loadFeatures();
         writeHash(false);
@@ -711,6 +873,14 @@ export async function bootstrap(): Promise<void> {
         app.featuresHome = false;
         await loadReviews();
         await loadFeature(route.feature, { push: false });
+        return;
+    }
+    if (route.view) {
+        app.projectsHome = false;
+        app.featuresHome = false;
+        await loadReviews();
+        await loadFeatures();
+        await loadPreview(route.view, { tab: route.tab, push: false });
         return;
     }
     app.projectsHome = false;

@@ -5,6 +5,21 @@ Command: `/revdeck review <N|URL>` (CLI: `revdeck review <N|URL>`).
 The goal is to find real defects and violations of the repository rules and produce a verifiable list
 of findings. The human publishes them.
 
+Before reviewing code, check the "Branch and comparison base" section: target is where the MR
+merges; the diff is a merge-base→head snapshot. If a target is present and status is `conflict` or
+`behind`, update the branch first; with `unknown` or "not checked", verify the target and conflicts.
+Do not claim there are no findings in those cases. A local diff without an MR has no target.
+
+## Fast pass
+
+If the context has `risk.mode: fast`, the diff is small and no risky path was detected. A short pass is
+allowed: description, diff, rules, threads, tests and coverage. The full change map, analogue search,
+ADRs and solution assessment may be shortened when the diff shows no risk. Evidence and `file:line`
+are still mandatory. If a sensitive area appears (auth, migrations, CI, public contract, a larger
+diff), switch to the full pass.
+
+With `risk.mode: full` or no `risk`, use all steps below without shortcuts.
+
 ## Steps
 
 1. Read the MR description from the context (`revdeck_context` / `revdeck context`) before the diff
@@ -25,9 +40,14 @@ of findings. The human publishes them.
    {"title": "<ticket / title>", "scope": "<base>...<branch> · <N> files · <projects>",
     "summary": "1-3 sentences: goal and approach",
     "changes": ["what was changed, one item per change"],
-    "focus": ["what to look at: risky places, contested decisions"]}
+    "focus": ["what to look at: risky places, contested decisions"],
+    "coverage": ["what was actually checked: files, commands, manual scenarios"],
+    "unknowns": ["what could not be checked and why"],
+    "duplicates": ["what already existed in threads and was not added"],
+    "ruleCandidates": ["proposed rules"]}
    ```
-   If the service is unavailable, output the summary to the chat only.
+   `coverage` and `unknowns` are mandatory: "no findings" without them means "not checked", not
+   "checked". If the service is unavailable, output the summary to the chat only.
 3. Read the rules from the context (`rules.markdown`). These are the documents and sections already
    selected for the changed paths. Build the change map (section 1 of `Criteria.md`) and check that
    rules were found for every path. If a path is not matched or a document is not found, say so and
@@ -132,10 +152,12 @@ Findings in descending order of importance. For each one:
 Record via `revdeck_draft_findings` (CLI: `revdeck findings <N> set --file findings.json`):
 ```json
 {"findings": [{"id": "f1", "level": "blocker", "file": "<path as in diff>", "line": 42,
-  "title": "brief", "body": "what is wrong and how it manifests", "comment": "ready-to-use text"}]}
+  "title": "brief", "body": "what is wrong and how it manifests", "comment": "ready-to-use text",
+  "rule": "docs/Architecture.md#layers"}]}
 ```
 `id` is unique and stable; `level` is one of `blocker`, `major`, `minor`, `question`; `line` is the
-line number in the new file or `null`. A reference to a rule or precedent goes into `body` as the
+line number in the new file or `null`. `rule` is an optional `document#section` reference when the
+finding is grounded in a rule; it feeds rule-grounded metrics. A reference to a rule or precedent goes into `body` as the
 last sentence, and into `comment` in wording the author can understand without access to the skill.
 Do not prefix `comment` with the level: revdeck adds the severity marker to the published message.
 The text passes the publication check: no platform command lines, HTML comments, invisible
@@ -148,10 +170,10 @@ is needed. Prose of 5–10 sentences, without repeating the findings.
 Then "Rule candidates" per `Rules.md`, if there are any: these are proposals for the human, not
 findings for the MR author.
 
-At the end: the change map and the documents read, what was checked by commands and with what
-result, what was not checked, which findings were not added because of threads, and the overall
-opinion. If there are no findings, say so without inventing nitpicks; the solution assessment is
-still given.
+At the end: the change map and the documents read, `coverage` and `unknowns` from the summary, what
+was checked by commands and with what result, which findings were not added because of threads, and
+the overall opinion. If there are no findings, say so without inventing nitpicks; the solution
+assessment is still given. "No findings" without `coverage`/`unknowns` is not enough.
 
 ## Limitations
 

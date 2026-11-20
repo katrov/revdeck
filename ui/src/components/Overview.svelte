@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { app, focusLine, focusNote, focusThread, notify, relativeTime, setTab } from '../lib/state.svelte';
-    import { getVersions } from '../lib/api';
+    import { app, errorText, focusLine, focusNote, focusThread, notify, relativeTime, setTab } from '../lib/state.svelte';
+    import { addAgentMessage, getVersions } from '../lib/api';
     import { plainText, truncate } from '../lib/format';
     import { plural, t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
@@ -15,9 +15,33 @@
         question: review.findings.filter((finding) => finding.level === 'question' && finding.status !== 'stale').length,
     });
     const pendingNotes = $derived(review.notes.filter((note) => note.toAgent && !note.agentReply));
+    const agentMessages = $derived(review.agentMessages ?? []);
     let versions = $state<{ id: number; headSha: string; createdAt: string; files: number; findings: number; additions: number; deletions: number }[]>([]);
+    let question = $state('');
+    let sending = $state(false);
+
+    async function askAgent(): Promise<void> {
+        const text = question.trim();
+        if (!text || sending) return;
+        sending = true;
+        try {
+            const { message } = await addAgentMessage(review.id, text);
+            const current = review.agentMessages ?? [];
+            if (!current.some((item) => item.id === message.id)) review.agentMessages = [...current, message];
+            question = '';
+            notify(t('Вопрос отправлен агенту', 'Question sent to the agent'), 'ok');
+        } catch (error) {
+            notify(errorText(error), 'error');
+        } finally {
+            sending = false;
+        }
+    }
 
     $effect(() => {
+        if (app.preview) {
+            versions = [];
+            return;
+        }
         const id = review.id;
         void getVersions(id).then((result) => (versions = result.versions)).catch(() => undefined);
     });
@@ -51,7 +75,7 @@
     {:else}
         <p class="muted" style="margin: 6px 0 0">{t('Описание пустое.', 'The description is empty.')}</p>
     {/if}
-    <Reactions reviewId={review.id} mode="review" />
+    {#if !app.preview}<Reactions reviewId={review.id} mode="review" />{/if}
 </section>
 
 <div class="stats">
@@ -59,10 +83,56 @@
     <div><div class="value" style="color: var(--add-text)">+{review.stats.additions}</div><div class="label">{t('добавлено', 'added')}</div></div>
     <div><div class="value" style="color: var(--del-text)">−{review.stats.deletions}</div><div class="label">{t('удалено', 'removed')}</div></div>
     <div><div class="value">{openThreads.length}</div><div class="label">{plural(openThreads.length, ['открытый тред', 'открытых треда', 'открытых тредов'], ['open thread', 'open threads'])}</div></div>
-    <div><div class="value">{review.findings.length}</div><div class="label">{plural(review.findings.length, ['замечание', 'замечания', 'замечаний'], ['finding', 'findings'])}</div></div>
+    {#if !app.preview}
+        <div><div class="value">{review.findings.length}</div><div class="label">{plural(review.findings.length, ['замечание', 'замечания', 'замечаний'], ['finding', 'findings'])}</div></div>
+    {/if}
 </div>
 
-{#if versions.length}
+{#if !app.preview}
+<section class="card">
+    <div class="card-head">
+        <div class="card-title">{t('Спросить агента', 'Ask the agent')}</div>
+    </div>
+    <p class="muted small" style="margin: 6px 0 10px">
+        {t(
+            'Вопрос по задаче, контексту или конкретному месту в ревью. Сообщение сохраняется в revdeck и попадёт в следующий контекст агента; в платформу оно не публикуется.',
+            'A question about the task, context or a specific part of the review. The message is stored in revdeck and appears in the agent’s next context; it is not published to the platform.',
+        )}
+    </p>
+    {#if agentMessages.length}
+        <div class="stack" style="margin-bottom: 12px">
+            {#each agentMessages as message (message.id)}
+                <div class="agent-message" class:from-agent={message.role === 'agent'}>
+                    <div class="muted small">
+                        <strong>{message.role === 'agent' ? t('Агент', 'Agent') : t('Вы', 'You')}</strong>
+                        · {relativeTime(message.createdAt)}
+                    </div>
+                    <div class="md"><Markdown source={message.text} /></div>
+                </div>
+            {/each}
+        </div>
+    {/if}
+    <textarea
+        bind:value={question}
+        rows={3}
+        placeholder={t('Например: подробнее про задачу, риски или это место в коде…', 'For example: explain the task, risks or this part of the code…')}
+        aria-label={t('Вопрос агенту', 'Question to the agent')}
+        disabled={sending || review.readOnly}
+    ></textarea>
+    <div class="row end" style="margin-top: 8px">
+        <span class="muted small">
+            {review.readOnly
+                ? t('Ревью read-only: отправка вопросов отключена.', 'The review is read-only: sending questions is disabled.')
+                : t('Ответ появится здесь после следующего прохода агента.', 'The answer appears here after the agent’s next pass.')}
+        </span>
+        <button class="btn primary" type="button" disabled={!question.trim() || sending || review.readOnly} onclick={() => void askAgent()}>
+            {sending ? t('Отправка…', 'Sending…') : t('Отправить агенту', 'Send to agent')}
+        </button>
+    </div>
+</section>
+{/if}
+
+{#if versions.length && !app.preview}
     <section class="card">
         <div class="card-head">
             <div class="card-title">{t('История версий', 'Version history')}</div>
@@ -90,6 +160,7 @@
     </section>
 {/if}
 
+{#if !app.preview}
 {#if review.summary}
     <section class="card">
         <div class="card-head">
@@ -111,6 +182,38 @@
                 {#each review.summary.focus as item}<li><Markdown source={item} /></li>{/each}
             </ul>
         {/if}
+        {#if review.summary.coverage?.length}
+            <div class="section-title">{t('Что проверено', 'What was checked')}</div>
+            <ul style="margin: 0; padding-left: 18px">
+                {#each review.summary.coverage as item}<li><Markdown source={item} /></li>{/each}
+            </ul>
+        {/if}
+        {#if review.summary.unknowns?.length}
+            <div class="section-title">{t('Что не проверено', 'Not checked')}</div>
+            <ul style="margin: 0; padding-left: 18px">
+                {#each review.summary.unknowns as item}<li><Markdown source={item} /></li>{/each}
+            </ul>
+        {/if}
+        {#if review.summary.duplicates?.length}
+            <div class="section-title">{t('Не добавлены как дубли', 'Skipped as duplicates')}</div>
+            <ul style="margin: 0; padding-left: 18px">
+                {#each review.summary.duplicates as item}<li><Markdown source={item} /></li>{/each}
+            </ul>
+        {/if}
+        {#if review.summary.ruleCandidates?.length}
+            <div class="section-title">{t('Кандидаты в правила', 'Rule candidates')}</div>
+            <ul style="margin: 0; padding-left: 18px">
+                {#each review.summary.ruleCandidates as item}<li><Markdown source={item} /></li>{/each}
+            </ul>
+        {/if}
+        {#if !review.summary.coverage?.length}
+            <div class="alert" style="margin-top: 10px; margin-bottom: 0">
+                {t(
+                    'Покрытие не указано. Пока агент не запишет coverage (что проверено) и unknowns (что не проверено), «замечаний нет» не означает «проверено».',
+                    'Coverage is missing. Until the agent records coverage (what was checked) and unknowns (what was not), “no findings” does not mean “checked”.',
+                )}
+            </div>
+        {/if}
     </section>
 {:else}
     <section class="card flat">
@@ -120,7 +223,9 @@
         </div>
     </section>
 {/if}
+{/if}
 
+{#if !app.preview}
 <div class="section-title">{t('Замечания по уровням', 'Findings by level')}</div>
 <div class="row">
     <span class="badge blocker">blocker · {levels.blocker}</span>
@@ -129,6 +234,7 @@
     <span class="badge question">question · {levels.question}</span>
     <button class="btn" onclick={() => setTab('findings')}>{t('Разобрать', 'Triage')}</button>
 </div>
+{/if}
 
 <div class="section-title">{t('Открытые треды', 'Open threads')}</div>
 {#if openThreads.length}
@@ -147,7 +253,7 @@
                         {/if}
                     </div>
                 </div>
-                <button class="btn" onclick={() => focusThread(thread.id)}>{t('Ответить', 'Reply')}</button>
+                {#if !app.preview}<button class="btn" onclick={() => focusThread(thread.id)}>{t('Ответить', 'Reply')}</button>{/if}
             </div>
         </section>
     {/each}

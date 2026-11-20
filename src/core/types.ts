@@ -39,6 +39,43 @@ export interface ReviewStats {
     deletions: number;
 }
 
+export type ReviewEventActor = 'human' | 'agent' | 'system';
+
+/** Append-only событие для метрик качества; не заменяет audit. */
+export interface ReviewEvent {
+    id: number;
+    at: string;
+    reviewId: string | null;
+    actor: ReviewEventActor;
+    type: string;
+    findingId?: string;
+    threadId?: string;
+    ruleRef?: string;
+    commitSha?: string;
+    payload: unknown;
+}
+
+export type MergeState = 'clean' | 'conflict' | 'behind' | 'unknown' | 'unavailable';
+
+/**
+ * Состояние слияния MR/PR с target на момент снимка. Diff ревью всегда
+ * привязан к `commit.base`/`commit.head`; target может уйти вперёд, поэтому
+ * mergeability проверяется отдельно от diff.
+ */
+export interface MergeInfo {
+    state: MergeState;
+    targetBranch: string;
+    /** Сырой статус платформы: detailed_merge_status / mergeable_state. */
+    detail: string;
+    checkedAt: string;
+    targetSha?: string;
+    /** Merge-base сохранённого diff. */
+    baseSha?: string;
+    /** Head сохранённого diff. */
+    headSha?: string;
+    conflictFiles?: string[];
+}
+
 export interface ReviewInfo {
     ref: ReviewRef;
     title: string;
@@ -52,8 +89,12 @@ export interface ReviewInfo {
     webUrl: string;
     /** GitLab project ID; нужен для абсолютных ссылок на /uploads. */
     projectId?: number;
+    /** Mergeability на момент последнего sync; старые снимки могут не иметь поля. */
+    merge?: MergeInfo;
     commit: { base: string; start: string; head: string };
     updatedAt: string;
+    mergedAt?: string;
+    closedAt?: string;
     stats: ReviewStats;
 }
 
@@ -141,6 +182,8 @@ export interface Finding {
     title: string;
     body: string;
     comment: string;
+    /** Документ/секция правила, на котором основано замечание (для метрик). */
+    rule?: string;
     status: FindingStatus;
     discussionId: string | null;
     publishedAt: string | null;
@@ -158,6 +201,14 @@ export interface ReviewSummary {
     summary: string;
     changes: string[];
     focus: string[];
+    /** Что реально проверено: файлы, команды, ручные сценарии. */
+    coverage?: string[];
+    /** Что проверить не удалось и почему. */
+    unknowns?: string[];
+    /** Замечания, не добавленные, потому что уже есть в тредах. */
+    duplicates?: string[];
+    /** Предложенные кандидаты в правила. */
+    ruleCandidates?: string[];
 }
 
 /** Черновик ответа в тред. */
@@ -175,6 +226,16 @@ export interface ReplyDraft {
 }
 
 /** Комментарий пользователя к строке diff (из UI), который может уйти агенту. */
+export type AgentMessageRole = 'human' | 'agent';
+
+/** Вопрос человека к агенту и ответ агента на уровне всего ревью. */
+export interface AgentMessage {
+    id: string;
+    role: AgentMessageRole;
+    text: string;
+    createdAt: string;
+}
+
 export interface LineNote {
     id: string;
     file: string;
@@ -205,6 +266,8 @@ export interface Review {
     findings: Finding[];
     drafts: ReplyDraft[];
     notes: LineNote[];
+    /** Вопросы человека к агенту и ответы агента (не публикуются в платформу). */
+    agentMessages: AgentMessage[];
     decisions: Record<string, { decision: Decision | null; note: string }>;
     user: User | null;
     syncedAt: string;

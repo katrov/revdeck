@@ -4,6 +4,52 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-11-20
+
+### Added
+
+- Added MR/PR preview without creating a review: `POST /api/previews/open` fetches info, diff and
+  threads into a 60-minute in-memory cache, the UI route `#/view/<ref>` is read-only, and the Diff tab
+  is served from `/api/diff` against the preview cache. The open-review dialog has a "Preview only"
+  action. Previews do not appear in the review list or quality metrics.
+- Added an append-only `review_events` log and project-level quality metrics: acceptance,
+  publish and rule-grounded rates, coverage completeness, time to first finding, review cycle,
+  actor/event counts, and review merge/close transitions. Findings can carry an optional `rule`
+  reference, and `ReviewInfo` now keeps `mergedAt`/`closedAt`.
+- Review context now includes a conservative `risk` profile (`low`/`medium`/`high`, `fast`/`full`
+  mode) and the UI shows a fast/full badge. The review procedure has a short fast pass for small,
+  non-sensitive diffs; auth, migrations, CI, public contracts, lockfiles and large diffs force the full
+  pass.
+- `ReviewSummary` now carries `coverage`, `unknowns`, skipped `duplicates` and `ruleCandidates`. The
+  summary card and agent context show what was actually checked and what could not be checked, so
+  "no findings" is distinguishable from "not checked"; duplicates and rule gaps feed the project
+  metrics.
+- New findings of level `blocker` or `major` require a non-empty `body`; a title and comment alone are
+  rejected as insufficient evidence. Existing findings remain re-saveable without a body.
+- The Overview tab has an "Ask the agent" composer. Review-level questions are stored as
+  `agentMessages`, shown in the agent context, and answered with the new `revdeck_messages` MCP tool
+  (`revdeck messages <N> reply --as-agent --text ...` in the CLI). Messages are private to revdeck and are never
+  published to the platform.
+- Reviews now keep their merge context: `ReviewInfo.merge` carries the target branch, the diff
+  base/head, and the platform merge state (`clean`, `conflict`, `behind`, `unknown` or `unavailable`).
+  GitLab uses `has_conflicts`/`merge_status`/`detailed_merge_status`, GitHub uses
+  `mergeable`/`mergeable_state`. The agent context and the UI show a "Branch and comparison base"
+  section/banner, and the review skill requires checking it before reporting that there are no
+  findings.
+
+### Fixed
+
+- Mergeability no longer treats GitLab non-ready statuses or GitHub `blocked`/`unstable`/`draft` as
+  clean; `need_rebase` remains `behind`.
+- Re-saving a legacy `blocker`/`major` finding without `body` works again; the body requirement now
+  applies only to new findings.
+- Quality metrics are scoped by the selected date range and sync time, and the event log no longer
+  records every background heartbeat.
+- Preview refresh bypasses the in-memory cache, keeps the selected file, and a failed preview no
+  longer leaves the previous review on screen.
+- Removed preview/review state leaks: opening a real review from preview clears the preview mode, and
+  read-only previews hide the remaining thread editor and version-history remnants.
+
 ## [0.10.0] - 2026-11-19
 
 ### Added

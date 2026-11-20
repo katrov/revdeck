@@ -13,6 +13,7 @@ export interface FindingDraft {
     body: string;
     comment: string;
     agentNote?: string;
+    rule?: string;
 }
 
 export interface FindingValidation {
@@ -31,6 +32,7 @@ export function validateFinding(raw: unknown): FindingValidation {
     const body = typeof item.body === 'string' ? item.body.trim() : '';
     const comment = typeof item.comment === 'string' ? item.comment.trim() : body;
     const agentNote = typeof item.agentNote === 'string' ? item.agentNote.trim().slice(0, 8000) : '';
+    const rule = typeof item.rule === 'string' ? item.rule.trim().slice(0, 500) : '';
     if (!file) return { value: null, error: tr('не указан file', 'file is required') };
     if (!title) return { value: null, error: tr('не указан title', 'title is required') };
     if (!comment) return { value: null, error: tr('пустой comment', 'comment is empty') };
@@ -55,6 +57,7 @@ export function validateFinding(raw: unknown): FindingValidation {
             body,
             comment,
             agentNote,
+            ...(rule ? { rule } : {}),
         },
         error: '',
     };
@@ -107,6 +110,7 @@ export function mergeFindings(previous: Finding[], incoming: FindingDraft[], opt
                 // Опубликованный текст не переписываем: он уже виден автору MR.
                 comment: match.status === 'published' ? match.comment : draft.comment,
                 agentNote: draft.agentNote ?? match.agentNote ?? '',
+                ...(draft.rule ? { rule: draft.rule } : match.rule ? { rule: match.rule } : {}),
                 status: match.status === 'stale' ? 'draft' : match.status,
                 fingerprint,
             });
@@ -125,6 +129,7 @@ export function mergeFindings(previous: Finding[], incoming: FindingDraft[], opt
             title: draft.title,
             body: draft.body,
             comment: draft.comment,
+            ...(draft.rule ? { rule: draft.rule } : {}),
             status: 'draft',
             discussionId: null,
             publishedAt: null,

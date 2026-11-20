@@ -38,6 +38,9 @@ const GL_MR = {
     web_url: 'https://gitlab.example.com/group/sub/proj/-/merge_requests/7',
     updated_at: '2026-01-01T00:00:00Z',
     changes_count: '2',
+    has_conflicts: false,
+    merge_status: 'can_be_merged',
+    detailed_merge_status: 'mergeable',
     diff_refs: { base_sha: 'a'.repeat(40), start_sha: 'b'.repeat(40), head_sha: 'c'.repeat(40) },
 };
 
@@ -95,6 +98,12 @@ describe('GitLabProvider', () => {
         expect(info.title).toBe('Add b');
         expect(info.projectId).toBe(36);
         expect(info.commit.head).toBe('c'.repeat(40));
+        expect(info.merge).toMatchObject({
+            state: 'clean',
+            targetBranch: 'main',
+            baseSha: 'a'.repeat(40),
+            headSha: 'c'.repeat(40),
+        });
         const diff = await provider.diff();
         expect(diff.map((file) => file.path)).toEqual(['src/app.ts', 'src/new.ts']);
         expect(diff[0]!.hunks[0]!.lines.map((line) => line.kind)).toEqual([' ', '-', '+']);
@@ -102,6 +111,30 @@ describe('GitLabProvider', () => {
         expect(threads).toHaveLength(1);
         expect(threads[0]).toMatchObject({ id: 'd1', path: 'src/app.ts', line: 2, side: 'new' });
         expect(await provider.currentUser()).toEqual({ username: 'me', name: 'Me' });
+    });
+
+    it('reports a GitLab merge conflict instead of a clean status', async () => {
+        const { runner: impl } = runner(() => ({
+            ...GL_MR,
+            has_conflicts: true,
+            merge_status: 'cannot_be_merged',
+            detailed_merge_status: 'conflict',
+        }));
+        const provider = new GitLabProvider(gitlabRef, { root: '/tmp', runImpl: impl });
+        const info = await provider.info();
+        expect(info.merge).toMatchObject({ state: 'conflict', targetBranch: 'main' });
+        expect(info.merge?.detail).toContain('conflict');
+    });
+
+    it('reports a GitLab branch that needs a rebase', async () => {
+        const { runner: impl } = runner(() => ({
+            ...GL_MR,
+            has_conflicts: false,
+            merge_status: 'can_be_merged',
+            detailed_merge_status: 'need_rebase',
+        }));
+        const provider = new GitLabProvider(gitlabRef, { root: '/tmp', runImpl: impl });
+        expect((await provider.info()).merge?.state).toBe('behind');
     });
 
     it('replies with a JSON body and resolves with put', async () => {
@@ -172,7 +205,7 @@ describe('GitLabProvider', () => {
 
     it('creates a positioned discussion and a general one without line', async () => {
         const { runner: impl, calls } = runner((call) => {
-            if (call.args.includes('projects/group%2Fsub%2Fproj/merge_requests/7')) return GL_MR;
+            if (call.args.some((arg) => /^projects\/group%2Fsub%2Fproj\/merge_requests\/7(\?.*)?$/.test(arg))) return GL_MR;
             return { id: 'd-new', notes: [{ id: 5 }] };
         });
         const provider = new GitLabProvider(gitlabRef, { root: '/tmp', runImpl: impl });
@@ -210,6 +243,8 @@ const GH_PR = {
     deletions: 1,
     head: { ref: 'feature', sha: 'c'.repeat(40) },
     base: { ref: 'main', sha: 'a'.repeat(40) },
+    mergeable: true,
+    mergeable_state: 'clean',
 };
 
 const GH_FILES = [
@@ -263,11 +298,23 @@ describe('GitHubProvider', () => {
         const info = await provider.info();
         expect(info.title).toBe('Add b');
         expect(info.sourceBranch).toBe('feature');
+        expect(info.merge).toMatchObject({ state: 'clean', targetBranch: 'main', targetSha: 'a'.repeat(40) });
         const diff = await provider.diff();
         expect(diff[0]!.path).toBe('src/app.ts');
         const threads = await provider.threads();
         expect(threads[0]).toMatchObject({ id: 'PRRT_1', path: 'src/app.ts', line: 2, resolved: false });
         expect(threads[0]!.notes[0]).toMatchObject({ id: '501', author: 'reviewer' });
+    });
+
+    it('reports a GitHub conflict and a behind branch', async () => {
+        let pr = { ...GH_PR, mergeable: false, mergeable_state: 'dirty' };
+        const { runner: impl } = runner(() => pr);
+        const provider = new GitHubProvider(githubRef, { root: '/tmp', runImpl: impl });
+        expect((await provider.info()).merge?.state).toBe('conflict');
+
+        pr = { ...GH_PR, mergeable: true, mergeable_state: 'behind' };
+        const behind = new GitHubProvider(githubRef, { root: '/tmp', runImpl: impl });
+        expect((await behind.info()).merge?.state).toBe('behind');
     });
 
     it('replies to the root review comment and resolves via graphql', async () => {

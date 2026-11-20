@@ -350,6 +350,15 @@ pre {
     box-shadow: none;
 }
 
+.agent-message {
+    border-left: 3px solid var(--border);
+    padding: 2px 0 2px 10px;
+}
+
+.agent-message.from-agent {
+    border-left-color: var(--accent);
+}
+
 .card-head {
     display: flex;
     gap: 10px;
@@ -1313,8 +1322,25 @@ mark {
     vertical-align: top;
 }
 
-.readonly-banner {
+.review-banners {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     margin: 10px 22px 0;
+}
+
+.review-banners .alert {
+    margin: 0;
+}
+
+@media (max-width: 860px) {
+    .review-banners {
+        margin: 10px 12px 0;
+    }
+}
+
+.readonly-banner {
+    margin: 0;
 }
 
 /* ---------- projects ---------- */

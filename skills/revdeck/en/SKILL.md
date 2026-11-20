@@ -29,6 +29,7 @@ capabilities.
 | Findings draft | `revdeck_draft_findings` | `revdeck findings <N> set --file f.json` |
 | Summary | `revdeck_set_summary` | `revdeck summary` (via `context`) |
 | Line comments | `revdeck_notes` | `revdeck notes <N> ...` |
+| Messages to the agent | `revdeck_messages` | `revdeck messages <N> [list\|ask\|reply]` |
 | Publish plan | `revdeck_publish_preview` | `revdeck publish <N> --dry-run` |
 | Features | `revdeck_feature` | `revdeck feature list\|get\|context` |
 | Feature notes | `revdeck_feature_note` | `revdeck feature note ...` |
@@ -59,8 +60,18 @@ the context.
    sections selected for the changed paths), threads, existing findings, and comments from the
    human. Call the `revdeck_rules` MCP tool separately only if the rules were not included in the
    context.
-3. Run the procedure of the chosen scenario.
-4. Record findings and reply drafts with the tools. **Do not publish.**
+3. Check the "Branch and comparison base" section. Target is where the MR merges; the diff is a
+   base→head snapshot. If the review has a target and merge status is `conflict`, `behind`, `unknown`
+   or "not checked", report it before reviewing code. With `conflict` or `behind`, update the branch
+   first; do not claim there are no findings until the target and conflicts are checked. For a local
+   diff without an MR the target is not applicable and is not a blocker.
+4. Read `risk.mode` from the context: `fast` means the short pass ("Fast pass" in `Review.md`),
+   `full` means the complete procedure. If a sensitive area appears, switch to full.
+5. Read the "Messages to the agent" section: these are human questions about the review. Answer the
+   latest question via `revdeck_messages` (MCP) or `revdeck messages <N> reply --as-agent --text ...`; the reply
+   is not published.
+6. Run the procedure of the chosen scenario.
+7. Record findings and reply drafts with the tools. **Do not publish.**
 
 For a feature, first read the brief and contract, then every member review with its own rules; keep
 findings on their owning review. The full procedure is in `Feature.md`.

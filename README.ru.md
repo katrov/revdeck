@@ -44,6 +44,16 @@
   участникам. Публикация — по каждому ревью и после подтверждения.
 - **Быстрое повторное открытие.** UI отдаёт ревью из локального снимка, а устаревший обновляет в
   фоне; открытие не ждёт `glab`/`gh`, а фоновые обновления не перезапускают загрузку вкладок.
+- **Просмотр MR/PR без ревью.** В диалоге «Открыть ревью» есть «Только посмотреть»: описание,
+  diff и обсуждения доступны, а замечания, комментарии, реакции и публикация отключены. Просмотр
+  кэшируется в памяти и не создаёт ревью или событие метрик.
+- **Ревью под размер риска.** Контекст считает консервативный профиль fast/full по diff и путям:
+  небольшие правки кода/документации идут коротким проходом, а auth, миграции, CI, контракты и
+  большие diff требуют полной процедуры.
+- **Ревью помнит, куда мержится ветка.** В ревью открытого MR/PR сохраняются target, база/head diff
+  и статус мержа. Конфликт или «ветка отстаёт от target» видны до замечаний, поэтому чистый diff на
+  merge-base не принимается за готовый к мержу MR. У локального diff и старых снимков merge-инфо
+  может отсутствовать.
 - **Большие списки остаются лёгкими.** Треды и замечания рендерят только видимые страницы; фокус,
   редакторы и deep-link'и продолжают работать, а небольшие ревью рендерятся целиком.
 
@@ -125,6 +135,8 @@ self-hosted GitLab), по умолчанию выбирается `gitlab`. Пе
 | `revdeck reply <N> --thread <id> --body …` | черновик ответа |
 | `revdeck publish <N> [--yes]` | план или публикация после подтверждения |
 | `revdeck notes <N> …` | комментарии человека к строкам |
+| `revdeck messages <N> [list\|ask\|reply] [--as-agent]` | вопросы агенту по ревью и ответы агента |
+| `revdeck metrics [project]` | метрики качества и цикл ревью по проекту |
 | `revdeck react <N> --note <id> --emoji <name>` | поставить или снять реакцию на комментарий платформы |
 | `revdeck attach <N> --file <картинка-или-видео>` | загрузить вложение и вывести markdown-ссылку |
 | `revdeck rules [--explain <path>]` | эффективные правила |
@@ -333,8 +345,8 @@ HTTP: достаточно `revdeck daemon restart`, потому что `daemon
 
 Инструменты: `revdeck_status`, `revdeck_list`, `revdeck_open`, `revdeck_context`,
 `revdeck_threads`, `revdeck_diff`, `revdeck_rules`, `revdeck_draft_reply`,
-`revdeck_draft_findings`, `revdeck_set_summary`, `revdeck_notes`, `revdeck_feature`,
-`revdeck_feature_note`, `revdeck_publish_preview`, `revdeck_publish`. Публикация требует
+`revdeck_draft_findings`, `revdeck_set_summary`, `revdeck_notes`, `revdeck_messages`,
+`revdeck_feature`, `revdeck_feature_note`, `revdeck_publish_preview`, `revdeck_publish`. Публикация требует
 `approval_id`, который создаёт человек в UI или CLI на хосте; у моста агента нет `publish.approve`.
 
 Промпты `review-mr`, `close-feedback` и `review-feature` доступны в клиентах, поддерживающих

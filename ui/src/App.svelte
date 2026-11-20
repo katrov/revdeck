@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { app, applyRoute, bootstrap, flushPendingReload, forgetReview, loadFeature, loadFeatures, loadProjects, loadReview, loadReviews, notify, setActiveProject, setTab, showFeaturesHome, showHelp, showProjectsHome, subscribe, writeHash } from './lib/state.svelte';
+    import { app, applyRoute, bootstrap, flushPendingReload, forgetReview, loadFeature, loadFeatures, loadPreview, loadProjects, loadReview, loadReviews, notify, setActiveProject, setTab, showFeaturesHome, showHelp, showProjectsHome, subscribe, writeHash } from './lib/state.svelte';
     import { removeProject as removeProjectApi, removeReview as removeReviewApi } from './lib/api';
     import type { ProjectSummary, ReviewListItem } from './lib/types';
     import type { Tab } from './lib/types';
@@ -38,14 +38,18 @@
         app.review ? app.review.findings.filter((finding) => finding.status !== 'published' && finding.status !== 'stale').length : 0,
     );
 
-    const tabs = $derived<{ id: Tab; label: string; count?: number }[]>([
-        { id: 'overview', label: t('Обзор', 'Overview') },
-        { id: 'threads', label: t('Треды', 'Threads'), count: openThreads },
-        { id: 'findings', label: t('Замечания', 'Findings'), count: draftFindings },
-        { id: 'diff', label: 'Diff' },
-        { id: 'rules', label: t('Правила', 'Rules') },
-        { id: 'analytics', label: t('Аналитика', 'Analytics') },
-    ]);
+    const tabs = $derived<{ id: Tab; label: string; count?: number }[]>(
+        ([
+            { id: 'overview', label: t('Обзор', 'Overview') },
+            { id: 'threads', label: t('Треды', 'Threads'), count: openThreads },
+            { id: 'findings', label: t('Замечания', 'Findings'), count: draftFindings },
+            { id: 'diff', label: 'Diff' },
+            { id: 'rules', label: t('Правила', 'Rules') },
+            { id: 'analytics', label: t('Аналитика', 'Analytics') },
+        ] as { id: Tab; label: string; count?: number }[]).filter(
+            (item) => !app.preview || item.id === 'overview' || item.id === 'threads' || item.id === 'diff',
+        ),
+    );
 
     const publishTarget = $derived.by((): { kind: 'reply' | 'finding' | 'note'; ids: string[] } | null => {
         const review = app.review;
@@ -141,6 +145,11 @@
     }
 
     function refresh(): void {
+        if (app.preview && app.previewRef) {
+            void loadPreview(app.previewRef, { tab: app.tab, refresh: true });
+            notify(t('Обновлено', 'Updated'), 'info');
+            return;
+        }
         const id = app.review?.id;
         if (!id) return;
         void loadReview(id, { refresh: true });
@@ -338,14 +347,24 @@
                             <span>{review.info.sourceBranch} → {review.info.targetBranch}</span>
                             <span>{review.info.author}</span>
                             <span>{review.info.state}{review.info.draft ? ' · draft' : ''}</span>
+                            {#if app.preview}<span class="badge">{t('просмотр', 'preview')}</span>{/if}
                             <span>+{review.stats.additions} −{review.stats.deletions}</span>
+                            {#if review.risk && !app.preview}
+                                <span class="badge" title={review.risk.reasons.join(', ')}>
+                                    {review.risk.mode === 'fast' ? t('быстрый проход', 'fast pass') : t('полный проход', 'full pass')} · {
+                                        review.risk.level === 'low' ? t('низкий', 'low') : review.risk.level === 'high' ? t('высокий', 'high') : t('средний', 'medium')
+                                    }
+                                </span>
+                            {/if}
                             {#if review.stale}<span class="badge">{t('устарело', 'stale')}</span>{/if}
                         </div>
                         <div class="review-feature-badges">
+                            {#if !app.preview}
                             {#each app.reviewFeatures as item (item.id)}
                                 <button class="feature-badge" type="button" onclick={() => void loadFeature(item.id)}>◇ {item.title}</button>
                             {/each}
                             <button class="feature-add" type="button" onclick={() => (addToFeatureOpen = true)}>+ {t('В фичу', 'To feature')}</button>
+                            {/if}
                         </div>
                     </div>
                     <div class="header-actions">
@@ -360,6 +379,7 @@
                         </button>
                         <button class="btn" onclick={refresh} title={t('Обновить (r)', 'Refresh (r)')}>{t('Обновить', 'Refresh')}</button>
                         <a class="btn" href={review.info.webUrl} target="_blank" rel="noreferrer noopener">{t('Открыть в платформе', 'Open in platform')}</a>
+                        {#if !app.preview}
                         <button
                             class="btn primary"
                             disabled={!publishTarget}
@@ -368,15 +388,49 @@
                         >
                             {t('Опубликовать', 'Publish')}{publishTarget ? ` · ${publishTarget.ids.length}` : ''}
                         </button>
+                        {/if}
                     </div>
                 </div>
             </header>
 
-            {#if review.readOnly}
-                <div class="alert readonly-banner">
-                    <strong>{t('Read-only', 'Read-only')}</strong>
-                    {t('Это ревью настроено только для чтения: изменения, публикация и проверки отключены.', 'This review is read-only: changes, publishing and checks are disabled.')}
+            {#if app.preview || review.readOnly || (review.info.merge && review.info.merge.state !== 'clean')}
+            <div class="review-banners">
+                {#if app.preview}
+                    <div class="alert readonly-banner">
+                        <strong>{t('Просмотр', 'Preview')}</strong>
+                        {t('Это режим просмотра MR/PR: комментарии, замечания, реакции и публикация недоступны. Чтобы работать с ревью, откройте его через «+ Открыть ревью».', 'This is an MR/PR preview: comments, findings, reactions and publishing are disabled. To work with the review, open it via “+ Open review”.')}
+                    </div>
+                {:else if review.readOnly}
+                    <div class="alert readonly-banner">
+                        <strong>{t('Read-only', 'Read-only')}</strong>
+                        {t('Это ревью настроено только для чтения: изменения, публикация и проверки отключены.', 'This review is read-only: changes, publishing and checks are disabled.')}
+                    </div>
+                {/if}
+
+                {#if review.info.merge && review.info.merge.state !== 'clean'}
+                {@const merge = review.info.merge}
+                <div class="alert" class:error={merge.state === 'conflict'}>
+                    <strong>
+                        {merge.state === 'conflict'
+                            ? t('Конфликт с target', 'Conflict with target')
+                            : merge.state === 'behind'
+                              ? t('Ветка отстаёт от target', 'Branch is behind target')
+                              : merge.state === 'unavailable'
+                                ? t('Статус мержа не сообщён', 'Merge status was not reported')
+                                : t('Статус мержа неизвестен', 'Merge status is unknown')}
+                    </strong>
+                    {t('Цель', 'Target')}: <span class="mono">{merge.targetBranch || review.info.targetBranch || '?'}</span>.
+                    {#if merge.state === 'conflict'}
+                        {t('Сначала обновите ветку: ревью построено по старому снимку, замечания могут быть неполными.', 'Update the branch first: the review uses an old snapshot and may be incomplete.')}
+                    {:else if merge.state === 'behind'}
+                        {t('Diff не содержит последних изменений target; после обновления нужен повторный проход.', 'The diff does not include the latest target changes; re-review after updating.')}
+                    {:else}
+                        {t('Проверьте конфликты и target, прежде чем делать вывод об отсутствии замечаний.', 'Check conflicts and the target before concluding there are no findings.')}
+                    {/if}
+                    {#if merge.detail}<span class="muted small"> · {merge.detail}</span>{/if}
                 </div>
+                {/if}
+            </div>
             {/if}
 
             {#if app.loading}
