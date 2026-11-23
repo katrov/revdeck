@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.12.0] - 2026-11-23
 
 ### Added
 
@@ -15,6 +15,11 @@ All notable changes to this project are documented here. The format is based on
 - Moved theme, language and command-reference entry points to a separate Settings page. The sidebar
   can hide the Features section; the choice is stored in `localStorage` and can be changed back in
   Settings.
+
+### Fixed
+
+- Review warning banners keep vertical spacing above and below the group, including the conflict
+  banner, instead of sticking to the tabs.
 
 ## [0.11.0] - 2026-11-20
 
