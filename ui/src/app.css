@@ -1428,7 +1428,7 @@ mark {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    margin: 10px 22px 0;
+    margin: 10px 22px 12px;
 }
 
 .review-banners .alert {
@@ -1437,7 +1437,7 @@ mark {
 
 @media (max-width: 860px) {
     .review-banners {
-        margin: 10px 12px 0;
+        margin: 10px 12px 12px;
     }
 }
 
