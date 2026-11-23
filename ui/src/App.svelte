@@ -35,17 +35,70 @@
     let sidebarOpen = $state(true);
     let chromeHidden = $state(false);
     let lastScrollTop = 0;
+    let suppressChromeUntil = 0;
+    let lastWheelAt = 0;
+    let touchY: number | null = null;
+    let chromeCheckTimer: ReturnType<typeof setTimeout> | null = null;
     const SIDEBAR_KEY = 'revdeck.sidebar';
+
+    function setChromeHidden(hidden: boolean): void {
+        if (hidden === chromeHidden) return;
+        chromeHidden = hidden;
+        // Свёрнутая/раскрытая шапка меняет высоту .content и может сдвинуть scrollTop.
+        // Эти программные scroll-события не должны переключать шапку обратно.
+        suppressChromeUntil = performance.now() + 450;
+        if (chromeCheckTimer) clearTimeout(chromeCheckTimer);
+        if (hidden) {
+            chromeCheckTimer = setTimeout(() => {
+                chromeCheckTimer = null;
+                const element = document.querySelector('.content');
+                if (element && element.scrollTop <= 16) setChromeHidden(false);
+            }, 520);
+        }
+    }
+
+    function onContentWheel(event: WheelEvent): void {
+        lastWheelAt = performance.now();
+        if (Math.abs(event.deltaY) < 1) return;
+        const element = event.currentTarget as HTMLElement;
+        const nearBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 40;
+        if (event.deltaY > 0 && element.scrollTop > 16 && !nearBottom) setChromeHidden(true);
+        else if (event.deltaY < 0) setChromeHidden(false);
+    }
+
+    function onContentTouchStart(event: TouchEvent): void {
+        touchY = event.touches[0]?.clientY ?? null;
+    }
+
+    function onContentTouchMove(event: TouchEvent): void {
+        const currentY = event.touches[0]?.clientY;
+        if (currentY === undefined || touchY === null) return;
+        const delta = currentY - touchY;
+        if (Math.abs(delta) < 6) return;
+        if (delta < 0) setChromeHidden(true);
+        else setChromeHidden(false);
+        touchY = currentY;
+    }
 
     function onContentScroll(event: Event): void {
         const element = event.currentTarget as HTMLElement;
         const top = element.scrollTop;
+        const now = performance.now();
+        if (now < suppressChromeUntil) {
+            lastScrollTop = top;
+            return;
+        }
         if (top <= 16) {
-            chromeHidden = false;
-        } else if (top > lastScrollTop + 8) {
-            chromeHidden = true;
-        } else if (top < lastScrollTop - 8) {
-            chromeHidden = false;
+            setChromeHidden(false);
+            lastScrollTop = top;
+            return;
+        }
+        // Scrollbar / keyboard scrolling has no wheel events. Use position fallback
+        // only when the wheel has been idle long enough to avoid fighting layout-induced scroll.
+        if (now - lastWheelAt > 600) {
+            const nearBottom = top + element.clientHeight >= element.scrollHeight - 40;
+            if (top > lastScrollTop + 10 && !nearBottom) setChromeHidden(true);
+            else if (top < lastScrollTop - 10) setChromeHidden(false);
         }
         lastScrollTop = top;
     }
@@ -54,6 +107,8 @@
         // При смене ревью или вкладки шапка всегда снова на месте.
         app.review?.id;
         app.tab;
+        if (chromeCheckTimer) clearTimeout(chromeCheckTimer);
+        chromeCheckTimer = null;
         chromeHidden = false;
         lastScrollTop = 0;
     });
@@ -484,7 +539,14 @@
                 {/each}
             </nav>
 
-            <section class="content" onscroll={onContentScroll}>
+            <section
+                class="content"
+                aria-label={t('Содержимое ревью', 'Review content')}
+                onscroll={onContentScroll}
+                onwheel={onContentWheel}
+                ontouchstart={onContentTouchStart}
+                ontouchmove={onContentTouchMove}
+            >
                 {#if app.loading && !review}
                     <p class="muted">{t('Загрузка…', 'Loading…')}</p>
                 {:else if app.tab === 'overview'}

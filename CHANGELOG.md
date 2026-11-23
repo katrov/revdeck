@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2026-11-23
+
+### Fixed
+
+- The review header no longer flickers when scrolling to the bottom, especially on short content.
+  Collapsing the header changes the content height and can clamp `scrollTop`; those layout-induced
+  scroll events are now ignored, the hide action is suppressed near the bottom, and wheel/touch
+  intent drives the toggle.
+
 ## [0.12.1] - 2026-11-23
 
 ### Added
