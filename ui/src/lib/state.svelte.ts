@@ -20,6 +20,7 @@ export const app = $state({
     projects: [] as ProjectSummary[],
     activeProject: null as string | null,
     projectsHome: false,
+    mrList: false,
     projectSwitcher: false,
     help: false,
     features: [] as FeatureSummary[],
@@ -250,6 +251,20 @@ export async function loadFeatureContext(id: string, maxBytes?: number): Promise
     app.featureContext = result.markdown;
 }
 
+export async function showMrList(push = true): Promise<void> {
+    app.mrList = true;
+    app.projectsHome = false;
+    app.featuresHome = false;
+    app.help = false;
+    app.feature = null;
+    app.projectSwitcher = false;
+    app.review = null;
+    app.preview = false;
+    app.previewRef = null;
+    await Promise.all([loadProjects(), loadReviews(), loadFeatures()]);
+    writeHash(push);
+}
+
 export async function showFeaturesHome(push = true): Promise<void> {
     const epoch = routeEpoch;
     app.featuresHome = true;
@@ -269,6 +284,7 @@ export async function showFeaturesHome(push = true): Promise<void> {
 export async function setActiveProject(key: string, selectFirst = true): Promise<void> {
     const epoch = routeEpoch;
     app.projectsHome = false;
+    app.mrList = false;
     app.featuresHome = false;
     app.help = false;
     app.feature = null;
@@ -310,6 +326,7 @@ export async function adoptOpenedReview(review: ReviewView): Promise<void> {
     app.feature = null;
     app.preview = false;
     app.previewRef = null;
+    app.mrList = false;
     app.review = review;
     await loadProjects();
     await loadReviews();
@@ -321,6 +338,7 @@ export async function adoptOpenedReview(review: ReviewView): Promise<void> {
 
 export function showProjectsHome(push = true): void {
     app.projectsHome = true;
+    app.mrList = false;
     app.featuresHome = false;
     app.help = false;
     app.feature = null;
@@ -414,6 +432,7 @@ export async function loadPreview(ref: PreviewRef, options: { tab?: Tab; push?: 
         const same = app.preview && app.review?.id === result.preview.id;
         const previousFile = app.diffFile;
         app.preview = true;
+        app.mrList = false;
         app.previewRef = ref;
         app.review = result.preview;
         app.activeProject = key;
@@ -454,6 +473,7 @@ export function adoptPreview(view: ReviewView, root?: string): void {
         }
     }
     app.preview = true;
+    app.mrList = false;
     app.previewRef = { ...view.info.ref };
     app.review = view;
     app.projectsHome = false;
@@ -594,6 +614,7 @@ export interface Route {
     focus: Focus;
     project: string | null;
     projects: boolean;
+    mrList: boolean;
     feature: string | null;
     features: boolean;
     help: boolean;
@@ -627,9 +648,10 @@ function decodePreviewRef(value: string): PreviewRef | null {
 
 export function parseHash(): Route {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-    const empty: Route = { id: null, view: null, tab: 'overview', focus: null, project: null, projects: false, feature: null, features: false, help: false };
+    const empty: Route = { id: null, view: null, tab: 'overview', focus: null, project: null, projects: false, mrList: false, feature: null, features: false, help: false };
     if (parts[0] === 'help') return { ...empty, help: true };
     if (parts[0] === 'projects') return { ...empty, projects: true };
+    if (parts[0] === 'mrs') return { ...empty, mrList: true };
     if (parts[0] === 'features') return { ...empty, features: true };
     if (parts[0] === 'f' && parts[1]) return { ...empty, feature: decodeURIComponent(parts[1]) };
     if (parts[0] === 'p' && parts[1]) return { ...empty, project: decodeURIComponent(parts[1]) };
@@ -651,7 +673,7 @@ export function parseHash(): Route {
         const line = Number(rest[2]);
         if (Number.isInteger(line) && line > 0) focus = { kind: 'line', file: decodeURIComponent(rest[1]), line };
     }
-    return { id, view: null, tab, focus, project: null, projects: false, feature: null, features: false, help: false };
+    return { id, view: null, tab, focus, project: null, projects: false, mrList: false, feature: null, features: false, help: false };
 }
 
 export function hashFor(tab: Tab, focus: Focus): string {
@@ -669,6 +691,7 @@ export function hashFor(tab: Tab, focus: Focus): string {
         return hash;
     }
     if (app.projectsHome) return '#/projects';
+    if (app.mrList) return '#/mrs';
     if (app.activeProject) return `#/p/${encodeURIComponent(app.activeProject)}`;
     return '';
 }
@@ -717,6 +740,18 @@ export function applyRoute(): void {
         app.review = null;
         app.preview = false;
         app.previewRef = null;
+        writeHash(false);
+        return;
+    }
+    if (route.mrList) {
+        app.mrList = true;
+        app.projectsHome = false;
+        app.featuresHome = false;
+        app.feature = null;
+        app.review = null;
+        app.preview = false;
+        app.previewRef = null;
+        void loadProjects();
         writeHash(false);
         return;
     }
@@ -842,6 +877,18 @@ export async function bootstrap(): Promise<void> {
         app.preview = false;
         app.previewRef = null;
         await loadReviews();
+        writeHash(false);
+        return;
+    }
+    if (route.mrList) {
+        app.mrList = true;
+        app.projectsHome = false;
+        app.featuresHome = false;
+        app.feature = null;
+        app.review = null;
+        app.preview = false;
+        app.previewRef = null;
+        await Promise.all([loadProjects(), loadReviews(), loadFeatures()]);
         writeHash(false);
         return;
     }

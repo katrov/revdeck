@@ -25,6 +25,8 @@ export interface ReviewListItem {
     state: string;
     draft: boolean;
     webUrl: string;
+    sourceBranch?: string;
+    targetBranch?: string;
 }
 
 export interface CreateThreadInput {

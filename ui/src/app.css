@@ -27,7 +27,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme]) {
         --bg: #101216;
         --panel: #171a20;
         --panel-2: #1d2128;
@@ -50,6 +50,35 @@
         --code: #1f242c;
         --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 25%);
     }
+}
+
+:root[data-theme='light'] {
+    color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+        color-scheme: dark;
+        --bg: #101216;
+        --panel: #171a20;
+        --panel-2: #1d2128;
+        --border: #2a2f38;
+        --text: #e6e9ee;
+        --muted: #98a1ad;
+        --accent: #6f95ff;
+        --accent-soft: #1e2a4d;
+        --purple: #9b8cff;
+        --ok: #4cc27d;
+        --ok-soft: #16311f;
+        --warn: #e0a33a;
+        --warn-soft: #33270f;
+        --danger: #f07a7a;
+        --danger-soft: #361a1a;
+        --add: #12291b;
+        --add-text: #7ed3a1;
+        --del: #2d1717;
+        --del-text: #f0a0a0;
+        --code: #1f242c;
+        --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 25%);
 }
 
 * {
@@ -1320,6 +1349,32 @@ mark {
 .card th {
     overflow-wrap: anywhere;
     vertical-align: top;
+}
+
+.mr-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.mr-head h1 {
+    margin: 0 0 4px;
+}
+
+.mr-filters select,
+.mr-filters input {
+    width: auto;
+}
+
+.mr-filters input {
+    flex: 1;
+    min-width: 220px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 9px;
 }
 
 .review-banners {
