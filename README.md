@@ -46,6 +46,11 @@ and a web UI. Platform tokens stay on the host.
   the review procedure.
 - **Fast reopen.** The UI serves a review from the local snapshot and refreshes a stale one in the
   background; opening never waits for `glab`/`gh`, and background reloads do not restart tab loaders.
+- **Open MRs/PRs page.** The sidebar opens a cross-project list of open MRs/PRs with scope, project,
+  text, author, target and draft filters; each row can be previewed read-only or opened as a review.
+- **Settings page.** Theme (system/light/dark), interface language, command reference and the
+  Features-section visibility live on a separate Settings page; theme and visibility are stored
+  locally.
 - **Read-only MR/PR preview.** Open an MR/PR from the “Open review” dialog with “Preview only”:
   description, diff and discussions are available, but findings, comments, reactions and publishing
   are disabled. Previews are cached in memory and do not create a review or metrics event.

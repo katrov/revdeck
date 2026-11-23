@@ -347,6 +347,8 @@ export class GitHubProvider implements Provider {
                 state: pull.state,
                 draft: Boolean(pull.draft),
                 webUrl: pull.html_url,
+                sourceBranch: String(pull.head?.ref ?? ''),
+                targetBranch: String(pull.base?.ref ?? ''),
             }));
     }
 

@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-11-23
+
+### Added
+
+- The UI now has an "Open MRs/PRs" page across registered projects with scope, project, text,
+  author, target-branch and draft filters. Each row opens the read-only preview or creates a review.
+- Added an interface theme switch: follow the system, force light, or force dark; the choice is
+  stored in `localStorage`.
+- Moved theme, language and command-reference entry points to a separate Settings page. The sidebar
+  can hide the Features section; the choice is stored in `localStorage` and can be changed back in
+  Settings.
+
+### Fixed
+
+- Review warning banners keep vertical spacing above and below the group, including the conflict
+  banner, instead of sticking to the tabs.
+
 ## [0.11.0] - 2026-11-20
 
 ### Added

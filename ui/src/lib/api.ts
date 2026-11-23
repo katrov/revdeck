@@ -38,6 +38,27 @@ export const getState = (review: string) =>
 
 export const getProjects = () => api<{ projects: import('./types').ProjectSummary[] }>('/api/projects');
 
+export interface RemoteReview {
+    ref: { platform: 'gitlab' | 'github'; host: string; project: string; number: number };
+    title: string;
+    author: string;
+    updatedAt: string;
+    state: string;
+    draft: boolean;
+    webUrl: string;
+    sourceBranch?: string;
+    targetBranch?: string;
+    root: string;
+    projectKey: string;
+}
+
+export const getRemoteReviews = (root: string, scope: 'open' | 'mine' | 'reviewing', limit = 100) =>
+    rpc<{ items: Omit<RemoteReview, 'root' | 'projectKey'>[]; platform: string; project: string }>('reviews.remoteList', {
+        root,
+        scope,
+        limit,
+    });
+
 export const getReviews = (project?: string) =>
     api<{ reviews: import('./types').ReviewListItem[] }>(`/api/reviews${project ? `?project=${encodeURIComponent(project)}` : ''}`);
 

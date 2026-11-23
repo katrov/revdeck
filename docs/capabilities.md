@@ -42,6 +42,11 @@ The core guarantees:
   opening never waits for `glab`/`gh`. Background reloads merge into the current review, so tab loaders
   such as Rules, Analytics and Diff are not restarted on every SSE/poll tick. SSE heartbeats gate the
   polling fallback, and review, feature and project events reload only their own scope.
+- The UI has a cross-project Open MRs/PRs page with client-side scope/search/author/target/draft
+  filters; it uses the existing `reviews.remoteList` per registered project and can open either the
+  read-only preview or a full review.
+- Theme, interface language, command reference and Features-section visibility live on a separate
+  Settings page; theme and visibility are stored locally.
 - Read-only MR/PR preview: `POST /api/previews/open` fetches info, diff and threads into a short-lived in-memory
   cache; the preview route hides findings, comments, reactions and publishing, and never creates a
   review record or metrics event.

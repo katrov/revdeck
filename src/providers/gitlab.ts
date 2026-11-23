@@ -286,6 +286,8 @@ export class GitLabProvider implements Provider {
             state: String(mr.state ?? ''),
             draft: Boolean(mr.draft ?? mr.work_in_progress),
             webUrl: String(mr.web_url ?? ''),
+            sourceBranch: String(mr.source_branch ?? ''),
+            targetBranch: String(mr.target_branch ?? ''),
         }));
     }
 
