@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { app, applyRoute, bootstrap, flushPendingReload, forgetReview, initFeaturesHidden, loadFeature, loadFeatures, loadPreview, loadProjects, loadReview, loadReviews, notify, setActiveProject, setTab, showFeaturesHome, showHelp, showMrList, showProjectsHome, showSettings, subscribe, writeHash } from './lib/state.svelte';
+    import { app, applyRoute, backToMrList, bootstrap, flushPendingReload, forgetReview, initFeaturesHidden, loadFeature, loadFeatures, loadPreview, loadProjects, loadReview, loadReviews, notify, setActiveProject, setTab, showFeaturesHome, showHelp, showMrList, showProjectsHome, showSettings, subscribe, writeHash } from './lib/state.svelte';
     import { removeProject as removeProjectApi, removeReview as removeReviewApi } from './lib/api';
     import type { ProjectSummary, ReviewListItem } from './lib/types';
     import type { Tab } from './lib/types';
@@ -78,6 +78,7 @@
 
     function openReview(id: string): void {
         if (app.review?.id === id) return;
+        app.viewOrigin = null;
         // Не сбрасываем вкладку: переключение ревью не должно выглядеть как перезагрузка UI.
         app.focus = null;
         app.diffFocus = null;
@@ -340,6 +341,10 @@
                     <button class="breadcrumb-link" type="button" onclick={() => showProjectsHome()}>{t('Проекты', 'Projects')}</button>
                     <span class="sep">/</span>
                     <span>{currentProject ? projectLabel(currentProject, app.projects) : review.info.ref.project}</span>
+                    {#if app.viewOrigin === 'mrs'}
+                        <span class="sep">/</span>
+                        <button class="breadcrumb-link" type="button" onclick={() => backToMrList()}>{t('Открытые MR/PR', 'Open MRs/PRs')}</button>
+                    {/if}
                     <span class="sep">/</span>
                     <span class="cur">#{review.info.ref.number}</span>
                 </div>
@@ -372,6 +377,9 @@
                         </div>
                     </div>
                     <div class="header-actions">
+                        {#if app.viewOrigin === 'mrs' && app.review}
+                            <button class="btn" type="button" onclick={() => backToMrList()}>← {t('Все MR/PR', 'All MRs/PRs')}</button>
+                        {/if}
                         <button
                             class="btn icon"
                             onclick={toggleSidebar}

@@ -33,6 +33,16 @@ export const app = $state({
     reviewFeatures: [] as FeatureSummary[],
     reviews: [] as ReviewListItem[],
     review: null as ReviewView | null,
+    viewOrigin: null as 'mrs' | null,
+    mrScroll: 0,
+    mrFilters: {
+        scope: 'open' as 'open' | 'mine' | 'reviewing',
+        project: 'all',
+        query: '',
+        author: 'all',
+        target: 'all',
+        draft: 'all' as 'all' | 'draft' | 'ready',
+    },
     /** Просмотр MR/PR без записи в ревью. */
     preview: false,
     previewRef: null as PreviewRef | null,
@@ -274,6 +284,7 @@ export async function loadFeatureContext(id: string, maxBytes?: number): Promise
 
 export function showSettings(push = true): void {
     app.settings = true;
+    app.viewOrigin = null;
     app.projectsHome = false;
     app.mrList = false;
     app.featuresHome = false;
@@ -286,9 +297,16 @@ export function showSettings(push = true): void {
     writeHash(push);
 }
 
-export async function showMrList(push = true): Promise<void> {
+export function backToMrList(): void {
+    app.viewOrigin = null;
+    void showMrList(true, true);
+}
+
+export async function showMrList(push = true, restoreScroll = false): Promise<void> {
     app.mrList = true;
     app.settings = false;
+    app.viewOrigin = null;
+    if (!restoreScroll) app.mrScroll = 0;
     app.projectsHome = false;
     app.featuresHome = false;
     app.help = false;
@@ -304,6 +322,7 @@ export async function showMrList(push = true): Promise<void> {
 export async function showFeaturesHome(push = true): Promise<void> {
     const epoch = routeEpoch;
     app.featuresHome = true;
+    app.viewOrigin = null;
     app.feature = null;
     app.review = null;
     app.preview = false;
@@ -375,6 +394,7 @@ export async function adoptOpenedReview(review: ReviewView): Promise<void> {
 
 export function showProjectsHome(push = true): void {
     app.projectsHome = true;
+    app.viewOrigin = null;
     app.mrList = false;
     app.settings = false;
     app.featuresHome = false;
@@ -813,6 +833,7 @@ export function applyRoute(): void {
     if (route.mrList) {
         app.mrList = true;
         app.settings = false;
+        app.viewOrigin = null;
         app.projectsHome = false;
         app.featuresHome = false;
         app.feature = null;
@@ -950,6 +971,8 @@ export async function bootstrap(): Promise<void> {
     }
     if (route.mrList) {
         app.mrList = true;
+        app.settings = false;
+        app.viewOrigin = null;
         app.projectsHome = false;
         app.featuresHome = false;
         app.feature = null;

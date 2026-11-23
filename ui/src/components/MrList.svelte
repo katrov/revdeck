@@ -1,20 +1,14 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onMount, tick } from 'svelte';
     import { app, errorText, loadPreview, notify, adoptOpenedReview, relativeTime } from '../lib/state.svelte';
     import { getRemoteReviews, openReview as openReviewApi, type RemoteReview } from '../lib/api';
     import { plural, t } from '../lib/i18n.svelte';
 
-    type Scope = 'open' | 'mine' | 'reviewing';
-    let scope = $state<Scope>('open');
     let loading = $state(false);
     let error = $state('');
     let items = $state<RemoteReview[]>([]);
-    let query = $state('');
-    let projectFilter = $state('all');
-    let author = $state('all');
-    let target = $state('all');
-    let draft = $state<'all' | 'draft' | 'ready'>('all');
     let busy = $state<string | null>(null);
+    const filters = $derived(app.mrFilters);
 
     async function load(): Promise<void> {
         loading = true;
@@ -22,13 +16,13 @@
         const errors: string[] = [];
         const collected: RemoteReview[] = [];
         try {
-            const projects = app.projects.filter((project) => projectFilter === 'all' || project.key === projectFilter);
+            const projects = app.projects.filter((project) => filters.project === 'all' || project.key === filters.project);
             await Promise.all(
                 projects.map(async (project) => {
                     const root = project.roots[0];
                     if (!root) return;
                     try {
-                        const result = await getRemoteReviews(root, scope, 100);
+                        const result = await getRemoteReviews(root, filters.scope, 100);
                         for (const item of result.items) {
                             collected.push({ ...item, root, projectKey: project.key });
                         }
@@ -41,6 +35,9 @@
             for (const item of collected) unique.set(`${item.projectKey}!${item.ref.number}`, item);
             items = [...unique.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
             if (errors.length) error = errors.join(' · ');
+            await tick();
+            const content = document.querySelector('.content');
+            if (content && app.mrScroll > 0) content.scrollTop = app.mrScroll;
         } finally {
             loading = false;
         }
@@ -54,13 +51,13 @@
     const authors = $derived([...new Set(items.map((item) => item.author).filter(Boolean))].sort());
     const targets = $derived([...new Set(items.map((item) => item.targetBranch).filter(Boolean) as string[])].sort());
     const visible = $derived.by(() => {
-        const needle = query.trim().toLowerCase();
+        const needle = filters.query.trim().toLowerCase();
         return items.filter((item) => {
-            if (projectFilter !== 'all' && item.projectKey !== projectFilter) return false;
-            if (author !== 'all' && item.author !== author) return false;
-            if (target !== 'all' && item.targetBranch !== target) return false;
-            if (draft === 'draft' && !item.draft) return false;
-            if (draft === 'ready' && item.draft) return false;
+            if (filters.project !== 'all' && item.projectKey !== filters.project) return false;
+            if (filters.author !== 'all' && item.author !== filters.author) return false;
+            if (filters.target !== 'all' && item.targetBranch !== filters.target) return false;
+            if (filters.draft === 'draft' && !item.draft) return false;
+            if (filters.draft === 'ready' && item.draft) return false;
             if (!needle) return true;
             return [item.title, item.author, item.projectKey, item.sourceBranch ?? '', item.targetBranch ?? '', String(item.ref.number)]
                 .join(' ')
@@ -71,6 +68,8 @@
 
     async function open(item: RemoteReview, preview: boolean): Promise<void> {
         busy = `${item.projectKey}!${item.ref.number}`;
+        app.viewOrigin = 'mrs';
+        app.mrScroll = document.querySelector('.content')?.scrollTop ?? 0;
         try {
             if (preview) {
                 await loadPreview({ ...item.ref }, { push: true });
@@ -104,27 +103,27 @@
 
 <section class="card mr-filters">
     <div class="row" style="gap: 8px; flex-wrap: wrap">
-        <select bind:value={scope} onchange={() => void load()}>
+        <select bind:value={app.mrFilters.scope} onchange={() => void load()}>
             <option value="open">{t('Все открытые', 'All open')}</option>
             <option value="mine">{t('Мои', 'Mine')}</option>
             <option value="reviewing">{t('На ревью', 'Review requested')}</option>
         </select>
-        <select bind:value={projectFilter} onchange={() => void load()}>
+        <select bind:value={app.mrFilters.project} onchange={() => void load()}>
             <option value="all">{t('Все проекты', 'All projects')}</option>
             {#each projects as project (project.key)}<option value={project.key}>{project.title || project.key}</option>{/each}
         </select>
-        <input bind:value={query} placeholder={t('Поиск: название, автор, ветка, номер…', 'Search: title, author, branch, number…')} style="flex: 1; min-width: 220px" />
+        <input bind:value={app.mrFilters.query} placeholder={t('Поиск: название, автор, ветка, номер…', 'Search: title, author, branch, number…')} style="flex: 1; min-width: 220px" />
     </div>
     <div class="row" style="gap: 8px; flex-wrap: wrap; margin-top: 8px">
-        <select bind:value={author}>
+        <select bind:value={app.mrFilters.author}>
             <option value="all">{t('Автор: любой', 'Author: any')}</option>
             {#each authors as value (value)}<option value={value}>@{value}</option>{/each}
         </select>
-        <select bind:value={target}>
+        <select bind:value={app.mrFilters.target}>
             <option value="all">{t('Target: любой', 'Target: any')}</option>
             {#each targets as value (value)}<option value={value}>{value}</option>{/each}
         </select>
-        <select bind:value={draft}>
+        <select bind:value={app.mrFilters.draft}>
             <option value="all">{t('Draft: все', 'Draft: all')}</option>
             <option value="draft">{t('только draft', 'only draft')}</option>
             <option value="ready">{t('без draft', 'without draft')}</option>
