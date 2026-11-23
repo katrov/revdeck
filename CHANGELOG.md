@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format is based on
 
 - MR list navigation: opening a preview or review from the Open MRs/PRs page adds a clickable
   breadcrumb. Returning restores the list filters and scroll position.
+- The review header collapses when the content is scrolled down and smoothly returns on scroll up;
+  the Overview/Threads/Findings/Diff tabs stay visible at the top.
 
 ### Changed
 

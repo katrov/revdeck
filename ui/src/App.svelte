@@ -33,7 +33,30 @@
     let addProjectOpen = $state(false);
     let editingProject = $state<ProjectSummary | null>(null);
     let sidebarOpen = $state(true);
+    let chromeHidden = $state(false);
+    let lastScrollTop = 0;
     const SIDEBAR_KEY = 'revdeck.sidebar';
+
+    function onContentScroll(event: Event): void {
+        const element = event.currentTarget as HTMLElement;
+        const top = element.scrollTop;
+        if (top <= 16) {
+            chromeHidden = false;
+        } else if (top > lastScrollTop + 8) {
+            chromeHidden = true;
+        } else if (top < lastScrollTop - 8) {
+            chromeHidden = false;
+        }
+        lastScrollTop = top;
+    }
+
+    $effect(() => {
+        // При смене ревью или вкладки шапка всегда снова на месте.
+        app.review?.id;
+        app.tab;
+        chromeHidden = false;
+        lastScrollTop = 0;
+    });
 
     const currentProject = $derived(app.projects.find((project) => project.key === app.activeProject) ?? null);
     const openThreads = $derived(app.review ? app.review.threads.filter((thread) => !thread.resolved).length : 0);
@@ -336,6 +359,7 @@
             <Help />
         {:else if app.review}
             {@const review = app.review}
+            <div class="review-chrome" class:collapsed={chromeHidden} inert={chromeHidden}>
             <header class="header">
                 <div class="breadcrumbs">
                     <button class="breadcrumb-link" type="button" onclick={() => showProjectsHome()}>{t('Проекты', 'Projects')}</button>
@@ -446,6 +470,7 @@
                 {/if}
             </div>
             {/if}
+            </div>
 
             {#if app.loading}
                 <div class="loading-bar" role="progressbar" aria-label={t('Загрузка ревью', 'Loading review')}></div>
@@ -459,7 +484,7 @@
                 {/each}
             </nav>
 
-            <section class="content">
+            <section class="content" onscroll={onContentScroll}>
                 {#if app.loading && !review}
                     <p class="muted">{t('Загрузка…', 'Loading…')}</p>
                 {:else if app.tab === 'overview'}
