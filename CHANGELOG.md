@@ -12,6 +12,9 @@ All notable changes to this project are documented here. The format is based on
   author, target-branch and draft filters. Each row opens the read-only preview or creates a review.
 - Added an interface theme switch: follow the system, force light, or force dark; the choice is
   stored in `localStorage`.
+- Moved theme, language and command-reference entry points to a separate Settings page. The sidebar
+  can hide the Features section; the choice is stored in `localStorage` and can be changed back in
+  Settings.
 
 ## [0.11.0] - 2026-11-20
 

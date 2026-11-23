@@ -1,11 +1,11 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { app, applyRoute, bootstrap, flushPendingReload, forgetReview, loadFeature, loadFeatures, loadPreview, loadProjects, loadReview, loadReviews, notify, setActiveProject, setTab, showFeaturesHome, showHelp, showMrList, showProjectsHome, subscribe, writeHash } from './lib/state.svelte';
+    import { app, applyRoute, bootstrap, flushPendingReload, forgetReview, initFeaturesHidden, loadFeature, loadFeatures, loadPreview, loadProjects, loadReview, loadReviews, notify, setActiveProject, setTab, showFeaturesHome, showHelp, showMrList, showProjectsHome, showSettings, subscribe, writeHash } from './lib/state.svelte';
     import { removeProject as removeProjectApi, removeReview as removeReviewApi } from './lib/api';
     import type { ProjectSummary, ReviewListItem } from './lib/types';
     import type { Tab } from './lib/types';
-    import { i18n, plural, setLocale, t } from './lib/i18n.svelte';
-    import { initTheme, setTheme, theme } from './lib/theme.svelte';
+    import { plural, t } from './lib/i18n.svelte';
+    import { initTheme } from './lib/theme.svelte';
     import Overview from './components/Overview.svelte';
     import Threads from './components/Threads.svelte';
     import Findings from './components/Findings.svelte';
@@ -23,6 +23,7 @@
     import FeatureView from './components/FeatureView.svelte';
     import FeatureList from './components/FeatureList.svelte';
     import MrList from './components/MrList.svelte';
+    import Settings from './components/Settings.svelte';
     import AddToFeatureDialog from './components/AddToFeatureDialog.svelte';
     import { projectColor, projectLabel } from './lib/projects';
 
@@ -204,6 +205,7 @@
 
     onMount(() => {
         initTheme();
+        initFeaturesHidden();
         const narrow = window.innerWidth <= 860;
         try {
             const stored = localStorage.getItem(SIDEBAR_KEY);
@@ -290,6 +292,7 @@
                 <p class="muted small" style="padding: 8px">{app.activeProject ? t('В проекте пока нет ревью.', 'No reviews in this project yet.') : t('Выберите проект.', 'Choose a project.')}</p>
             {/each}
         </div>
+        {#if !app.featuresHidden}
         <div class="sidebar-features">
             <div class="sidebar-feature-head">
                 <span>{t('ФИЧИ', 'FEATURES')}</span>
@@ -306,6 +309,7 @@
             {/each}
             <button class="sidebar-feature-all" type="button" onclick={() => void showFeaturesHome()}>{t('Все фичи', 'All features')}</button>
         </div>
+        {/if}
         <div class="sidebar-footer">
             <div class="sidebar-project-summary">
                 {app.projects.length} {plural(app.projects.length, ['проект', 'проекта', 'проектов'], ['project', 'projects'])} · {app.reviews.length} {plural(app.reviews.length, ['ревью', 'ревью', 'ревью'], ['review', 'reviews'])}
@@ -315,18 +319,9 @@
             {:else}
                 <span class="mono">revdeck open &lt;N&gt;</span>
             {/if}
-            <button class="sidebar-help" type="button" onclick={() => showHelp()} title={t('Справка по командам (h)', 'Command reference (h)')}>
-                <span class="sidebar-help-mark">?</span> {t('Справка по командам', 'Command reference')}
+            <button class="sidebar-help" type="button" onclick={() => showSettings()} title={t('Настройки', 'Settings')}>
+                <span class="sidebar-help-mark">⚙</span> {t('Настройки', 'Settings')}
             </button>
-            <div class="lang-switch" aria-label={t('Язык интерфейса', 'Interface language')}>
-                <button class:on={i18n.locale === 'ru'} onclick={() => setLocale('ru')}>RU</button>
-                <button class:on={i18n.locale === 'en'} onclick={() => setLocale('en')}>EN</button>
-            </div>
-            <div class="theme-switch" aria-label={t('Тема интерфейса', 'Interface theme')}>
-                <button class:on={theme.mode === 'auto'} onclick={() => setTheme('auto')} title={t('Как в системе', 'Follow system')}>◐</button>
-                <button class:on={theme.mode === 'light'} onclick={() => setTheme('light')} title={t('Светлая', 'Light')}>☀</button>
-                <button class:on={theme.mode === 'dark'} onclick={() => setTheme('dark')} title={t('Тёмная', 'Dark')}>☾</button>
-            </div>
         </div>
     </aside>
 
@@ -471,6 +466,8 @@
                     <Rules />
                 {/if}
             </section>
+        {:else if app.settings}
+            <section class="content"><Settings /></section>
         {:else if app.mrList}
             <section class="content"><MrList /></section>
         {:else if app.feature}

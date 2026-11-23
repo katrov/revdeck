@@ -1144,6 +1144,10 @@ mark {
     justify-content: center;
 }
 
+.sidebar-actions .btn + .btn {
+    margin-top: 8px;
+}
+
 .card.highlight {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
@@ -1349,6 +1353,49 @@ mark {
 .card th {
     overflow-wrap: anywhere;
     vertical-align: top;
+}
+
+.settings {
+    max-width: 760px;
+}
+
+.settings h1 {
+    margin: 0 0 4px;
+}
+
+.settings > .card {
+    margin-top: 12px;
+}
+
+.settings-segment {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.settings-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 10px;
+    cursor: pointer;
+}
+
+.settings-toggle input {
+    width: auto;
+    margin-top: 3px;
+}
+
+.settings-toggle span {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.mr-row > .grow {
+    flex: 1;
+    min-width: 0;
 }
 
 .mr-head {

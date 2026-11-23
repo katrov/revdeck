@@ -21,6 +21,8 @@ export const app = $state({
     activeProject: null as string | null,
     projectsHome: false,
     mrList: false,
+    settings: false,
+    featuresHidden: false,
     projectSwitcher: false,
     help: false,
     features: [] as FeatureSummary[],
@@ -132,6 +134,25 @@ export function setTab(tab: Tab, push = true): void {
     app.tab = tab;
     app.focus = null;
     writeHash(push);
+}
+
+const FEATURES_HIDDEN_KEY = 'revdeck.featuresHidden';
+
+export function setFeaturesHidden(hidden: boolean): void {
+    app.featuresHidden = hidden;
+    try {
+        localStorage.setItem(FEATURES_HIDDEN_KEY, hidden ? '1' : '0');
+    } catch {
+        // localStorage may be unavailable.
+    }
+}
+
+export function initFeaturesHidden(): void {
+    try {
+        app.featuresHidden = localStorage.getItem(FEATURES_HIDDEN_KEY) === '1';
+    } catch {
+        app.featuresHidden = false;
+    }
 }
 
 const ACTIVE_PROJECT_KEY = 'revdeck.project';
@@ -251,8 +272,23 @@ export async function loadFeatureContext(id: string, maxBytes?: number): Promise
     app.featureContext = result.markdown;
 }
 
+export function showSettings(push = true): void {
+    app.settings = true;
+    app.projectsHome = false;
+    app.mrList = false;
+    app.featuresHome = false;
+    app.help = false;
+    app.feature = null;
+    app.projectSwitcher = false;
+    app.review = null;
+    app.preview = false;
+    app.previewRef = null;
+    writeHash(push);
+}
+
 export async function showMrList(push = true): Promise<void> {
     app.mrList = true;
+    app.settings = false;
     app.projectsHome = false;
     app.featuresHome = false;
     app.help = false;
@@ -285,6 +321,7 @@ export async function setActiveProject(key: string, selectFirst = true): Promise
     const epoch = routeEpoch;
     app.projectsHome = false;
     app.mrList = false;
+    app.settings = false;
     app.featuresHome = false;
     app.help = false;
     app.feature = null;
@@ -339,6 +376,7 @@ export async function adoptOpenedReview(review: ReviewView): Promise<void> {
 export function showProjectsHome(push = true): void {
     app.projectsHome = true;
     app.mrList = false;
+    app.settings = false;
     app.featuresHome = false;
     app.help = false;
     app.feature = null;
@@ -433,6 +471,7 @@ export async function loadPreview(ref: PreviewRef, options: { tab?: Tab; push?: 
         const previousFile = app.diffFile;
         app.preview = true;
         app.mrList = false;
+        app.settings = false;
         app.previewRef = ref;
         app.review = result.preview;
         app.activeProject = key;
@@ -474,6 +513,7 @@ export function adoptPreview(view: ReviewView, root?: string): void {
     }
     app.preview = true;
     app.mrList = false;
+    app.settings = false;
     app.previewRef = { ...view.info.ref };
     app.review = view;
     app.projectsHome = false;
@@ -615,6 +655,7 @@ export interface Route {
     project: string | null;
     projects: boolean;
     mrList: boolean;
+    settings: boolean;
     feature: string | null;
     features: boolean;
     help: boolean;
@@ -648,10 +689,11 @@ function decodePreviewRef(value: string): PreviewRef | null {
 
 export function parseHash(): Route {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-    const empty: Route = { id: null, view: null, tab: 'overview', focus: null, project: null, projects: false, mrList: false, feature: null, features: false, help: false };
+    const empty: Route = { id: null, view: null, tab: 'overview', focus: null, project: null, projects: false, mrList: false, settings: false, feature: null, features: false, help: false };
     if (parts[0] === 'help') return { ...empty, help: true };
     if (parts[0] === 'projects') return { ...empty, projects: true };
     if (parts[0] === 'mrs') return { ...empty, mrList: true };
+    if (parts[0] === 'settings') return { ...empty, settings: true };
     if (parts[0] === 'features') return { ...empty, features: true };
     if (parts[0] === 'f' && parts[1]) return { ...empty, feature: decodeURIComponent(parts[1]) };
     if (parts[0] === 'p' && parts[1]) return { ...empty, project: decodeURIComponent(parts[1]) };
@@ -673,7 +715,7 @@ export function parseHash(): Route {
         const line = Number(rest[2]);
         if (Number.isInteger(line) && line > 0) focus = { kind: 'line', file: decodeURIComponent(rest[1]), line };
     }
-    return { id, view: null, tab, focus, project: null, projects: false, mrList: false, feature: null, features: false, help: false };
+    return { id, view: null, tab, focus, project: null, projects: false, mrList: false, settings: false, feature: null, features: false, help: false };
 }
 
 export function hashFor(tab: Tab, focus: Focus): string {
@@ -692,6 +734,7 @@ export function hashFor(tab: Tab, focus: Focus): string {
     }
     if (app.projectsHome) return '#/projects';
     if (app.mrList) return '#/mrs';
+    if (app.settings) return '#/settings';
     if (app.activeProject) return `#/p/${encodeURIComponent(app.activeProject)}`;
     return '';
 }
@@ -743,8 +786,33 @@ export function applyRoute(): void {
         writeHash(false);
         return;
     }
+    if (route.settings) {
+        app.settings = true;
+        app.projectsHome = false;
+        app.mrList = false;
+        app.featuresHome = false;
+        app.feature = null;
+        app.review = null;
+        app.preview = false;
+        app.previewRef = null;
+        writeHash(false);
+        return;
+    }
+    if (route.settings) {
+        app.settings = true;
+        app.projectsHome = false;
+        app.mrList = false;
+        app.featuresHome = false;
+        app.feature = null;
+        app.review = null;
+        app.preview = false;
+        app.previewRef = null;
+        writeHash(false);
+        return;
+    }
     if (route.mrList) {
         app.mrList = true;
+        app.settings = false;
         app.projectsHome = false;
         app.featuresHome = false;
         app.feature = null;

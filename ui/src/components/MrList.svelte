@@ -145,7 +145,7 @@
     <div class="stack">
         {#each visible as item (item.projectKey + '!' + item.ref.number)}
             <section class="card flat">
-                <div class="row" style="align-items: flex-start; gap: 14px">
+                <div class="row mr-row" style="align-items: flex-start; gap: 14px">
                     <span class="muted mono" style="padding-top: 2px; min-width: 42px">#{item.ref.number}</span>
                     <div class="grow" style="min-width: 0">
                         <div class="card-title" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{item.title}</div>
