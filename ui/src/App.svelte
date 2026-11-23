@@ -343,7 +343,12 @@
                     <span>{currentProject ? projectLabel(currentProject, app.projects) : review.info.ref.project}</span>
                     {#if app.viewOrigin === 'mrs'}
                         <span class="sep">/</span>
-                        <button class="breadcrumb-link" type="button" onclick={() => backToMrList()}>{t('Открытые MR/PR', 'Open MRs/PRs')}</button>
+                        <button
+                            class="breadcrumb-link"
+                            type="button"
+                            title={t('Вернуться к списку MR/PR', 'Back to the MR/PR list')}
+                            onclick={() => backToMrList()}
+                        >{t('Открытые MR/PR', 'Open MRs/PRs')}</button>
                     {/if}
                     <span class="sep">/</span>
                     <span class="cur">#{review.info.ref.number}</span>
@@ -377,9 +382,6 @@
                         </div>
                     </div>
                     <div class="header-actions">
-                        {#if app.viewOrigin === 'mrs' && app.review}
-                            <button class="btn" type="button" onclick={() => backToMrList()}>← {t('Все MR/PR', 'All MRs/PRs')}</button>
-                        {/if}
                         <button
                             class="btn icon"
                             onclick={toggleSidebar}

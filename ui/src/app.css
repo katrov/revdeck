@@ -1785,7 +1785,7 @@ mark {
     border: 0;
     background: none;
     padding: 0;
-    color: var(--muted);
+    color: var(--accent);
     font: inherit;
     cursor: pointer;
 }

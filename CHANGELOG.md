@@ -8,8 +8,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
-- MR list navigation: opening a preview or review from the Open MRs/PRs page adds a back button and
-  a clickable breadcrumb. Returning restores the list filters and scroll position.
+- MR list navigation: opening a preview or review from the Open MRs/PRs page adds a clickable
+  breadcrumb. Returning restores the list filters and scroll position.
 
 ## [0.12.0] - 2026-11-23
 
