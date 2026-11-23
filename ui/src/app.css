@@ -256,6 +256,19 @@ pre {
     min-height: 0;
 }
 
+.review-chrome {
+    max-height: 50vh;
+    flex: none;
+    overflow: hidden;
+    transition: max-height 220ms ease, opacity 160ms ease;
+}
+
+.review-chrome.collapsed {
+    max-height: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
 .header {
     padding: 16px 22px 10px;
     border-bottom: 1px solid var(--border);
@@ -1785,7 +1798,7 @@ mark {
     border: 0;
     background: none;
     padding: 0;
-    color: var(--muted);
+    color: var(--accent);
     font: inherit;
     cursor: pointer;
 }

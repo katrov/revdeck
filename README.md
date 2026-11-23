@@ -48,6 +48,7 @@ and a web UI. Platform tokens stay on the host.
   background; opening never waits for `glab`/`gh`, and background reloads do not restart tab loaders.
 - **Open MRs/PRs page.** The sidebar opens a cross-project list of open MRs/PRs with scope, project,
   text, author, target and draft filters; each row can be previewed read-only or opened as a review.
+  Opening from the list keeps a clickable breadcrumb, and returning restores the filters and scroll.
 - **Settings page.** Theme (system/light/dark), interface language, command reference and the
   Features-section visibility live on a separate Settings page; theme and visibility are stored
   locally.
@@ -60,6 +61,8 @@ and a web UI. Platform tokens stay on the host.
 - **Merge-aware review.** Every open MR/PR review keeps its target branch, diff base/head and merge
   state. Conflict or "behind target" is surfaced before findings, so a clean merge-base diff is not
   mistaken for a mergeable MR. Local diffs and snapshots from older versions may not have merge info.
+- **Compact on scroll.** The review header collapses when scrolling down and returns when scrolling
+  up; the section tabs stay at the top.
 - **Large lists stay light.** Threads and findings render only visible pages; focus, editors and deep
   links keep working, and small reviews are rendered in full.
 
