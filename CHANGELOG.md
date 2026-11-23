@@ -4,12 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.12.1] - 2026-11-23
 
 ### Added
 
 - MR list navigation: opening a preview or review from the Open MRs/PRs page adds a clickable
   breadcrumb. Returning restores the list filters and scroll position.
+
+### Changed
+
+- Documentation screenshots refreshed to the current UI, including the MR list, settings and review
+  overview.
 
 ## [0.12.0] - 2026-11-23
 
