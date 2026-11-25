@@ -1,12 +1,14 @@
-export const AUTO_REFRESH_KEY = 'revdeck.autoRefreshMinutes';
-export const AUTO_REFRESH_CHOICES = [0, 1, 5, 15] as const;
+export const AUTO_REFRESH_KEY = 'revdeck.autoRefreshSeconds';
+const LEGACY_KEY = 'revdeck.autoRefreshMinutes';
+/** Секунды; 0 — автообновление выключено. */
+export const AUTO_REFRESH_CHOICES = [0, 10, 30, 60] as const;
+const DEFAULT_SECONDS = 30;
 
-/** 0 — автообновление выключено; иначе период в минутах для открытого ревью/preview. */
-export const autoRefresh = $state({ minutes: 5 as number });
+export const autoRefresh = $state({ seconds: DEFAULT_SECONDS });
 
-export function setAutoRefreshMinutes(minutes: number): void {
-    const next = (AUTO_REFRESH_CHOICES as readonly number[]).includes(minutes) ? minutes : 0;
-    autoRefresh.minutes = next;
+export function setAutoRefreshSeconds(seconds: number): void {
+    const next = (AUTO_REFRESH_CHOICES as readonly number[]).includes(seconds) ? seconds : 0;
+    autoRefresh.seconds = next;
     try {
         localStorage.setItem(AUTO_REFRESH_KEY, String(next));
     } catch {
@@ -15,12 +17,21 @@ export function setAutoRefreshMinutes(minutes: number): void {
 }
 
 export function initAutoRefresh(): void {
-    let minutes = 5;
+    let seconds = DEFAULT_SECONDS;
     try {
-        const stored = Number(localStorage.getItem(AUTO_REFRESH_KEY));
-        if ((AUTO_REFRESH_CHOICES as readonly number[]).includes(stored)) minutes = stored;
+        const raw = localStorage.getItem(AUTO_REFRESH_KEY);
+        const stored = raw === null ? Number.NaN : Number(raw);
+        if ((AUTO_REFRESH_CHOICES as readonly number[]).includes(stored)) {
+            seconds = stored;
+        } else {
+            // Старую шкалу в минутах не переносим: 1/5/15 минут не совпадают
+            // с новыми 10/30/60 секундами. Явное «Выкл» сохраняем.
+            const legacy = Number(localStorage.getItem(LEGACY_KEY));
+            if (localStorage.getItem(LEGACY_KEY) !== null && legacy === 0) seconds = 0;
+            localStorage.removeItem(LEGACY_KEY);
+        }
     } catch {
         // localStorage может быть недоступен.
     }
-    autoRefresh.minutes = minutes;
+    autoRefresh.seconds = seconds;
 }

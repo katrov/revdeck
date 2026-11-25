@@ -2,7 +2,7 @@
     import { app, setFeaturesHidden, showHelp } from '../lib/state.svelte';
     import { i18n, setLocale, t } from '../lib/i18n.svelte';
     import { setTheme, theme, type ThemeMode } from '../lib/theme.svelte';
-    import { AUTO_REFRESH_CHOICES, autoRefresh, setAutoRefreshMinutes } from '../lib/auto-refresh.svelte';
+    import { AUTO_REFRESH_CHOICES, autoRefresh, setAutoRefreshSeconds } from '../lib/auto-refresh.svelte';
 
     const themes: { id: ThemeMode; label: string; icon: string }[] = [
         { id: 'auto', label: 'Auto', icon: '◐' },
@@ -51,18 +51,18 @@
         <div class="card-title">{t('Автообновление', 'Auto-refresh')}</div>
         <p class="muted small">
             {t(
-                'Как часто повторять «Обновить», пока открыто ревью. В фоновой вкладке и во время ввода тик пропускается.',
-                'How often to run “Refresh” while a review is open. Ticks are skipped in a background tab and while typing.',
+                'Как часто повторять «Обновить», пока открыто ревью. В фоновой вкладке и во время ввода тик пропускается; частые интервалы дают больше запросов к платформе.',
+                'How often to run “Refresh” while a review is open. Ticks are skipped in a background tab and while typing; shorter intervals make more platform requests.',
             )}
         </p>
         <div class="settings-segment">
-            {#each AUTO_REFRESH_CHOICES as minutes (minutes)}
+            {#each AUTO_REFRESH_CHOICES as seconds (seconds)}
                 <button
                     class="btn"
-                    class:primary={autoRefresh.minutes === minutes}
+                    class:primary={autoRefresh.seconds === seconds}
                     type="button"
-                    onclick={() => setAutoRefreshMinutes(minutes)}
-                >{minutes === 0 ? t('Выкл', 'Off') : `${minutes} ${t('мин', 'min')}`}</button>
+                    onclick={() => setAutoRefreshSeconds(seconds)}
+                >{seconds === 0 ? t('Выкл', 'Off') : `${seconds} ${t('с', 's')}`}</button>
             {/each}
         </div>
     </section>

@@ -312,14 +312,14 @@
     // Автообновление повторяет ручную кнопку: принудительный refresh из платформы.
     // Пропускаем тики в фоне и во время ввода, а ручной refresh сбрасывает отсчёт.
     $effect(() => {
-        const minutes = autoRefresh.minutes;
+        const seconds = autoRefresh.seconds;
         const target = app.preview && app.previewRef
             ? `preview:${app.previewRef.platform}:${app.previewRef.host}/${app.previewRef.project}!${app.previewRef.number}`
             : (app.review?.id ?? '');
         autoRefreshNonce;
-        if (!minutes || !target) return;
-        const period = minutes * 60_000;
-        const checkEvery = Math.min(15_000, period);
+        if (!seconds || !target) return;
+        const period = seconds * 1000;
+        const checkEvery = Math.min(5_000, period);
         let last = Date.now();
         const timer = setInterval(() => {
             if (Date.now() - last < period) return;
@@ -495,8 +495,8 @@
                         <button
                             class="btn"
                             onclick={() => refresh()}
-                            title={autoRefresh.minutes
-                                ? `${t('Обновить (r)', 'Refresh (r)')} · ${t('авто', 'auto')} ${autoRefresh.minutes} ${t('мин', 'min')}`
+                            title={autoRefresh.seconds
+                                ? `${t('Обновить (r)', 'Refresh (r)')} · ${t('авто', 'auto')} ${autoRefresh.seconds} ${t('с', 's')}`
                                 : t('Обновить (r)', 'Refresh (r)')}
                         >{t('Обновить', 'Refresh')}</button>
                         <a class="btn" href={review.info.webUrl} target="_blank" rel="noreferrer noopener">{t('Открыть в платформе', 'Open in platform')}</a>

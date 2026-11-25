@@ -171,7 +171,7 @@ a permanent project link; a project appears in a feature while at least one of i
 - Markdown preview, attachment button, reactions, line comments, publish dialog with exact plan.
 - Russian and English interface; language is independent from the language of review output.
 - Settings choose the theme, interface language, Features visibility and auto-refresh interval
-  (off/1/5/15 min). Auto-refresh runs the same forced refresh as the header button while a review or
+  (off/10/30/60 s, default 30 s). Auto-refresh runs the same forced refresh as the header button while a review or
   preview is open; ticks are skipped in background tabs, while typing and with open dialogs, and the
   countdown restarts after any manual refresh.
 - Responsive sidebar and mobile backdrop; dark/light theme via CSS variables.
