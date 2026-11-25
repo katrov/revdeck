@@ -113,6 +113,19 @@ describe('GitLabProvider', () => {
         expect(await provider.currentUser()).toEqual({ username: 'me', name: 'Me' });
     });
 
+    it('reads the full file content at a commit', async () => {
+        const calls: string[][] = [];
+        const impl: Runner = async (_command, args) => {
+            calls.push(args);
+            return { stdout: 'one\ntwo\n', stderr: '', code: 0 };
+        };
+        const provider = new GitLabProvider(gitlabRef, { root: '/tmp', runImpl: impl });
+        expect(await provider.fileContent('src/my file.ts', 'c'.repeat(40))).toBe('one\ntwo\n');
+        expect(calls[0]).toContain(
+            `projects/group%2Fsub%2Fproj/repository/files/src%2Fmy%20file.ts/raw?ref=${'c'.repeat(40)}`,
+        );
+    });
+
     it('reports a GitLab merge conflict instead of a clean status', async () => {
         const { runner: impl } = runner(() => ({
             ...GL_MR,
@@ -304,6 +317,24 @@ describe('GitHubProvider', () => {
         const threads = await provider.threads();
         expect(threads[0]).toMatchObject({ id: 'PRRT_1', path: 'src/app.ts', line: 2, resolved: false });
         expect(threads[0]!.notes[0]).toMatchObject({ id: '501', author: 'reviewer' });
+    });
+
+    it('reads the full file content at a commit', async () => {
+        const calls: string[][] = [];
+        const impl: Runner = async (_command, args) => {
+            calls.push(args);
+            return { stdout: 'one\ntwo\n', stderr: '', code: 0 };
+        };
+        const provider = new GitHubProvider(githubRef, { root: '/tmp', runImpl: impl });
+        expect(await provider.fileContent('src/my file.ts', 'c'.repeat(40))).toBe('one\ntwo\n');
+        expect(calls[0]).toEqual(
+            expect.arrayContaining([
+                'api',
+                '-H',
+                'Accept: application/vnd.github.raw',
+                `repos/acme/repo/contents/src/my%20file.ts?ref=${'c'.repeat(40)}`,
+            ]),
+        );
     });
 
     it('reports a GitHub conflict and a behind branch', async () => {

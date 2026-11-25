@@ -49,9 +49,11 @@ and a web UI. Platform tokens stay on the host.
 - **Open MRs/PRs page.** The sidebar opens a cross-project list of open MRs/PRs with scope, project,
   text, author, target and draft filters; each row can be previewed read-only or opened as a review.
   Opening from the list keeps a clickable breadcrumb, and returning restores the filters and scroll.
-- **Settings page.** Theme (system/light/dark), interface language, command reference and the
-  Features-section visibility live on a separate Settings page; theme and visibility are stored
-  locally.
+- **Settings page.** Theme (system/light/dark), interface language, command reference, the
+  Features-section visibility and the auto-refresh interval live on a separate Settings page; the
+  choices are stored locally. Auto-refresh repeats the header “Refresh” action
+  (off/10/30/60 min, default 10 min) while a review or preview is open and skips background tabs,
+  typing and open dialogs.
 - **Read-only MR/PR preview.** Open an MR/PR from the “Open review” dialog with “Preview only”:
   description, diff and discussions are available, but findings, comments, reactions and publishing
   are disabled. Previews are cached in memory and do not create a review or metrics event.
@@ -217,15 +219,20 @@ members, start the MCP server from a member repository with `REVDECK_FEATURE=<fe
 still needs approval per review. Feature notes written by the agent stay local and are never published.
 See [capabilities](docs/capabilities.md#features).
 
-UI shortcuts: `1`–`5` switch tabs, `o` opens a review, `r` refreshes, `s` hides/shows the
-sidebar, `p` opens the project switcher (or publishing when a plan is ready), `?` opens the command
-palette, `h` opens the command reference. The sidebar has a **Command reference** link (`#/help`) with
-searchable CLI usage, common flags and UI shortcuts; click a command to copy it. The sidebar and the
-active project are stored in `localStorage`.
+UI shortcuts: `1`–`6` switch tabs, `o` opens a review, `r` refreshes, `s` hides/shows the
+sidebar, `p` opens the project switcher (or publishing when a plan is ready), `?` or `⌘K`/`Ctrl+K`
+opens the command palette, `h` opens the command reference. On the Diff tab `[`/`]` switch files,
+`f` focuses the file filter, `t` hides/shows the file tree, `e` expands/collapses hidden lines and
+`v` marks the current file viewed. Letter shortcuts use the physical key, so they work in any
+keyboard layout and are ignored in text fields and dialogs. The sidebar has a **Command reference**
+link (`#/help`) with searchable CLI usage, common flags and UI shortcuts; click a command to copy it.
+The sidebar and the active project are stored in `localStorage`.
 
 The UI shows the MR/PR description, supports deep links to threads, findings and diff lines (with
 working browser Back/Forward), and keeps a per-review "viewed" state and file filter in the diff.
-A review can be removed from the local sidebar with **×**; this never deletes the MR/PR on the platform.
+The Diff tab groups files in a collapsible folder tree that can be hidden or resized, and expands
+hidden unchanged lines around hunks. A review can be removed from the local sidebar with **×**; this
+never deletes the MR/PR on the platform.
 A thin progress bar shows review loading. Long paths and URLs wrap or truncate inside cards, and thread,
 finding and line-comment paths have a copy button. While a text
 field is focused, background updates are deferred so typing is never overwritten; the agent reply on a

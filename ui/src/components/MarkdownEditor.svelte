@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { tick } from 'svelte';
+    import { onMount, tick } from 'svelte';
     import { uploadAttachment } from '../lib/api';
     import { app, errorText, notify } from '../lib/state.svelte';
     import { t } from '../lib/i18n.svelte';
@@ -12,6 +12,7 @@
         placeholder = '',
         rows = 3,
         disabled = false,
+        autoGrow = false,
         onchange,
     }: {
         value?: string;
@@ -19,12 +20,36 @@
         placeholder?: string;
         rows?: number;
         disabled?: boolean;
+        /** Поле растёт по тексту вместо фиксированной высоты. */
+        autoGrow?: boolean;
         onchange?: (value: string) => void;
     } = $props();
 
     let mode = $state<'write' | 'preview'>('write');
     let textarea = $state<HTMLTextAreaElement | null>(null);
     let uploading = $state(0);
+
+    function autoSize(): void {
+        if (!autoGrow || !textarea || mode !== 'write') return;
+        const max = Math.max(160, Math.round(window.innerHeight * 0.6));
+        textarea.style.height = 'auto';
+        textarea.style.height = `${Math.min(textarea.scrollHeight, max)}px`;
+    }
+
+    $effect(() => {
+        // Подписка на текст и режим: при переключении вкладки и вводе высота пересчитывается.
+        value;
+        mode;
+        if (!autoGrow) return;
+        void tick().then(autoSize);
+    });
+
+    onMount(() => {
+        if (!autoGrow) return;
+        const onResize = (): void => autoSize();
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    });
 
     function changed(): void {
         onchange?.(value);
@@ -155,6 +180,7 @@
             {placeholder}
             {rows}
             {disabled}
+            class:autogrow={autoGrow}
             oninput={changed}
             onkeydown={handleKeydown}
             onpaste={handlePaste}

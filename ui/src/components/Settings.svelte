@@ -2,6 +2,7 @@
     import { app, setFeaturesHidden, showHelp } from '../lib/state.svelte';
     import { i18n, setLocale, t } from '../lib/i18n.svelte';
     import { setTheme, theme, type ThemeMode } from '../lib/theme.svelte';
+    import { AUTO_REFRESH_CHOICES, autoRefresh, setAutoRefreshMinutes } from '../lib/auto-refresh.svelte';
 
     const themes: { id: ThemeMode; label: string; icon: string }[] = [
         { id: 'auto', label: 'Auto', icon: '◐' },
@@ -44,6 +45,26 @@
                 <span class="muted small">{t('Если скрыть, раздел не занимает место; открыть его можно здесь.', 'When hidden it takes no sidebar space; you can restore it here.')}</span>
             </span>
         </label>
+    </section>
+
+    <section class="card">
+        <div class="card-title">{t('Автообновление', 'Auto-refresh')}</div>
+        <p class="muted small">
+            {t(
+                'Как часто повторять «Обновить», пока открыто ревью. В фоновой вкладке и во время ввода тик пропускается.',
+                'How often to run “Refresh” while a review is open. Ticks are skipped in a background tab and while typing.',
+            )}
+        </p>
+        <div class="settings-segment">
+            {#each AUTO_REFRESH_CHOICES as minutes (minutes)}
+                <button
+                    class="btn"
+                    class:primary={autoRefresh.minutes === minutes}
+                    type="button"
+                    onclick={() => setAutoRefreshMinutes(minutes)}
+                >{minutes === 0 ? t('Выкл', 'Off') : `${minutes} ${t('мин', 'min')}`}</button>
+            {/each}
+        </div>
     </section>
 
     <section class="card">

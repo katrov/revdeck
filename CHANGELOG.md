@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-11-25
+
+### Added
+
+- The Diff tab expands hidden unchanged lines: the server serves the full file at the review
+  commit (local `git show` first, provider raw API as a fallback), gaps between hunks show a
+  "N hidden lines · show all" bar, and two arrow buttons grow a gap by 10 lines from either side.
+- The Diff tab groups files into a GitLab-style folder tree: directories collapse individually,
+  the whole tree can be hidden behind a slim rail and restored, and the panel width is resizable
+  by drag or arrow keys (220–760 px) with the width and hidden state persisted in `localStorage`.
+- The platform comment field on findings grows with its text instead of a fixed-height textarea.
+- More UI hotkeys, listed in the command reference: `1`–`6` switch tabs; on the Diff tab `[`/`]`
+  switch files, `f` focuses the file filter, `t` hides/shows the tree, `e` expands/collapses hidden
+  lines and `v` marks the current file viewed; `Esc` cancels a line-comment composer. Letter
+  shortcuts use the physical key, so they work on a non-Latin layout, and are ignored in text fields
+  and dialogs. The command palette also lists the Analytics tab.
+- Settings choose an auto-refresh interval (off/10/30/60 min, default 10 min). It repeats the header
+  “Refresh” action while a review or preview is open, skips background tabs, typing and open
+  dialogs, restarts the countdown after a manual refresh, and keeps the current preview if a silent
+  refresh fails.
+
+### Fixed
+
+- Wide code snippets in findings keep the added/removed background across the full line when
+  scrolled horizontally; the background no longer stops at the card width.
+- A silent refresh no longer resets the open diff file, expanded hidden lines or the file tree when
+  the commit and diff stats are unchanged.
+
 ## [0.12.2] - 2026-11-23
 
 ### Fixed

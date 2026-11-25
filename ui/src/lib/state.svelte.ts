@@ -462,11 +462,14 @@ function applyReviewState(state: CachedReviewState, push: boolean, hydrate: bool
     writeHash(push);
 }
 
-export async function loadPreview(ref: PreviewRef, options: { tab?: Tab; push?: boolean; refresh?: boolean } = {}): Promise<void> {
+export async function loadPreview(
+    ref: PreviewRef,
+    options: { tab?: Tab; push?: boolean; refresh?: boolean; silent?: boolean } = {},
+): Promise<void> {
     const request = ++loadRequest;
     ++featureRequest;
     const epoch = routeEpoch;
-    app.loading = true;
+    if (!options.silent) app.loading = true;
     app.error = '';
     try {
         if (!app.projects.length) await loadProjects();
@@ -512,13 +515,16 @@ export async function loadPreview(ref: PreviewRef, options: { tab?: Tab; push?: 
         writeHash(options.push ?? false);
     } catch (error) {
         if (request !== loadRequest || epoch !== routeEpoch) return;
-        app.review = null;
-        app.preview = false;
-        app.previewRef = null;
         app.error = errorText(error);
-        notify(app.error, 'error');
+        // Тихий refresh не должен выбрасывать пользователя из уже открытого preview.
+        if (!options.silent || !app.review) {
+            app.review = null;
+            app.preview = false;
+            app.previewRef = null;
+            notify(app.error, 'error');
+        }
     } finally {
-        if (request === loadRequest) app.loading = false;
+        if (request === loadRequest && !options.silent) app.loading = false;
     }
 }
 
@@ -578,6 +584,19 @@ export async function loadReview(id: string, options: { refresh?: boolean; silen
             if (reloadPending || pendingReloadScopes.size) scheduleReload();
         }
     }
+}
+
+/**
+ * Тот же путь, что и кнопка «Обновить»: принудительно перечитывает ревью или
+ * preview из платформы, не дожидаясь TTL фонового sync.
+ */
+export async function refreshCurrent(options: { silent?: boolean } = {}): Promise<void> {
+    if (app.preview && app.previewRef) {
+        await loadPreview(app.previewRef, { tab: app.tab, refresh: true, silent: options.silent });
+        return;
+    }
+    const id = app.review?.id;
+    if (id) await loadReview(id, { refresh: true, silent: options.silent });
 }
 
 export function scheduleReload(scope?: ReloadScope): void {

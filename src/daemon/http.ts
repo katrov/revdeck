@@ -263,6 +263,13 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                 reply(res, 200, { ok: true, file: diff });
                 return;
             }
+            if (req.method === 'GET' && url.pathname === '/api/file') {
+                const review = url.searchParams.get('review') ?? '';
+                const file = url.searchParams.get('file') ?? '';
+                const content = await service.fileContent(review, file);
+                reply(res, 200, { ok: true, file: content });
+                return;
+            }
             if (req.method === 'GET' && url.pathname === '/api/rules') {
                 const review = url.searchParams.get('review') ?? '';
                 reply(res, 200, { ok: true, rules: await service.rules(review) });

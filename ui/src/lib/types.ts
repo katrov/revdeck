@@ -307,6 +307,15 @@ export interface DiffPayload {
     hunks: DiffHunk[];
 }
 
+/** Полный файл для раскрытия скрытых строк diff; side=base — удалённый файл. */
+export interface FileContentPayload {
+    path: string;
+    side: 'head' | 'base';
+    lines: string[];
+    totalLines: number;
+    truncated: boolean;
+}
+
 export interface PublishPreview {
     plan: { reviewId: string; kind: 'reply' | 'finding' | 'note'; items: { kind: string; id: string; body: string; resolve?: boolean }[]; hash: string; createdAt: string };
     warnings: string[];

@@ -93,6 +93,15 @@ export interface CommandCheck {
     matched: boolean;
 }
 
+/** Полный текст файла для раскрытия скрытых строк: diff отдаёт только hunks. */
+export interface ReviewFileContent {
+    path: string;
+    side: 'head' | 'base';
+    lines: string[];
+    totalLines: number;
+    truncated: boolean;
+}
+
 const EMPTY_DRAFT = (threadId: string): ReplyDraft => ({
     threadId,
     body: '',
@@ -145,7 +154,9 @@ export class ReviewService {
     /** Ревью, которые уже обновляются: не запускаем параллельный refresh из UI и sync. */
     private readonly refreshing = new Set<string>();
     /** Временные снимки для просмотра MR/PR без создания ревью. */
-    private readonly previews = new Map<string, { ref: ReviewRef; view: ReviewView; diff: DiffFile[]; at: number }>();
+    private readonly previews = new Map<string, { ref: ReviewRef; view: ReviewView; diff: DiffFile[]; root: string; at: number }>();
+    /** Полные файлы для раскрытия diff; ключ включает head/base, коммит и путь. */
+    private readonly fileContentCache = new Map<string, { value: ReviewFileContent; at: number }>();
 
     constructor(options: ServiceOptions) {
         this.store = options.store;
@@ -518,7 +529,7 @@ export class ReviewService {
             readOnly: true,
         };
         const view = toReviewView(review, this.now().getTime());
-        this.previews.set(id, { ref, view, diff, at: this.now().getTime() });
+        this.previews.set(id, { ref, view, diff, root, at: this.now().getTime() });
         while (this.previews.size > 8) {
             const oldest = [...this.previews.entries()].sort((left, right) => left[1].at - right[1].at)[0];
             if (!oldest) break;
@@ -1040,6 +1051,80 @@ export class ReviewService {
         const found = stored.snapshot.diff.find((item) => item.path === file);
         if (!found) return null;
         return { path: found.path, status: found.status, binary: found.binary, hunks: found.hunks };
+    }
+
+    /**
+     * Полный файл на head (или base для удалённого файла), чтобы UI раскрывал
+     * скрытые между hunks строки. Локальный git дешевле API платформы, но
+     * коммит может быть ещё не загружен в рабочую копию — тогда читаем raw у
+     * провайдера. Путь берётся только из сохранённого diff.
+     */
+    async fileContent(id: string, file: string): Promise<ReviewFileContent> {
+        const cachedPreview = this.previews.get(id);
+        const preview = cachedPreview && this.now().getTime() - cachedPreview.at < 60 * 60_000 ? cachedPreview : null;
+        const stored = preview ? null : this.store.getReview(id);
+        if (!preview && !stored) {
+            throw Object.assign(new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`)), { status: 404 });
+        }
+        const diff = preview?.diff ?? stored!.snapshot.diff;
+        const info = preview?.view.info ?? this.store.info(id) ?? (stored ? fallbackInfo(stored.row) : null);
+        const root = preview?.root ?? stored!.row.root;
+        const found = diff.find((item) => item.path === file || item.oldPath === file);
+        if (!found || !info) {
+            throw Object.assign(new Error(tr('файла нет в diff', 'the file is not in the diff')), { status: 404 });
+        }
+        if (found.binary) {
+            throw Object.assign(new Error(tr('бинарный файл: скрытых строк нет', 'binary file: there are no hidden lines')), { status: 400 });
+        }
+        const side: 'head' | 'base' = found.status === 'deleted' ? 'base' : 'head';
+        const sha = side === 'head' ? info.commit.head : info.commit.base;
+        const path = side === 'head' ? found.path : found.oldPath || found.path;
+        if (!sha || !path) {
+            throw Object.assign(new Error(tr('не известен коммит файла', 'the file commit is unknown')), { status: 404 });
+        }
+        const key = `${id}|${side}|${sha}|${path}`;
+        const hit = this.fileContentCache.get(key);
+        if (hit && this.now().getTime() - hit.at < 10 * 60_000) return hit.value;
+        let text: string;
+        try {
+            const provider = preview ? await this.providerFactory(preview.ref, preview.root) : await this.providerFor(id);
+            try {
+                const result = await this.runImpl('git', ['show', `${sha}:${path}`], {
+                    cwd: root,
+                    timeoutMs: 30_000,
+                    maxBuffer: 16 * 1024 * 1024,
+                });
+                text = result.stdout;
+            } catch {
+                text = await provider.fileContent(path, sha);
+            }
+        } catch (error) {
+            throw Object.assign(
+                new Error(
+                    tr(
+                        `не удалось прочитать файл: ${redact(messageOf(error))}`,
+                        `could not read the file: ${redact(messageOf(error))}`,
+                    ),
+                ),
+                { status: 502 },
+            );
+        }
+        const normalized = text.replace(/\r\n/g, '\n');
+        const all = normalized === '' ? [] : (normalized.endsWith('\n') ? normalized.slice(0, -1) : normalized).split('\n');
+        const value: ReviewFileContent = {
+            path,
+            side,
+            lines: all.slice(0, 20_000),
+            totalLines: all.length,
+            truncated: all.length > 20_000,
+        };
+        this.fileContentCache.set(key, { value, at: this.now().getTime() });
+        while (this.fileContentCache.size > 32) {
+            const oldest = this.fileContentCache.keys().next().value;
+            if (oldest === undefined) break;
+            this.fileContentCache.delete(oldest);
+        }
+        return value;
     }
 
     // ---------------------------------------------------------------- summary

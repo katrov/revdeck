@@ -39,10 +39,11 @@
             ['findings', t('Замечания', 'Findings')],
             ['diff', 'Diff'],
             ['rules', t('Правила', 'Rules')],
+            ['analytics', t('Аналитика', 'Analytics')],
         ];
         for (const [id, label] of tabs) {
             if (app.preview && !['overview', 'threads', 'diff'].includes(id)) continue;
-            list.push({ id: `tab-${id}`, label: `${t('Перейти:', 'Go to:')} ${label}`, hint: '1–5', run: () => setTab(id) });
+            list.push({ id: `tab-${id}`, label: `${t('Перейти:', 'Go to:')} ${label}`, hint: '1–6', run: () => setTab(id) });
         }
         if (review) {
             list.push({
