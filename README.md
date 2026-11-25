@@ -219,11 +219,14 @@ members, start the MCP server from a member repository with `REVDECK_FEATURE=<fe
 still needs approval per review. Feature notes written by the agent stay local and are never published.
 See [capabilities](docs/capabilities.md#features).
 
-UI shortcuts: `1`–`5` switch tabs, `o` opens a review, `r` refreshes, `s` hides/shows the
-sidebar, `p` opens the project switcher (or publishing when a plan is ready), `?` opens the command
-palette, `h` opens the command reference. The sidebar has a **Command reference** link (`#/help`) with
-searchable CLI usage, common flags and UI shortcuts; click a command to copy it. The sidebar and the
-active project are stored in `localStorage`.
+UI shortcuts: `1`–`6` switch tabs, `o` opens a review, `r` refreshes, `s` hides/shows the
+sidebar, `p` opens the project switcher (or publishing when a plan is ready), `?` or `⌘K`/`Ctrl+K`
+opens the command palette, `h` opens the command reference. On the Diff tab `[`/`]` switch files,
+`f` focuses the file filter, `t` hides/shows the file tree, `e` expands/collapses hidden lines and
+`v` marks the current file viewed. Letter shortcuts use the physical key, so they work in any
+keyboard layout and are ignored in text fields and dialogs. The sidebar has a **Command reference**
+link (`#/help`) with searchable CLI usage, common flags and UI shortcuts; click a command to copy it.
+The sidebar and the active project are stored in `localStorage`.
 
 The UI shows the MR/PR description, supports deep links to threads, findings and diff lines (with
 working browser Back/Forward), and keeps a per-review "viewed" state and file filter in the diff.

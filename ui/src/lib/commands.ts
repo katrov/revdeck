@@ -292,11 +292,18 @@ export const GLOBAL_FLAGS: { flag: string; ru: string; en: string }[] = [
 ];
 
 export const SHORTCUTS: { keys: string; ru: string; en: string }[] = [
-    { keys: '1–5', ru: 'вкладки ревью', en: 'review tabs' },
+    { keys: '1–6', ru: 'вкладки ревью', en: 'review tabs' },
     { keys: 'o', ru: 'открыть ревью', en: 'open a review' },
     { keys: 'r', ru: 'обновить ревью', en: 'refresh the review' },
     { keys: 's', ru: 'скрыть/показать сайдбар', en: 'hide/show the sidebar' },
     { keys: 'p', ru: 'проекты или публикация', en: 'projects or publish' },
     { keys: '?', ru: 'палитра команд', en: 'command palette' },
+    { keys: '⌘K / Ctrl+K', ru: 'палитра команд', en: 'command palette' },
     { keys: 'h', ru: 'справка по командам', en: 'command reference' },
+    { keys: '[ / ]', ru: 'предыдущий/следующий файл (Diff)', en: 'previous/next file (Diff)' },
+    { keys: 'f', ru: 'фильтр файлов (Diff)', en: 'file filter (Diff)' },
+    { keys: 't', ru: 'скрыть/показать дерево файлов (Diff)', en: 'hide/show the file tree (Diff)' },
+    { keys: 'e', ru: 'раскрыть/свернуть скрытые строки (Diff)', en: 'expand/collapse hidden lines (Diff)' },
+    { keys: 'v', ru: 'отметить файл просмотренным (Diff)', en: 'mark the file viewed (Diff)' },
+    { keys: 'Esc', ru: 'закрыть диалог или отменить комментарий', en: 'close a dialog or cancel a comment' },
 ];

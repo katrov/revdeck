@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { app, copyFocusLink, errorText, focusNote, notify } from '../lib/state.svelte';
+    import { app, copyFocusLink, errorText, focusNote, isEditingText, notify } from '../lib/state.svelte';
     import { addNote, deleteNote, getDiff, getFileContent, updateNote } from '../lib/api';
     import type { DiffLine, DiffPayload, FileContentPayload, FileSummary } from '../lib/types';
     import { truncate } from '../lib/format';
@@ -63,6 +63,7 @@
     let noteText = $state('');
     let savingNote = $state(false);
     let fileQuery = $state('');
+    let filterInput = $state<HTMLInputElement | null>(null);
     let hideViewed = $state(false);
     let viewed = $state<Record<string, boolean>>({});
     let editingNote = $state<string | null>(null);
@@ -396,6 +397,80 @@
         expandedGaps = { ...expandedGaps, [gap.key]: next };
     }
 
+    function toggleAllGaps(): void {
+        if (!diff || !gaps.length) return;
+        const hasExpanded = Object.values(expandedGaps).some((state) => state.top > 0 || state.bottom > 0);
+        if (hasExpanded) {
+            expandedGaps = {};
+            return;
+        }
+        const expandAll = (): void => {
+            const next: Record<string, { top: number; bottom: number }> = {};
+            for (const gap of gaps) next[gap.key] = { top: gapTotal(gap), bottom: 0 };
+            expandedGaps = next;
+        };
+        if (fileContent) {
+            expandAll();
+            return;
+        }
+        const reviewId = app.review?.id;
+        const path = diff.path;
+        if (!reviewId) return;
+        void loadContent(reviewId, path).then(() => {
+            if (!diff || diff.path !== path) return;
+            if (!fileContent) {
+                if (contentError) notify(contentError, 'error');
+                return;
+            }
+            expandAll();
+        });
+    }
+
+    function handleKeydown(event: KeyboardEvent): void {
+        if (event.defaultPrevented) return;
+        if (event.key === 'Escape') {
+            if (noteTarget) {
+                event.preventDefault();
+                noteTarget = null;
+                noteText = '';
+            }
+            return;
+        }
+        if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+        if (isEditingText()) return;
+        if (document.querySelector('.overlay, [role="dialog"]')) return;
+        switch (event.code) {
+            case 'BracketLeft':
+                event.preventDefault();
+                selectRelative(-1);
+                break;
+            case 'BracketRight':
+                event.preventDefault();
+                selectRelative(1);
+                break;
+            case 'KeyF':
+                event.preventDefault();
+                if (treeHidden) setTreeHidden(false);
+                requestAnimationFrame(() => {
+                    filterInput?.focus();
+                    filterInput?.select();
+                });
+                break;
+            case 'KeyT':
+                event.preventDefault();
+                setTreeHidden(!treeHidden);
+                break;
+            case 'KeyE':
+                event.preventDefault();
+                toggleAllGaps();
+                break;
+            case 'KeyV':
+                event.preventDefault();
+                if (file) toggleViewed(file, !(viewed[file] ?? false));
+                break;
+        }
+    }
+
     function retryContent(): void {
         const reviewId = app.review?.id;
         const path = diff?.path;
@@ -549,6 +624,8 @@
     });
 </script>
 
+<svelte:window onkeydown={handleKeydown} />
+
 <div class="split" bind:this={splitEl} class:resizing style:--file-tree-width={`${treeWidth}px`}>
     {#if !treeHidden}
         <div class="file-list" aria-label={t('Файлы ревью', 'Review files')}>
@@ -563,7 +640,7 @@
                         onclick={() => setTreeHidden(true)}
                     >«</button>
                 </div>
-                <input bind:value={fileQuery} placeholder={t('Найти файл…', 'Filter files…')} aria-label={t('Найти файл', 'Filter files')} />
+                <input bind:this={filterInput} bind:value={fileQuery} placeholder={t('Найти файл…', 'Filter files…')} aria-label={t('Найти файл', 'Filter files')} />
                 <div class="spread">
                     <label class="switch small">
                         <input type="checkbox" bind:checked={hideViewed} style="width: auto" />

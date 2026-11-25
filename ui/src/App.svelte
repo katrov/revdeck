@@ -248,7 +248,8 @@
     function onKeydown(event: KeyboardEvent): void {
         const target = event.target as HTMLElement | null;
         const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
-        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && !typing) {
+        const mod = event.metaKey || event.ctrlKey;
+        if (mod && event.code === 'KeyK' && !typing) {
             event.preventDefault();
             paletteOpen = true;
             return;
@@ -261,22 +262,37 @@
             return;
         }
         if (typing) return;
-        if (event.key >= '1' && event.key <= '5') {
+        // Браузерные сочетания (Ctrl+R, Cmd+L и т.п.) не перехватываем.
+        if (mod || event.altKey) return;
+        if (event.key === '?') {
+            paletteOpen = true;
+            return;
+        }
+        // С shift цифры превращаются в символы, а буквы — в заглавные.
+        if (event.shiftKey) return;
+        if (event.key >= '1' && event.key <= '6') {
             const tab = tabs[Number(event.key) - 1];
             if (tab) setTab(tab.id);
-        } else if (event.key === 'r') {
-            refresh();
-        } else if (event.key === 's') {
-            toggleSidebar();
-        } else if (event.key === 'o') {
-            openDialog = true;
-        } else if (event.key === '?') {
-            paletteOpen = true;
-        } else if (event.key === 'h') {
-            showHelp();
-        } else if (event.key === 'p') {
-            if (publishTarget) app.publishing = publishTarget;
-            else app.projectSwitcher = !app.projectSwitcher;
+            return;
+        }
+        // Физический код клавиши: работает и на русской раскладке.
+        switch (event.code) {
+            case 'KeyR':
+                refresh();
+                break;
+            case 'KeyS':
+                toggleSidebar();
+                break;
+            case 'KeyO':
+                openDialog = true;
+                break;
+            case 'KeyH':
+                showHelp();
+                break;
+            case 'KeyP':
+                if (publishTarget) app.publishing = publishTarget;
+                else app.projectSwitcher = !app.projectSwitcher;
+                break;
         }
     }
 

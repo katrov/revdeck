@@ -164,8 +164,11 @@ a permanent project link; a project appears in a feature while at least one of i
 - Local Svelte 5 SPA served by the daemon with a launch token (rotated with the daemon) and cookie session.
 - Project switcher, projects home (add/edit/delete project), feature list and feature page.
 - Review tabs: Overview, Threads, Findings, Diff, Rules, Analytics.
-- Keyboard shortcuts (`1`–`5`, `o`, `r`, `s`, `p`, `?`, `h`), command palette, deep links to threads,
-  findings and diff lines with browser Back/Forward.
+- Keyboard shortcuts: `1`–`6` tabs; `o`, `r`, `s`, `p`, `?`/`⌘K`, `h` globally; on Diff `[`/`]`
+  switch files, `f` focuses the filter, `t` toggles the tree, `e` expands/collapses hidden lines and
+  `v` marks the file viewed. Letter shortcuts use physical keys (layout-independent) and are skipped
+  in inputs and dialogs. Command palette, deep links to threads, findings and diff lines with browser
+  Back/Forward.
 - Command reference page (`#/help`): searchable CLI usage, common flags and UI shortcuts, with
   click-to-copy commands. Reachable from the sidebar and by `h`.
 - Markdown preview, attachment button, reactions, line comments, publish dialog with exact plan.

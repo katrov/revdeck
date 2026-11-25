@@ -47,6 +47,21 @@
         <input bind:value={query} placeholder={t('Найти команду или флаг…', 'Find a command or flag…')} autocomplete="off" />
     </label>
 
+    <section class="help-group">
+        <h2>{t('Горячие клавиши интерфейса', 'UI shortcuts')}</h2>
+        <p class="muted small">
+            {t(
+                'Буквенные сокращения работают по физической клавише и не зависят от раскладки. В полях ввода и диалогах они не срабатывают.',
+                'Letter shortcuts use the physical key and work in any keyboard layout. They are ignored in text fields and dialogs.',
+            )}
+        </p>
+        <div class="help-chips">
+            {#each SHORTCUTS as shortcut (shortcut.keys)}
+                <span class="help-chip"><kbd>{shortcut.keys}</kbd> {label(shortcut)}</span>
+            {/each}
+        </div>
+    </section>
+
     {#each filtered as group (group.id)}
         <section class="help-group">
             <h2>{label(group)}</h2>
@@ -78,15 +93,6 @@
         <div class="help-chips">
             {#each GLOBAL_FLAGS as flag (flag.flag)}
                 <span class="help-chip"><code>{flag.flag}</code> {label(flag)}</span>
-            {/each}
-        </div>
-    </section>
-
-    <section class="help-group">
-        <h2>{t('Горячие клавиши интерфейса', 'UI shortcuts')}</h2>
-        <div class="help-chips">
-            {#each SHORTCUTS as shortcut (shortcut.keys)}
-                <span class="help-chip"><kbd>{shortcut.keys}</kbd> {label(shortcut)}</span>
             {/each}
         </div>
     </section>
