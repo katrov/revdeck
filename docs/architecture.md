@@ -32,6 +32,7 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
   full file content at a commit, threads, replies, resolution, and comment creation.
 - `src/daemon/service.ts` — orchestrator: review refresh, drafts, decisions, publication plan,
   approval, idempotent writes, background sync.
+- `src/daemon/update.ts` — optional npm update check: daily cache, short error backoff, no telemetry.
 - `src/daemon/store.ts` — SQLite (`node:sqlite`): projects and their roots, reviews, diff/thread snapshot,
   drafts, findings, decisions, comments, approvals, audit.
 - `src/daemon/rpc.ts` — [JSON-RPC](protocol.md) over a Unix socket (0600) for the CLI and MCP.
@@ -151,6 +152,9 @@ documents declared in `context.sources` of each repository (`context.maxBytes` c
 - The diff is parsed on the server; the UI receives files as a list and hunks one file at a time.
   Expanding hidden lines requests `/api/file`: the service tries `git show <sha>:<path>` in the
   review root first, falls back to the provider raw API, and caches the parsed lines for 10 minutes.
+- The UI never calls npm or GitHub directly (its CSP allows same-origin `connect-src` only). The
+  daemon checks the npm `latest` dist-tag at most once per day via `/api/update`, caches failures for
+  five minutes, and disables the check with `REVDECK_UPDATE_CHECK=0`.
 - Review state does not contain the full diff; SSE reports changes and the UI refetches the state.
 - Opening a review returns the cached snapshot; a stale snapshot is refreshed in the background. A
   one-entry parsed-snapshot cache and one snippet index per view keep large reviews cheap.

@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The UI now notifies about a newer revdeck release. The daemon checks the npm `latest` dist-tag at
+  most once every 24 hours (and caches failures briefly), `GET /api/update` returns the current and
+  latest versions plus the release URL, the sidebar shows the running version with an update badge,
+  a dismissible banner appears on review pages, and Settings has an About card with a manual check,
+  release link and `npm install -g revdeck@latest` command. Set `REVDECK_UPDATE_CHECK=0` to disable
+  the check; it never sends telemetry and never updates automatically.
+
 ## [0.13.0] - 2026-11-25
 
 ### Added

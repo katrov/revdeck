@@ -7,6 +7,7 @@
     import { plural, t } from './lib/i18n.svelte';
     import { initTheme } from './lib/theme.svelte';
     import { autoRefresh, initAutoRefresh } from './lib/auto-refresh.svelte';
+    import { dismissUpdate, initUpdateCheck, update, updateBannerVisible } from './lib/update.svelte';
     import Overview from './components/Overview.svelte';
     import Threads from './components/Threads.svelte';
     import Findings from './components/Findings.svelte';
@@ -300,6 +301,7 @@
         initTheme();
         initFeaturesHidden();
         initAutoRefresh();
+        initUpdateCheck();
         const narrow = window.innerWidth <= 860;
         try {
             const stored = localStorage.getItem(SIDEBAR_KEY);
@@ -435,6 +437,24 @@
                 {app.review.files.length} {plural(app.review.files.length, ['файл', 'файла', 'файлов'], ['file', 'files'])} · {app.review.threads.length} {plural(app.review.threads.length, ['тред', 'треда', 'тредов'], ['thread', 'threads'])}
             {:else}
                 <span class="mono">revdeck open &lt;N&gt;</span>
+            {/if}
+            {#if update.info}
+                <div class="sidebar-version">
+                    <span class="mono">v{update.info.current}</span>
+                    {#if update.info.updateAvailable && update.info.latest}
+                        {#if update.info.releaseUrl}
+                            <a
+                                class="update-badge"
+                                href={update.info.releaseUrl}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                title={t(`Доступна revdeck ${update.info.latest} — открыть релиз`, `revdeck ${update.info.latest} is available — open the release`)}
+                            >↑ {update.info.latest}</a>
+                        {:else}
+                            <span class="update-badge">↑ {update.info.latest}</span>
+                        {/if}
+                    {/if}
+                </div>
             {/if}
             <button class="sidebar-help" type="button" onclick={() => showSettings()} title={t('Настройки', 'Settings')}>
                 <span class="sidebar-help-mark">⚙</span> {t('Настройки', 'Settings')}
@@ -582,6 +602,26 @@
                     </button>
                 {/each}
             </nav>
+
+            {#if updateBannerVisible()}
+                <div class="update-banner" role="status" aria-live="polite">
+                    <span class="update-banner-dot" aria-hidden="true"></span>
+                    <span class="update-banner-text">
+                        <strong>revdeck {update.info?.latest}</strong> — {t('доступно обновление', 'update available')}
+                    </span>
+                    {#if update.info?.releaseUrl}
+                        <a class="btn" href={update.info.releaseUrl} target="_blank" rel="noreferrer noopener">{t('Что нового', "What's new")}</a>
+                    {/if}
+                    <code class="update-banner-cmd">npm install -g revdeck@latest</code>
+                    <button
+                        class="btn icon"
+                        type="button"
+                        title={t('Скрыть', 'Dismiss')}
+                        aria-label={t('Скрыть уведомление об обновлении', 'Dismiss the update notification')}
+                        onclick={dismissUpdate}
+                    >×</button>
+                </div>
+            {/if}
 
             <section
                 class="content"

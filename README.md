@@ -54,6 +54,10 @@ and a web UI. Platform tokens stay on the host.
   choices are stored locally. Auto-refresh repeats the header “Refresh” action
   (off/10/30/60 min, default 10 min) while a review or preview is open and skips background tabs,
   typing and open dialogs.
+- **Update notice.** The sidebar shows the running version and, when a newer npm release exists, a
+  badge; review pages show a dismissible banner with the release link and update command. The About
+  card in Settings checks npm manually. The daemon checks at most once per day; set
+  `REVDECK_UPDATE_CHECK=0` to turn this off. Nothing is installed automatically.
 - **Read-only MR/PR preview.** Open an MR/PR from the “Open review” dialog with “Preview only”:
   description, diff and discussions are available, but findings, comments, reactions and publishing
   are disabled. Previews are cached in memory and do not create a review or metrics event.

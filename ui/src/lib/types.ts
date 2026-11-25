@@ -316,6 +316,16 @@ export interface FileContentPayload {
     truncated: boolean;
 }
 
+export interface UpdateInfo {
+    enabled: boolean;
+    current: string;
+    latest: string | null;
+    updateAvailable: boolean;
+    releaseUrl: string | null;
+    checkedAt: string | null;
+    error?: string;
+}
+
 export interface PublishPreview {
     plan: { reviewId: string; kind: 'reply' | 'finding' | 'note'; items: { kind: string; id: string; body: string; resolve?: boolean }[]; hash: string; createdAt: string };
     warnings: string[];

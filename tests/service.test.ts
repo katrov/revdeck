@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ReviewService } from '../src/daemon/service.js';
 import { Store } from '../src/daemon/store.js';
 import { parseUnifiedDiff } from '../src/core/diff.js';
+import { VERSION } from '../src/version.js';
 import type { CreateThreadInput, Provider, ReviewListItem, UploadInput } from '../src/providers/provider.js';
 import type { DiffFile, Note, Reaction, ReviewInfo, ReviewRef, Thread } from '../src/core/types.js';
 
@@ -202,6 +203,11 @@ rules:
             if (!provider || provider.ref.number !== ref.number || provider.ref.project !== ref.project) provider = new FakeProvider(ref);
             return provider;
         },
+        fetchImpl: async () =>
+            new Response(JSON.stringify({ latest: '99.0.0' }), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+            }),
         syncIntervalMs: 0,
     });
 });
@@ -226,6 +232,13 @@ describe('ReviewService', () => {
         expect(service.listReviews()).toHaveLength(0);
         expect(service.qualityMetrics().reviews.total).toBe(0);
         expect(service.diffFile(preview.id, 'src/app.ts')?.hunks).toHaveLength(1);
+    });
+
+    it('reports a newer version from npm and caches it', async () => {
+        const first = await service.updateInfo(true);
+        expect(first).toMatchObject({ enabled: true, current: VERSION, latest: '99.0.0', updateAvailable: true });
+        expect(first.releaseUrl).toBe('https://github.com/katrov/revdeck/releases/tag/v99.0.0');
+        expect(await service.updateInfo()).toBe(first);
     });
 
     it('opens a review and builds a view with snippets', async () => {

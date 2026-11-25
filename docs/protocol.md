@@ -159,6 +159,7 @@ human socket.
 | GET | `/` | SPA; `?t=<token>` sets the cookie and redirects |
 | GET | `/assets/*` | static build assets |
 | GET | `/api/health` | liveness |
+| GET | `/api/update?refresh=1` | current/latest version from the npm `latest` dist-tag; `refresh=1` bypasses the daemon cache |
 | GET | `/api/projects` | registered projects |
 | GET | `/api/reviews?project=` | review list, optionally scoped |
 | POST | `/api/projects/register`, `/update`, `/remove` | register, edit or delete a project |

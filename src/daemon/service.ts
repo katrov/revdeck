@@ -57,6 +57,7 @@ import { createProvider, projectContext, resolveReviewRef } from '../providers/p
 import { run as realRun, type Runner } from '../core/exec.js';
 import type { FeatureDetail, FeatureNote, ReviewSnapshot, Store } from './store.js';
 import { toReviewView, type ReviewView } from './view.js';
+import { UpdateChecker, type UpdateInfo } from './update.js';
 import { renderContext, type RulesPayload } from '../context.js';
 import { openApiPathRegExp, parseOpenApi, renderOpenApiSummary } from '../core/openapi.js';
 
@@ -68,6 +69,8 @@ export interface ServiceOptions {
     now?: () => Date;
     syncIntervalMs?: number;
     refreshTtlMs?: number;
+    /** Для тестов проверки обновлений: подмена fetch. */
+    fetchImpl?: typeof fetch;
 }
 
 export interface OpenOptions {
@@ -149,6 +152,7 @@ export class ReviewService {
     private readonly now: () => Date;
     private readonly refreshTtlMs: number;
     private readonly syncIntervalMs: number;
+    private readonly updates: UpdateChecker;
     private timer: NodeJS.Timeout | null = null;
     private syncing = false;
     /** Ревью, которые уже обновляются: не запускаем параллельный refresh из UI и sync. */
@@ -165,6 +169,10 @@ export class ReviewService {
         this.refreshTtlMs = options.refreshTtlMs ?? 60_000;
         this.syncIntervalMs = options.syncIntervalMs ?? 120_000;
         this.providerFactory = options.providerFactory ?? (async (ref: ReviewRef, root: string) => createProvider(ref, { root }));
+        this.updates = new UpdateChecker({
+            now: this.now,
+            ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+        });
         this.events.setMaxListeners(50);
     }
 
@@ -1051,6 +1059,11 @@ export class ReviewService {
         const found = stored.snapshot.diff.find((item) => item.path === file);
         if (!found) return null;
         return { path: found.path, status: found.status, binary: found.binary, hunks: found.hunks };
+    }
+
+    /** Последняя версия revdeck в npm; force=true — ручная проверка из настроек. */
+    async updateInfo(force = false): Promise<UpdateInfo> {
+        return this.updates.check(force);
     }
 
     /**
