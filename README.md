@@ -51,8 +51,9 @@ and a web UI. Platform tokens stay on the host.
   Opening from the list keeps a clickable breadcrumb, and returning restores the filters and scroll.
 - **Settings page.** Theme (system/light/dark), interface language, command reference, the
   Features-section visibility and the auto-refresh interval live on a separate Settings page; the
-  choices are stored locally. Auto-refresh repeats the header “Refresh” action (off/10/30/60 s, default 30 s)
-  while a review or preview is open and skips background tabs, typing and open dialogs.
+  choices are stored locally. Auto-refresh repeats the header “Refresh” action
+  (off/10/30/60 min, default 10 min) while a review or preview is open and skips background tabs,
+  typing and open dialogs.
 - **Read-only MR/PR preview.** Open an MR/PR from the “Open review” dialog with “Preview only”:
   description, diff and discussions are available, but findings, comments, reactions and publishing
   are disabled. Previews are cached in memory and do not create a review or metrics event.
