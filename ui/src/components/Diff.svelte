@@ -1,16 +1,64 @@
 <script lang="ts">
+    import { onMount } from 'svelte';
     import { app, copyFocusLink, errorText, focusNote, notify } from '../lib/state.svelte';
-    import { addNote, deleteNote, getDiff, updateNote } from '../lib/api';
-    import type { DiffPayload } from '../lib/types';
+    import { addNote, deleteNote, getDiff, getFileContent, updateNote } from '../lib/api';
+    import type { DiffLine, DiffPayload, FileContentPayload, FileSummary } from '../lib/types';
     import { truncate } from '../lib/format';
-    import { t } from '../lib/i18n.svelte';
+    import { plural, t } from '../lib/i18n.svelte';
     import MarkdownEditor from './MarkdownEditor.svelte';
     import Markdown from './Markdown.svelte';
+
+    const TREE_WIDTH_KEY = 'revdeck.diff.treeWidth';
+    const TREE_HIDDEN_KEY = 'revdeck.diff.treeHidden';
+    const TREE_MIN = 220;
+    const TREE_MAX = 760;
+    const DIFF_MIN = 360;
+    const TREE_DEFAULT = 300;
+    const GAP_STEP = 10;
+    const PAGE_LINES = 2600;
+
+    interface DirBucket {
+        name: string;
+        path: string;
+        dirs: Map<string, DirBucket>;
+        files: FileSummary[];
+    }
+    type TreeRow =
+        | { kind: 'dir'; name: string; path: string; depth: number; count: number }
+        | { kind: 'file'; item: FileSummary; depth: number };
+
+    interface DiffGap {
+        key: string;
+        oldStart: number;
+        oldCount: number;
+        newStart: number;
+        newCount: number;
+    }
+    type Row = { kind: 'hunk'; header: string } | { kind: 'line'; line: DiffLine } | { kind: 'gap'; gap: DiffGap };
+
+    function storedWidth(): number {
+        try {
+            const raw = localStorage.getItem(TREE_WIDTH_KEY);
+            const value = raw ? Number(raw) : Number.NaN;
+            if (!Number.isFinite(value)) return TREE_DEFAULT;
+            return Math.max(TREE_MIN, Math.min(TREE_MAX, Math.round(value)));
+        } catch {
+            return TREE_DEFAULT;
+        }
+    }
+
+    function storedTreeHidden(): boolean {
+        try {
+            return localStorage.getItem(TREE_HIDDEN_KEY) === '1';
+        } catch {
+            return false;
+        }
+    }
 
     let diff = $state<DiffPayload | null>(null);
     let loading = $state(false);
     let error = $state('');
-    let limit = $state(2600);
+    let limit = $state(PAGE_LINES);
     let noteTarget = $state<{ line: number } | null>(null);
     let noteText = $state('');
     let savingNote = $state(false);
@@ -23,8 +71,23 @@
     let editAgentText = $state('');
     let noteBusy = $state<string | null>(null);
 
+    let splitEl = $state<HTMLDivElement | null>(null);
+    let treeWidth = $state(storedWidth());
+    let treeHidden = $state(storedTreeHidden());
+    let resizing = $state(false);
+    let resizeStartX = 0;
+    let resizeStartWidth = 0;
+    let collapsedDirs = $state<Record<string, boolean>>({});
+    let autoExpandedFile: string | null = null;
+
+    let fileContent = $state<FileContentPayload | null>(null);
+    let contentLoading = $state(false);
+    let contentError = $state('');
+    let contentRequest = 0;
+    let diffRequest = 0;
+    let expandedGaps = $state<Record<string, { top: number; bottom: number }>>({});
+
     const file = $derived(app.diffFile);
-    const fileInfo = $derived(app.review?.files.find((item) => item.path === file) ?? null);
     const files = $derived(
         (app.review?.files ?? []).filter((item) => {
             if (fileQuery.trim() && !item.path.toLowerCase().includes(fileQuery.trim().toLowerCase())) return false;
@@ -35,6 +98,123 @@
     const currentIndex = $derived(files.findIndex((item) => item.path === file));
     const viewedCount = $derived(Object.values(viewed).filter(Boolean).length);
 
+    const treeRows = $derived.by(() => {
+        const root: DirBucket = { name: '', path: '', dirs: new Map(), files: [] };
+        for (const item of files) {
+            const parts = item.path.split('/');
+            let node = root;
+            for (let index = 0; index < parts.length - 1; index += 1) {
+                const name = parts[index]!;
+                const dirPath = parts.slice(0, index + 1).join('/');
+                let next = node.dirs.get(name);
+                if (!next) {
+                    next = { name, path: dirPath, dirs: new Map(), files: [] };
+                    node.dirs.set(name, next);
+                }
+                node = next;
+            }
+            node.files.push(item);
+        }
+        const countFiles = (node: DirBucket): number => {
+            let count = node.files.length;
+            for (const dir of node.dirs.values()) count += countFiles(dir);
+            return count;
+        };
+        const out: TreeRow[] = [];
+        const forceOpen = fileQuery.trim().length > 0;
+        const walk = (node: DirBucket, depth: number): void => {
+            const dirs = [...node.dirs.values()].sort((left, right) => left.name.localeCompare(right.name));
+            for (const dir of dirs) {
+                out.push({ kind: 'dir', name: dir.name, path: dir.path, depth, count: countFiles(dir) });
+                if (forceOpen || !collapsedDirs[dir.path]) walk(dir, depth + 1);
+            }
+            const sorted = node.files.slice().sort((left, right) => left.path.localeCompare(right.path));
+            for (const item of sorted) out.push({ kind: 'file', item, depth });
+        };
+        walk(root, 0);
+        return out;
+    });
+
+    const gapSide = $derived(fileContent?.side ?? (diff?.status === 'deleted' ? 'base' : 'head'));
+
+    const gaps = $derived.by(() => {
+        const out: DiffGap[] = [];
+        if (!diff || !diff.hunks.length) return out;
+        const side = gapSide;
+        const first = diff.hunks[0]!;
+        const topOld = Math.max(0, first.oldStart - 1);
+        const topNew = Math.max(0, first.newStart - 1);
+        if ((side === 'base' ? topOld : topNew) > 0) {
+            out.push({ key: 'top', oldStart: 1, oldCount: topOld, newStart: 1, newCount: topNew });
+        }
+        for (let index = 0; index < diff.hunks.length - 1; index += 1) {
+            const hunk = diff.hunks[index]!;
+            const next = diff.hunks[index + 1]!;
+            const oldStart = hunk.oldStart + hunk.oldLines;
+            const newStart = hunk.newStart + hunk.newLines;
+            const oldCount = Math.max(0, next.oldStart - oldStart);
+            const newCount = Math.max(0, next.newStart - newStart);
+            if ((side === 'base' ? oldCount : newCount) > 0) {
+                out.push({ key: `gap-${index}`, oldStart, oldCount, newStart, newCount });
+            }
+        }
+        if (fileContent) {
+            const last = diff.hunks[diff.hunks.length - 1]!;
+            const oldStart = last.oldStart + last.oldLines;
+            const newStart = last.newStart + last.newLines;
+            const total = fileContent.lines.length;
+            const oldCount = Math.max(0, total - oldStart + 1);
+            const newCount = Math.max(0, total - newStart + 1);
+            if ((side === 'base' ? oldCount : newCount) > 0) {
+                out.push({ key: 'tail', oldStart, oldCount, newStart, newCount });
+            }
+        }
+        return out;
+    });
+
+    function gapTotal(gap: DiffGap): number {
+        return gapSide === 'base' ? gap.oldCount : gap.newCount;
+    }
+
+    function gapLine(gap: DiffGap, index: number): DiffLine {
+        if (!fileContent) return { kind: ' ', text: '', oldLine: null, newLine: null };
+        if (fileContent.side === 'base') {
+            const oldLine = gap.oldStart + index;
+            return { kind: ' ', text: fileContent.lines[oldLine - 1] ?? '', oldLine, newLine: null };
+        }
+        const newLine = gap.newStart + index;
+        return { kind: ' ', text: fileContent.lines[newLine - 1] ?? '', oldLine: gap.oldStart + index, newLine };
+    }
+
+    const rows = $derived.by(() => {
+        const out: Row[] = [];
+        if (!diff) return out;
+        const gapMap = new Map(gaps.map((gap) => [gap.key, gap]));
+        const pushGap = (gap: DiffGap): void => {
+            const total = gapTotal(gap);
+            const state = expandedGaps[gap.key] ?? { top: 0, bottom: 0 };
+            const top = Math.min(state.top, total);
+            const bottom = Math.min(state.bottom, Math.max(0, total - top));
+            const remaining = total - top - bottom;
+            for (let index = 0; index < top; index += 1) out.push({ kind: 'line', line: gapLine(gap, index) });
+            if (remaining > 0) out.push({ kind: 'gap', gap });
+            for (let index = total - bottom; index < total; index += 1) out.push({ kind: 'line', line: gapLine(gap, index) });
+        };
+        const topGap = gapMap.get('top');
+        if (topGap) pushGap(topGap);
+        for (let index = 0; index < diff.hunks.length; index += 1) {
+            const hunk = diff.hunks[index]!;
+            out.push({ kind: 'hunk', header: hunk.header });
+            for (const line of hunk.lines) out.push({ kind: 'line', line });
+            const between = gapMap.get(`gap-${index}`);
+            if (between) pushGap(between);
+        }
+        const tail = gapMap.get('tail');
+        if (tail) pushGap(tail);
+        return out;
+    });
+
+    /** Ключ кэша раскрытых участков не должен переезжать между файлами. */
     $effect(() => {
         const id = app.review?.id;
         if (!id) return;
@@ -49,6 +229,163 @@
     $effect(() => {
         if (!files.some((item) => item.path === app.diffFile)) app.diffFile = files[0]?.path ?? null;
     });
+
+    $effect(() => {
+        const reviewId = app.review?.id;
+        const path = app.diffFile;
+        const request = ++diffRequest;
+        fileContent = null;
+        contentError = '';
+        expandedGaps = {};
+        limit = PAGE_LINES;
+        if (!reviewId || !path) {
+            diff = null;
+            loading = false;
+            error = '';
+            return;
+        }
+        diff = null;
+        loading = true;
+        error = '';
+        void getDiff(reviewId, path)
+            .then((data) => {
+                if (request === diffRequest) diff = data.file;
+            })
+            .catch((cause) => {
+                if (request !== diffRequest) return;
+                error = errorText(cause);
+                diff = null;
+            })
+            .finally(() => {
+                if (request === diffRequest) loading = false;
+            });
+    });
+
+    async function loadContent(reviewId: string, path: string): Promise<void> {
+        const request = ++contentRequest;
+        contentLoading = true;
+        contentError = '';
+        try {
+            const data = await getFileContent(reviewId, path);
+            if (request === contentRequest) fileContent = data.file;
+        } catch (cause) {
+            if (request !== contentRequest) return;
+            contentError = errorText(cause);
+            fileContent = null;
+        } finally {
+            if (request === contentRequest) contentLoading = false;
+        }
+    }
+
+    $effect(() => {
+        const reviewId = app.review?.id;
+        const target = diff;
+        if (!reviewId || !target || target.binary) {
+            contentRequest += 1;
+            fileContent = null;
+            contentError = '';
+            contentLoading = false;
+            return;
+        }
+        void loadContent(reviewId, target.path);
+    });
+
+    $effect(() => {
+        const path = app.diffFile;
+        if (!path || path === autoExpandedFile) return;
+        autoExpandedFile = path;
+        const parts = path.split('/');
+        const parents = parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/'));
+        if (!parents.some((parent) => collapsedDirs[parent])) return;
+        const next = { ...collapsedDirs };
+        for (const parent of parents) delete next[parent];
+        collapsedDirs = next;
+    });
+
+    function clampWidth(value: number): number {
+        const available = splitEl?.getBoundingClientRect().width ?? window.innerWidth - 320;
+        const upper = Math.max(TREE_MIN, Math.min(TREE_MAX, available - DIFF_MIN));
+        return Math.round(Math.max(TREE_MIN, Math.min(upper, value)));
+    }
+
+    function saveTreeWidth(): void {
+        try {
+            localStorage.setItem(TREE_WIDTH_KEY, String(treeWidth));
+        } catch {
+            // localStorage может быть недоступен.
+        }
+    }
+
+    function setTreeHidden(hidden: boolean): void {
+        treeHidden = hidden;
+        try {
+            localStorage.setItem(TREE_HIDDEN_KEY, hidden ? '1' : '0');
+        } catch {
+            // localStorage может быть недоступен.
+        }
+    }
+
+    function beginResize(event: PointerEvent): void {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        resizing = true;
+        resizeStartX = event.clientX;
+        resizeStartWidth = treeWidth;
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    }
+
+    function moveResize(event: PointerEvent): void {
+        if (!resizing) return;
+        treeWidth = clampWidth(resizeStartWidth + event.clientX - resizeStartX);
+    }
+
+    function endResize(event: PointerEvent): void {
+        if (!resizing) return;
+        resizing = false;
+        const element = event.currentTarget as HTMLElement;
+        if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId);
+        saveTreeWidth();
+    }
+
+    function resizeKeydown(event: KeyboardEvent): void {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        treeWidth = clampWidth(treeWidth + (event.key === 'ArrowRight' ? 24 : -24));
+        saveTreeWidth();
+    }
+
+    onMount(() => {
+        const onWindowResize = (): void => {
+            if (window.innerWidth > 860) treeWidth = clampWidth(treeWidth);
+        };
+        window.addEventListener('resize', onWindowResize);
+        return () => window.removeEventListener('resize', onWindowResize);
+    });
+
+    function toggleDir(path: string): void {
+        collapsedDirs = { ...collapsedDirs, [path]: !collapsedDirs[path] };
+    }
+
+    function expandGap(gap: DiffGap, mode: 'top' | 'bottom' | 'all'): void {
+        if (!fileContent) return;
+        const total = gapTotal(gap);
+        const current = expandedGaps[gap.key] ?? { top: 0, bottom: 0 };
+        let next: { top: number; bottom: number };
+        if (mode === 'all') {
+            next = { top: total, bottom: 0 };
+        } else if (mode === 'top') {
+            next = { top: Math.min(total - current.bottom, current.top + GAP_STEP), bottom: current.bottom };
+        } else {
+            next = { top: current.top, bottom: Math.min(total - current.top, current.bottom + GAP_STEP) };
+        }
+        expandedGaps = { ...expandedGaps, [gap.key]: next };
+    }
+
+    function retryContent(): void {
+        const reviewId = app.review?.id;
+        const path = diff?.path;
+        if (reviewId && path) void loadContent(reviewId, path);
+    }
 
     function toggleViewed(path: string, value: boolean): void {
         viewed = { ...viewed, [path]: value };
@@ -134,38 +471,6 @@
         app.diffFile = files[next]!.path;
     }
 
-    $effect(() => {
-        const reviewId = app.review?.id;
-        const path = app.diffFile;
-        if (!reviewId || !path) {
-            diff = null;
-            return;
-        }
-        loading = true;
-        error = '';
-        void getDiff(reviewId, path)
-            .then((data) => {
-                diff = data.file;
-            })
-            .catch((cause) => {
-                error = errorText(cause);
-                diff = null;
-            })
-            .finally(() => {
-                loading = false;
-            });
-    });
-
-    const rows = $derived.by(() => {
-        if (!diff) return [] as ({ kind: 'hunk'; header: string } | { kind: 'line'; line: DiffPayload['hunks'][number]['lines'][number] })[];
-        const out: ({ kind: 'hunk'; header: string } | { kind: 'line'; line: DiffPayload['hunks'][number]['lines'][number] })[] = [];
-        for (const hunk of diff.hunks) {
-            out.push({ kind: 'hunk', header: hunk.header });
-            for (const line of hunk.lines) out.push({ kind: 'line', line });
-        }
-        return out;
-    });
-
     const marks = $derived.by(() => {
         const map = new Map<number, string[]>();
         const review = app.review;
@@ -229,42 +534,102 @@
     });
 </script>
 
-<div class="split">
-    <div class="file-list">
-        <div class="file-tools">
-            <input bind:value={fileQuery} placeholder={t('Найти файл…', 'Filter files…')} aria-label={t('Найти файл', 'Filter files')} />
-            <div class="spread">
-                <label class="switch small">
-                    <input type="checkbox" bind:checked={hideViewed} style="width: auto" />
-                    {t('Скрыть просмотренные', 'Hide viewed')}
-                </label>
-                <span class="muted small">{viewedCount}/{app.review?.files.length ?? 0}</span>
+<div class="split" bind:this={splitEl} class:resizing style:--file-tree-width={`${treeWidth}px`}>
+    {#if !treeHidden}
+        <div class="file-list" aria-label={t('Файлы ревью', 'Review files')}>
+            <div class="file-tools">
+                <div class="spread">
+                    <span class="file-tree-title">{t('Файлы', 'Files')} <span class="muted">{files.length}</span></span>
+                    <button
+                        class="btn icon"
+                        type="button"
+                        title={t('Скрыть дерево файлов', 'Hide file tree')}
+                        aria-label={t('Скрыть дерево файлов', 'Hide file tree')}
+                        onclick={() => setTreeHidden(true)}
+                    >«</button>
+                </div>
+                <input bind:value={fileQuery} placeholder={t('Найти файл…', 'Filter files…')} aria-label={t('Найти файл', 'Filter files')} />
+                <div class="spread">
+                    <label class="switch small">
+                        <input type="checkbox" bind:checked={hideViewed} style="width: auto" />
+                        {t('Скрыть просмотренные', 'Hide viewed')}
+                    </label>
+                    <span class="muted small">{viewedCount}/{app.review?.files.length ?? 0}</span>
+                </div>
+                <div class="file-nav">
+                    <button class="btn icon" type="button" onclick={() => selectRelative(-1)} disabled={currentIndex <= 0} title={t('Предыдущий файл', 'Previous file')}>←</button>
+                    <span class="muted small">{files.length ? `${currentIndex + 1}/${files.length}` : '0/0'}</span>
+                    <button class="btn icon" type="button" onclick={() => selectRelative(1)} disabled={currentIndex < 0 || currentIndex >= files.length - 1} title={t('Следующий файл', 'Next file')}>→</button>
+                </div>
             </div>
-            <div class="file-nav">
-                <button class="btn icon" type="button" onclick={() => selectRelative(-1)} disabled={currentIndex <= 0} title={t('Предыдущий файл', 'Previous file')}>←</button>
-                <span class="muted small">{files.length ? `${currentIndex + 1}/${files.length}` : '0/0'}</span>
-                <button class="btn icon" type="button" onclick={() => selectRelative(1)} disabled={currentIndex < 0 || currentIndex >= files.length - 1} title={t('Следующий файл', 'Next file')}>→</button>
-            </div>
+            {#each treeRows as row (row.kind === 'dir' ? `dir:${row.path}` : `file:${row.item.path}`)}
+                {#if row.kind === 'dir'}
+                    {@const open = fileQuery.trim().length > 0 || !collapsedDirs[row.path]}
+                    <button
+                        class="tree-dir"
+                        type="button"
+                        style:padding-left={`${6 + row.depth * 12}px`}
+                        aria-expanded={open}
+                        onclick={() => toggleDir(row.path)}
+                    >
+                        <span class="tree-chev">{open ? '▾' : '▸'}</span>
+                        <span class="tree-name" title={row.path}>{row.name}/</span>
+                        <span class="tree-count">{row.count}</span>
+                    </button>
+                {:else}
+                    {@const name = row.item.path.slice(row.item.path.lastIndexOf('/') + 1)}
+                    <div class="file-row" class:active={app.diffFile === row.item.path} style:padding-left={`${row.depth * 12}px`}>
+                        <input
+                            type="checkbox"
+                            class="file-check"
+                            checked={viewed[row.item.path] ?? false}
+                            aria-label={t('Файл просмотрен', 'File viewed')}
+                            onchange={(event) => toggleViewed(row.item.path, event.currentTarget.checked)}
+                        />
+                        <button
+                            class="file-item"
+                            class:active={app.diffFile === row.item.path}
+                            title={row.item.path}
+                            onclick={() => (app.diffFile = row.item.path)}
+                        >
+                            {#if row.item.status === 'added'}<span class="badge ok">A</span>{:else if row.item.status === 'deleted'}<span class="badge err">D</span>{:else if row.item.status === 'renamed'}<span class="badge">R</span>{:else}<span class="badge">M</span>{/if}
+                            <span class="name">{name}</span>
+                            <span class="counts">{row.item.additions}/{row.item.deletions}</span>
+                        </button>
+                    </div>
+                {/if}
+            {:else}
+                <p class="muted small" style="padding: 8px">{t('Файлов не найдено.', 'No files found.')}</p>
+            {/each}
         </div>
-        {#each files as item (item.path)}
-            <div class="file-row" class:active={app.diffFile === item.path}>
-                <input
-                    type="checkbox"
-                    class="file-check"
-                    checked={viewed[item.path] ?? false}
-                    aria-label={t('Файл просмотрен', 'File viewed')}
-                    onchange={(event) => toggleViewed(item.path, event.currentTarget.checked)}
-                />
-                <button class="file-item" class:active={app.diffFile === item.path} onclick={() => (app.diffFile = item.path)}>
-                    {#if item.status === 'added'}<span class="badge ok">A</span>{:else if item.status === 'deleted'}<span class="badge err">D</span>{:else if item.status === 'renamed'}<span class="badge">R</span>{:else}<span class="badge">M</span>{/if}
-                    <span class="name" title={item.path}>{item.path}</span>
-                    <span class="counts">{item.additions}/{item.deletions}</span>
-                </button>
-            </div>
-        {:else}
-            <p class="muted small" style="padding: 8px">{t('Файлов не найдено.', 'No files found.')}</p>
-        {/each}
-    </div>
+        <button
+            class="resizer"
+            type="button"
+            class:dragging={resizing}
+            aria-label={t('Изменить ширину списка файлов', 'Resize the file list')}
+            title={t('Потяните, чтобы изменить ширину; двойной клик — сброс', 'Drag to resize; double-click to reset')}
+            onpointerdown={beginResize}
+            onpointermove={moveResize}
+            onpointerup={endResize}
+            onpointercancel={endResize}
+            ondblclick={() => {
+                treeWidth = TREE_DEFAULT;
+                saveTreeWidth();
+            }}
+            onkeydown={resizeKeydown}
+        ></button>
+    {:else}
+        <button
+            class="file-rail"
+            type="button"
+            title={t('Показать дерево файлов', 'Show file tree')}
+            aria-label={t('Показать дерево файлов', 'Show file tree')}
+            onclick={() => setTreeHidden(false)}
+        >
+            <span class="rail-icon">☰</span>
+            <span class="rail-count">{files.length}</span>
+        </button>
+    {/if}
 
     <div class="diff-view">
         {#if loading && !diff}
@@ -280,6 +645,44 @@
                 {#each rows.slice(0, limit) as row}
                     {#if row.kind === 'hunk'}
                         <div class="hunk-head">{row.header}</div>
+                    {:else if row.kind === 'gap'}
+                        {@const gap = row.gap}
+                        {@const total = gapTotal(gap)}
+                        {@const state = expandedGaps[gap.key] ?? { top: 0, bottom: 0 }}
+                        {@const remaining = Math.max(0, total - state.top - state.bottom)}
+                        <div class="diff-gap">
+                            <button
+                                class="gap-step"
+                                type="button"
+                                title={t('Раскрыть 10 строк сверху', 'Expand 10 more lines above')}
+                                aria-label={t('Раскрыть строки сверху', 'Expand lines above')}
+                                disabled={!fileContent || state.top >= total - state.bottom}
+                                onclick={() => expandGap(gap, 'top')}
+                            >↓</button>
+                            <button
+                                class="gap-all"
+                                type="button"
+                                title={contentError ? contentError : fileContent ? t('Показать все скрытые строки', 'Show all hidden lines') : t('Показать скрытые строки', 'Show hidden lines')}
+                                disabled={!contentError && !fileContent && contentLoading}
+                                onclick={() => (contentError ? retryContent() : expandGap(gap, 'all'))}
+                            >
+                                {#if contentError}
+                                    {t('Скрытые строки недоступны — повторить', 'Hidden lines unavailable — retry')}
+                                {:else if !fileContent}
+                                    {contentLoading ? t('Загрузка скрытых строк…', 'Loading hidden lines…') : t('Показать скрытые строки', 'Show hidden lines')}
+                                {:else}
+                                    {remaining} {plural(remaining, ['скрытая строка', 'скрытые строки', 'скрытых строк'], ['hidden line', 'hidden lines'])} · {t('показать все', 'show all')}
+                                {/if}
+                            </button>
+                            <button
+                                class="gap-step"
+                                type="button"
+                                title={t('Раскрыть 10 строк снизу', 'Expand 10 more lines below')}
+                                aria-label={t('Раскрыть строки снизу', 'Expand lines below')}
+                                disabled={!fileContent || state.bottom >= total - state.top}
+                                onclick={() => expandGap(gap, 'bottom')}
+                            >↑</button>
+                        </div>
                     {:else}
                         {@const line = row.line}
                         {@const number = line.newLine ?? line.oldLine ?? 0}
@@ -312,8 +715,12 @@
             </div>
             {#if rows.length > limit}
                 <div style="padding: 12px">
-                    <button class="btn" onclick={() => (limit += 2600)}>{t('Показать ещё', 'Show more')} ({rows.length - limit} {t('строк', 'lines')})</button>
+                    <button class="btn" onclick={() => (limit += PAGE_LINES)}>{t('Показать ещё', 'Show more')} ({rows.length - limit} {t('строк', 'lines')})</button>
                 </div>
+            {/if}
+
+            {#if fileContent?.truncated}
+                <p class="muted small" style="padding: 0 12px">{t('Файл очень большой: раскрытие ограничено первыми 20 000 строками.', 'The file is very large: expansion is limited to the first 20,000 lines.')}</p>
             {/if}
 
             {#if noteTarget && !app.preview}

@@ -194,6 +194,7 @@
             bind:value={finding.comment}
             onchange={scheduleSave}
             rows={3}
+            autoGrow
             disabled={finding.status === 'published'}
         />
 

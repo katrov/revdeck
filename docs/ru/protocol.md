@@ -163,6 +163,7 @@ Human-only методы возвращают `CAPABILITY` на мосту: `publ
 | POST | `/api/projects/register`, `/update`, `/remove` | зарегистрировать, изменить или удалить проект |
 | GET | `/api/state?review=` | снимок для UI |
 | GET | `/api/diff?review=&file=` | hunks файла (включая preview) |
+| GET | `/api/file?review=&file=` | полное содержимое файла для раскрытия скрытых hunks (включая preview) |
 | GET | `/api/rules?review=` | правила |
 | GET | `/api/events` | SSE: `review`, `feature`, `project`, `heartbeat` |
 | POST | `/api/reviews/open`, `/api/reviews/refresh` | открыть/обновить |

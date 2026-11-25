@@ -221,6 +221,12 @@ export class GitLabProvider implements Provider {
         return parseUnifiedDiff(chunks.join('\n'));
     }
 
+    async fileContent(path: string, ref: string): Promise<string> {
+        // GitLab ждёт путь целиком URL-кодированным, включая слэши.
+        const endpoint = `projects/${this.projectRef}/repository/files/${encodeURIComponent(path)}/raw`;
+        return this.call([query(endpoint, { ref })]);
+    }
+
     async threads(): Promise<Thread[]> {
         const discussions = await this.paged<GlDiscussion>(this.endpoint('/discussions'));
         const threads: Thread[] = [];

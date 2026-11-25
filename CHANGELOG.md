@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The Diff tab expands hidden unchanged lines: the server serves the full file at the review
+  commit (local `git show` first, provider raw API as a fallback), gaps between hunks show a
+  "N hidden lines · show all" bar, and two arrow buttons grow a gap by 10 lines from either side.
+- The Diff tab groups files into a GitLab-style folder tree: directories collapse individually,
+  the whole tree can be hidden behind a slim rail and restored, and the panel width is resizable
+  by drag or arrow keys (220–760 px) with the width and hidden state persisted in `localStorage`.
+- The platform comment field on findings grows with its text instead of a fixed-height textarea.
+
+### Fixed
+
+- Wide code snippets in findings keep the added/removed background across the full line when
+  scrolled horizontally; the background no longer stops at the card width.
+
 ## [0.12.2] - 2026-11-23
 
 ### Fixed

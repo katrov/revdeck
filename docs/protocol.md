@@ -164,6 +164,7 @@ human socket.
 | POST | `/api/projects/register`, `/update`, `/remove` | register, edit or delete a project |
 | GET | `/api/state?review=` | snapshot for the UI |
 | GET | `/api/diff?review=&file=` | file hunks (including preview) |
+| GET | `/api/file?review=&file=` | full file content/lines for expanding hidden hunks (including preview) |
 | GET | `/api/rules?review=` | rules |
 | GET | `/api/events` | SSE: `review`, `feature`, `project`, `heartbeat` |
 | POST | `/api/reviews/open`, `/api/reviews/refresh` | open/refresh |

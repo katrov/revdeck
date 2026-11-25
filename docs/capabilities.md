@@ -66,7 +66,9 @@ The core guarantees:
 - Threads and findings are virtualized above 30 cards: measured pages of 10 render only when visible,
   focused cards stay mounted, and deep links scroll to the target page.
 - Unified diff with per-file hunks, line numbers in old/new versions, changed-file filters and
-  viewed-state per review.
+  viewed-state per review. Files are grouped into a collapsible folder tree that can be hidden or
+  resized, and hidden unchanged lines around hunks expand in place (10 lines at a time or all at
+  once); the full file is served from the local commit or the platform raw API.
 - Threads: read, reply, resolve, react; line comments from the human; reactions on MR/PR and notes.
 - Edit and delete your own platform comments.
 - Attachments: upload raster images and videos to GitLab project uploads and insert a markdown link;

@@ -544,10 +544,12 @@ textarea.agent {
 
 .snippet-line {
     display: grid;
-    grid-template-columns: 52px 16px minmax(0, 1fr);
+    grid-template-columns: 52px 16px minmax(max-content, 1fr);
     gap: 0;
     white-space: pre;
     padding-right: 8px;
+    width: max-content;
+    min-width: 100%;
 }
 
 .snippet-line .n {
@@ -583,8 +585,9 @@ textarea.agent {
 }
 
 .file-list {
-    width: 300px;
-    flex: 0 0 300px;
+    width: var(--file-tree-width, 300px);
+    flex: 0 0 var(--file-tree-width, 300px);
+    min-width: 0;
     border-right: 1px solid var(--border);
     overflow: auto;
     padding: 6px;
@@ -630,6 +633,119 @@ textarea.agent {
     display: flex;
     height: 100%;
     min-height: 0;
+}
+
+.split.resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+.resizer {
+    flex: 0 0 8px;
+    align-self: stretch;
+    cursor: col-resize;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    position: relative;
+    z-index: 2;
+    touch-action: none;
+}
+
+.resizer::after {
+    content: '';
+    position: absolute;
+    inset: 0 2px;
+    border-radius: 2px;
+    background: transparent;
+    transition: background 120ms ease;
+}
+
+.resizer:hover::after,
+.resizer.dragging::after,
+.resizer:focus-visible::after {
+    background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.resizer:focus-visible {
+    outline: none;
+}
+
+.file-rail {
+    flex: 0 0 34px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    border: 0;
+    border-right: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--muted);
+}
+
+.file-rail:hover {
+    background: var(--panel-2);
+    color: var(--text);
+}
+
+.file-rail .rail-icon {
+    font-size: 15px;
+}
+
+.file-rail .rail-count {
+    font-size: 11px;
+    font-family: var(--mono);
+}
+
+.file-tree-title {
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.tree-dir {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    border: 0;
+    background: none;
+    border-radius: 7px;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: left;
+}
+
+.tree-dir:hover {
+    background: var(--panel-2);
+    color: var(--text);
+}
+
+.tree-dir .tree-chev {
+    flex: 0 0 10px;
+    font-size: 10px;
+}
+
+.tree-dir .tree-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.tree-dir .tree-count {
+    font-family: var(--mono);
+    font-size: 10.5px;
+}
+
+.file-row .file-item .name {
+    direction: ltr;
+    text-align: left;
 }
 
 .diff-view {
@@ -695,6 +811,50 @@ textarea.agent {
 .diff-line.del {
     background: var(--del);
     color: var(--del-text);
+}
+
+.diff-gap {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    background: var(--panel-2);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11.5px;
+}
+
+.diff-gap .gap-step,
+.diff-gap .gap-all {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    padding: 3px 10px;
+}
+
+.diff-gap .gap-step:hover:not(:disabled),
+.diff-gap .gap-all:hover:not(:disabled) {
+    background: var(--accent-soft);
+    color: var(--text);
+}
+
+.diff-gap .gap-step:disabled,
+.diff-gap .gap-all:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.diff-gap .gap-all {
+    flex: 1;
+    text-align: center;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+}
+
+.diff-gap .gap-all:hover:not(:disabled) {
+    color: var(--accent);
 }
 
 .diff-line .text {
@@ -889,8 +1049,21 @@ mark {
         max-height: 160px;
     }
 
+    .resizer {
+        display: none;
+    }
+
     .split {
         flex-direction: column;
+    }
+
+    .file-rail {
+        flex: 0 0 auto;
+        flex-direction: row;
+        justify-content: center;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+        padding: 4px 0;
     }
 }
 
@@ -1065,6 +1238,12 @@ mark {
 .md-editor textarea:focus {
     outline: none;
     border: 0;
+}
+
+.md-editor textarea.autogrow {
+    resize: none;
+    overflow-y: auto;
+    max-height: 60vh;
 }
 
 .md-editor-preview {

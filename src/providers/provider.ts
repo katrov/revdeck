@@ -66,6 +66,8 @@ export interface Provider {
     readonly capabilities: ProviderCapabilities;
     info(): Promise<ReviewInfo>;
     diff(): Promise<DiffFile[]>;
+    /** Полное содержимое файла на коммите: diff отдаёт только hunks, а UI раскрывает скрытые строки. */
+    fileContent(path: string, ref: string): Promise<string>;
     threads(): Promise<Thread[]>;
     currentUser(): Promise<User>;
     list(options?: ListOptions): Promise<ReviewListItem[]>;

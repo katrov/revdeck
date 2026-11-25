@@ -225,7 +225,9 @@ active project are stored in `localStorage`.
 
 The UI shows the MR/PR description, supports deep links to threads, findings and diff lines (with
 working browser Back/Forward), and keeps a per-review "viewed" state and file filter in the diff.
-A review can be removed from the local sidebar with **×**; this never deletes the MR/PR on the platform.
+The Diff tab groups files in a collapsible folder tree that can be hidden or resized, and expands
+hidden unchanged lines around hunks. A review can be removed from the local sidebar with **×**; this
+never deletes the MR/PR on the platform.
 A thin progress bar shows review loading. Long paths and URLs wrap or truncate inside cards, and thread,
 finding and line-comment paths have a copy button. While a text
 field is focused, background updates are deferred so typing is never overwritten; the agent reply on a

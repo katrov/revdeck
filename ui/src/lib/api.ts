@@ -80,6 +80,9 @@ export const removeProject = (project: string) =>
 export const getDiff = (review: string, file: string) =>
     api<{ file: import('./types').DiffPayload }>(`/api/diff?review=${encodeURIComponent(review)}&file=${encodeURIComponent(file)}`);
 
+export const getFileContent = (review: string, file: string) =>
+    api<{ file: import('./types').FileContentPayload }>(`/api/file?review=${encodeURIComponent(review)}&file=${encodeURIComponent(file)}`);
+
 export const runChecks = (review: string, ids?: string[]) =>
     api<{ results: { id: string; name: string; argv: string[]; status: 'passed' | 'failed' | 'error' | 'skipped'; output: string; durationMs: number }[] }>(
         '/api/checks',

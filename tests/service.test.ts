@@ -78,6 +78,17 @@ class FakeProvider implements Provider {
         return this.diffValue;
     }
 
+    readonly fileContents: Record<string, string> = {
+        'src/app.ts': 'const a = 1;\nconst b = 2;\nconst c = 3;\n',
+        'src/util.ts': 'export const x = 1;\nexport const y = 2;\n',
+    };
+    readonly fileContentCalls: string[] = [];
+
+    async fileContent(path: string): Promise<string> {
+        this.fileContentCalls.push(path);
+        return this.fileContents[path] ?? '';
+    }
+
     async threads(): Promise<Thread[]> {
         return this.threadsValue;
     }
@@ -228,6 +239,22 @@ describe('ReviewService', () => {
         expect(view.files).toHaveLength(2);
         expect(view.stats).toEqual({ files: 2, additions: 3, deletions: 0 });
         expect(view.threads[0]!.snippet?.some((line) => line.target)).toBe(true);
+    });
+
+    it('serves the full file content for expanding hidden diff lines', async () => {
+        const review = await open();
+        const content = await service.fileContent(review.id, 'src/app.ts');
+        expect(content).toEqual({
+            path: 'src/app.ts',
+            side: 'head',
+            lines: ['const a = 1;', 'const b = 2;', 'const c = 3;'],
+            totalLines: 3,
+            truncated: false,
+        });
+        // Повторный запрос идёт из кэша, а не из провайдера.
+        await service.fileContent(review.id, 'src/app.ts');
+        expect(provider.fileContentCalls).toEqual(['src/app.ts']);
+        await expect(service.fileContent(review.id, 'src/missing.ts')).rejects.toMatchObject({ status: 404 });
     });
 
     it('records a review version when history is enabled', async () => {

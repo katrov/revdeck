@@ -267,6 +267,12 @@ export class GitHubProvider implements Provider {
         return parseUnifiedDiff(chunks.join('\n'));
     }
 
+    async fileContent(path: string, ref: string): Promise<string> {
+        const encoded = path.split('/').map(encodeURIComponent).join('/');
+        // raw media type отдаёт файл целиком, без base64-обёртки contents API.
+        return this.call(['-H', 'Accept: application/vnd.github.raw', query(`repos/${this.repo}/contents/${encoded}`, { ref })]);
+    }
+
     async threads(): Promise<Thread[]> {
         const nodes: GqlThread[] = [];
         let after: string | null = null;
