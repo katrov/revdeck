@@ -362,6 +362,7 @@ reviews disable the runner. The agent can only show the plan; the bridge returns
 | `REVDECK_ROOT` | project root for the MCP server |
 | `REVDECK_FEATURE` | feature id for a feature-scoped MCP session; the current project must be a member |
 | `REVDECK_LANG` | CLI/MCP/daemon language: `ru` or `en` (default: system locale) |
+| `REVDECK_UPDATE_CHECK=0` | disable the UI update notice; the daemon still reports the current version |
 | `REVDECK_GLAB` | absolute path to `glab` when the daemon PATH does not contain it |
 | `REVDECK_GH` | absolute path to `gh` when the daemon PATH does not contain it |
 

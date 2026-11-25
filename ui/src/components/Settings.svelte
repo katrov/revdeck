@@ -1,14 +1,22 @@
 <script lang="ts">
-    import { app, setFeaturesHidden, showHelp } from '../lib/state.svelte';
+    import { app, notify, relativeTime, setFeaturesHidden, showHelp } from '../lib/state.svelte';
     import { i18n, setLocale, t } from '../lib/i18n.svelte';
     import { setTheme, theme, type ThemeMode } from '../lib/theme.svelte';
     import { AUTO_REFRESH_CHOICES, autoRefresh, setAutoRefreshMinutes } from '../lib/auto-refresh.svelte';
+    import { checkForUpdates, update } from '../lib/update.svelte';
 
     const themes: { id: ThemeMode; label: string; icon: string }[] = [
         { id: 'auto', label: 'Auto', icon: '◐' },
         { id: 'light', label: 'Light', icon: '☀' },
         { id: 'dark', label: 'Dark', icon: '☾' },
     ];
+
+    function copyUpdateCommand(): void {
+        void navigator.clipboard?.writeText('npm install -g revdeck@latest').then(
+            () => notify(t('Команда скопирована', 'Command copied'), 'ok'),
+            () => notify(t('Не удалось скопировать', 'Could not copy'), 'error'),
+        );
+    }
 </script>
 
 <div class="settings">
@@ -65,6 +73,47 @@
                 >{minutes === 0 ? t('Выкл', 'Off') : `${minutes} ${t('мин', 'min')}`}</button>
             {/each}
         </div>
+    </section>
+
+    <section class="card">
+        <div class="card-title">{t('О программе', 'About')}</div>
+        <div class="spread" style="gap: 12px; flex-wrap: wrap">
+            <span>
+                <span class="mono">revdeck v{update.info?.current ?? '—'}</span>
+                {#if update.info?.checkedAt}
+                    <span class="muted small">· {t('проверено', 'checked')} {relativeTime(update.info.checkedAt)}</span>
+                {/if}
+            </span>
+            <button
+                class="btn"
+                type="button"
+                disabled={update.loading}
+                onclick={() => void checkForUpdates({ force: true, announce: true })}
+            >{update.loading ? t('Проверяю…', 'Checking…') : t('Проверить обновления', 'Check for updates')}</button>
+        </div>
+        {#if update.info?.updateAvailable && update.info.latest}
+            <div class="update-callout">
+                <strong>{t(`Доступна версия ${update.info.latest}`, `Version ${update.info.latest} is available`)}</strong>
+                <p class="muted small">{t('Обновите глобальный пакет и перезапустите демон.', 'Update the global package and restart the daemon.')}</p>
+                <div class="row">
+                    <code class="update-command">npm install -g revdeck@latest</code>
+                    <button class="btn icon" type="button" title={t('Скопировать команду', 'Copy command')} aria-label={t('Скопировать команду', 'Copy command')} onclick={copyUpdateCommand}>⧉</button>
+                    {#if update.info.releaseUrl}
+                        <a class="btn" href={update.info.releaseUrl} target="_blank" rel="noreferrer noopener">{t('Что нового', "What's new")}</a>
+                    {/if}
+                </div>
+            </div>
+        {:else if update.info?.checkedAt}
+            <p class="muted small">{t('Обновлений нет.', 'No updates available.')}</p>
+        {/if}
+        {#if update.info && !update.info.enabled}
+            <p class="muted small">
+                {t('Проверка обновлений отключена (REVDECK_UPDATE_CHECK=0).', 'Update checks are disabled (REVDECK_UPDATE_CHECK=0).')}
+            </p>
+        {/if}
+        {#if update.info?.error}
+            <p class="muted small">{update.info.error}</p>
+        {/if}
     </section>
 
     <section class="card">

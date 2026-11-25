@@ -177,12 +177,20 @@ a permanent project link; a project appears in a feature while at least one of i
   (off/10/30/60 min, default 10 min). Auto-refresh runs the same forced refresh as the header button while a review or
   preview is open; ticks are skipped in background tabs, while typing and with open dialogs, and the
   countdown restarts after any manual refresh.
+- New releases are surfaced in the UI: the daemon checks the npm `latest` dist-tag at most once per
+  day, `GET /api/update` exposes current/latest/release URL, the sidebar shows the running version and
+  an update badge, review pages show a dismissible banner, and Settings has an About card with a
+  manual check and the npm update command. `REVDECK_UPDATE_CHECK=0` disables the check; there is no
+  telemetry and no automatic installation.
 - Responsive sidebar and mobile backdrop; dark/light theme via CSS variables.
 
 ## Security and trust
 
 - Unix socket with `0700` directory and `0600` socket; loopback UI only; `Host`/`Origin` checks,
   `HttpOnly` `SameSite=Strict` cookie, CSP.
+- The update notice is pull-based: the daemon contacts `registry.npmjs.org` at most once per day,
+  sends no identifiers beyond the `revdeck/<version>` User-Agent, never downloads or installs a
+  package, and can be disabled with `REVDECK_UPDATE_CHECK=0`.
 - The devcontainer bridge is agent-scoped (`read`/`draft`): `publish.*`, `checks.run`, decisions,
   platform writes and feature/project administration return `CAPABILITY`. The UI token is not mounted
   into the container.

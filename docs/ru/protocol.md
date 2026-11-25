@@ -158,6 +158,7 @@ Human-only методы возвращают `CAPABILITY` на мосту: `publ
 | GET | `/` | SPA; `?t=<token>` ставит cookie и редиректит |
 | GET | `/assets/*` | статика сборки |
 | GET | `/api/health` | живость |
+| GET | `/api/update?refresh=1` | текущая/последняя версия из npm `latest`; `refresh=1` обходит кеш демона |
 | GET | `/api/projects` | зарегистрированные проекты |
 | GET | `/api/reviews?project=` | список ревью, опционально в скоупе |
 | POST | `/api/projects/register`, `/update`, `/remove` | зарегистрировать, изменить или удалить проект |

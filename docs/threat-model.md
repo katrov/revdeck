@@ -35,6 +35,7 @@
 | A malicious `.revdeck.yml` executes code | The bridge denies `checks.run` (`CAPABILITY`); checks are run by a human in the UI or the host CLI, which shows the full argv; the CLI refuses `--run` inside a devcontainer | A human may still run a malicious command from someone else's MR in the UI/host CLI — read the argv; host checks are not sandboxed yet |
 | Leakage through logs/errors | Redaction of tokens, ANSI and control characters; length limits; logs in a private directory | Comment text may contain secrets — do not publish it |
 | Supply chain | Minimal dependencies, lockfile, esbuild/Vite build, provenance on npm publish | The same as for any npm package |
+| Update check leaks local context or usage | Only `registry.npmjs.org` is contacted, at most once per day; no repository, project or review data, only `revdeck/<version>` as the User-Agent; `REVDECK_UPDATE_CHECK=0` disables it | The registry sees the host IP and the revdeck version |
 | Approval theft | An approval is 16 random bytes, TTL 10 minutes, single-use, bound to review+hash, stored only in SQLite on the host; `publish.approve`/`commit` are human-only on the bridge | The host CLI/UI token is still local authority; a process that can mount the host state or use the primary socket has it |
 
 ## Project isolation

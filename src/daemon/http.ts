@@ -227,6 +227,11 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                 return;
             }
 
+            if (req.method === 'GET' && url.pathname === '/api/update') {
+                const update = await service.updateInfo(url.searchParams.get('refresh') === '1');
+                reply(res, 200, { ok: true, update });
+                return;
+            }
             if (req.method === 'GET' && url.pathname === '/api/health') {
                 reply(res, 200, { ok: true, version: options.version ?? 'dev', reviews: service.listReviews().length });
                 return;
