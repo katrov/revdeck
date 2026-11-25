@@ -49,9 +49,10 @@ and a web UI. Platform tokens stay on the host.
 - **Open MRs/PRs page.** The sidebar opens a cross-project list of open MRs/PRs with scope, project,
   text, author, target and draft filters; each row can be previewed read-only or opened as a review.
   Opening from the list keeps a clickable breadcrumb, and returning restores the filters and scroll.
-- **Settings page.** Theme (system/light/dark), interface language, command reference and the
-  Features-section visibility live on a separate Settings page; theme and visibility are stored
-  locally.
+- **Settings page.** Theme (system/light/dark), interface language, command reference, the
+  Features-section visibility and the auto-refresh interval live on a separate Settings page; the
+  choices are stored locally. Auto-refresh repeats the header “Refresh” action (off/1/5/15 min)
+  while a review or preview is open and skips background tabs, typing and open dialogs.
 - **Read-only MR/PR preview.** Open an MR/PR from the “Open review” dialog with “Preview only”:
   description, diff and discussions are available, but findings, comments, reactions and publishing
   are disabled. Previews are cached in memory and do not create a review or metrics event.

@@ -15,11 +15,17 @@ All notable changes to this project are documented here. The format is based on
   the whole tree can be hidden behind a slim rail and restored, and the panel width is resizable
   by drag or arrow keys (220–760 px) with the width and hidden state persisted in `localStorage`.
 - The platform comment field on findings grows with its text instead of a fixed-height textarea.
+- Settings choose an auto-refresh interval (off/1/5/15 min, default 5). It repeats the header
+  “Refresh” action while a review or preview is open, skips background tabs, typing and open
+  dialogs, restarts the countdown after a manual refresh, and keeps the current preview if a silent
+  refresh fails.
 
 ### Fixed
 
 - Wide code snippets in findings keep the added/removed background across the full line when
   scrolled horizontally; the background no longer stops at the card width.
+- A silent refresh no longer resets the open diff file, expanded hidden lines or the file tree when
+  the commit and diff stats are unchanged.
 
 ## [0.12.2] - 2026-11-23
 

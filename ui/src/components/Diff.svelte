@@ -85,6 +85,7 @@
     let contentError = $state('');
     let contentRequest = 0;
     let diffRequest = 0;
+    let loadedDiffKey = '';
     let expandedGaps = $state<Record<string, { top: number; bottom: number }>>({});
 
     const file = $derived(app.diffFile);
@@ -233,17 +234,30 @@
     $effect(() => {
         const reviewId = app.review?.id;
         const path = app.diffFile;
+        const commit = app.review?.info.commit;
+        const stats = app.review?.stats;
+        // Фоновое автообновление заменяет app.review, но при том же коммите и
+        // diff'е не должно сбрасывать раскрытые строки и перечитывать файл.
+        if (!reviewId || !path) {
+            loadedDiffKey = '';
+            diffRequest += 1;
+            diff = null;
+            loading = false;
+            error = '';
+            fileContent = null;
+            contentError = '';
+            expandedGaps = {};
+            limit = PAGE_LINES;
+            return;
+        }
+        const key = `${reviewId}|${path}|${commit?.head ?? ''}|${commit?.base ?? ''}|${stats?.files ?? 0}|${stats?.additions ?? 0}|${stats?.deletions ?? 0}`;
+        if (key === loadedDiffKey) return;
+        loadedDiffKey = key;
         const request = ++diffRequest;
         fileContent = null;
         contentError = '';
         expandedGaps = {};
         limit = PAGE_LINES;
-        if (!reviewId || !path) {
-            diff = null;
-            loading = false;
-            error = '';
-            return;
-        }
         diff = null;
         loading = true;
         error = '';
@@ -253,6 +267,7 @@
             })
             .catch((cause) => {
                 if (request !== diffRequest) return;
+                loadedDiffKey = '';
                 error = errorText(cause);
                 diff = null;
             })

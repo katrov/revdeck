@@ -1,11 +1,12 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { app, applyRoute, backToMrList, bootstrap, flushPendingReload, forgetReview, initFeaturesHidden, loadFeature, loadFeatures, loadPreview, loadProjects, loadReview, loadReviews, notify, setActiveProject, setTab, showFeaturesHome, showHelp, showMrList, showProjectsHome, showSettings, subscribe, writeHash } from './lib/state.svelte';
+    import { app, applyRoute, backToMrList, bootstrap, flushPendingReload, forgetReview, initFeaturesHidden, isEditingText, loadFeature, loadFeatures, loadProjects, loadReview, loadReviews, notify, refreshCurrent, setActiveProject, setTab, showFeaturesHome, showHelp, showMrList, showProjectsHome, showSettings, subscribe, writeHash } from './lib/state.svelte';
     import { removeProject as removeProjectApi, removeReview as removeReviewApi } from './lib/api';
     import type { ProjectSummary, ReviewListItem } from './lib/types';
     import type { Tab } from './lib/types';
     import { plural, t } from './lib/i18n.svelte';
     import { initTheme } from './lib/theme.svelte';
+    import { autoRefresh, initAutoRefresh } from './lib/auto-refresh.svelte';
     import Overview from './components/Overview.svelte';
     import Threads from './components/Threads.svelte';
     import Findings from './components/Findings.svelte';
@@ -39,6 +40,7 @@
     let lastWheelAt = 0;
     let touchY: number | null = null;
     let chromeCheckTimer: ReturnType<typeof setTimeout> | null = null;
+    let autoRefreshNonce = $state(0);
     const SIDEBAR_KEY = 'revdeck.sidebar';
 
     function setChromeHidden(hidden: boolean): void {
@@ -226,16 +228,12 @@
         }
     }
 
-    function refresh(): void {
-        if (app.preview && app.previewRef) {
-            void loadPreview(app.previewRef, { tab: app.tab, refresh: true });
-            notify(t('Обновлено', 'Updated'), 'info');
-            return;
-        }
-        const id = app.review?.id;
-        if (!id) return;
-        void loadReview(id, { refresh: true });
-        notify(t('Обновлено', 'Updated'), 'info');
+    function refresh(options: { silent?: boolean } = {}): void {
+        if (!app.review) return;
+        // Любое обновление, включая ручное, начинает новый интервал автообновления.
+        autoRefreshNonce += 1;
+        void refreshCurrent(options);
+        if (!options.silent) notify(t('Обновлено', 'Updated'), 'info');
     }
 
     function toggleSidebar(): void {
@@ -285,6 +283,7 @@
     onMount(() => {
         initTheme();
         initFeaturesHidden();
+        initAutoRefresh();
         const narrow = window.innerWidth <= 860;
         try {
             const stored = localStorage.getItem(SIDEBAR_KEY);
@@ -308,6 +307,29 @@
             window.removeEventListener('hashchange', applyRoute);
             document.removeEventListener('focusout', onFocusOut);
         };
+    });
+
+    // Автообновление повторяет ручную кнопку: принудительный refresh из платформы.
+    // Пропускаем тики в фоне и во время ввода, а ручной refresh сбрасывает отсчёт.
+    $effect(() => {
+        const minutes = autoRefresh.minutes;
+        const target = app.preview && app.previewRef
+            ? `preview:${app.previewRef.platform}:${app.previewRef.host}/${app.previewRef.project}!${app.previewRef.number}`
+            : (app.review?.id ?? '');
+        autoRefreshNonce;
+        if (!minutes || !target) return;
+        const period = minutes * 60_000;
+        const checkEvery = Math.min(15_000, period);
+        let last = Date.now();
+        const timer = setInterval(() => {
+            if (Date.now() - last < period) return;
+            if (document.visibilityState !== 'visible') return;
+            // Не дёргаем сеть во время ввода и поверх диалогов публикации/выбора.
+            if (app.loading || isEditingText() || app.publishing || document.querySelector('.overlay, [role="dialog"]')) return;
+            last = Date.now();
+            refresh({ silent: true });
+        }, checkEvery);
+        return () => clearInterval(timer);
     });
 </script>
 
@@ -470,7 +492,13 @@
                         >
                             ☰
                         </button>
-                        <button class="btn" onclick={refresh} title={t('Обновить (r)', 'Refresh (r)')}>{t('Обновить', 'Refresh')}</button>
+                        <button
+                            class="btn"
+                            onclick={() => refresh()}
+                            title={autoRefresh.minutes
+                                ? `${t('Обновить (r)', 'Refresh (r)')} · ${t('авто', 'auto')} ${autoRefresh.minutes} ${t('мин', 'min')}`
+                                : t('Обновить (r)', 'Refresh (r)')}
+                        >{t('Обновить', 'Refresh')}</button>
                         <a class="btn" href={review.info.webUrl} target="_blank" rel="noreferrer noopener">{t('Открыть в платформе', 'Open in platform')}</a>
                         {#if !app.preview}
                         <button
