@@ -68,7 +68,8 @@ and a web UI. Platform tokens stay on the host.
   state. Conflict or "behind target" is surfaced before findings, so a clean merge-base diff is not
   mistaken for a mergeable MR. Local diffs and snapshots from older versions may not have merge info.
 - **Compact on scroll.** The review header collapses when scrolling down and returns when scrolling
-  up; the section tabs stay at the top.
+  up; the section tabs stay at the top. This also works inside the independently scrolling Diff pane,
+  including its scrollbar and keyboard scrolling.
 - **Large lists stay light.** Threads and findings render only visible pages; focus, editors and deep
   links keep working, and small reviews are rendered in full.
 

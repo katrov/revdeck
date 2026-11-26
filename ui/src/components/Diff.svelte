@@ -10,6 +10,8 @@
     import InlineThread from './InlineThread.svelte';
     import InlineFinding from './InlineFinding.svelte';
 
+    let { onContentScroll }: { onContentScroll?: (element: HTMLElement) => void } = $props();
+
     const TREE_WIDTH_KEY = 'revdeck.diff.treeWidth';
     const TREE_HIDDEN_KEY = 'revdeck.diff.treeHidden';
     const TREE_MIN = 220;
@@ -746,7 +748,7 @@
         </button>
     {/if}
 
-    <div class="diff-view">
+    <div class="diff-view" onscroll={(event) => onContentScroll?.(event.currentTarget as HTMLElement)}>
         {#if loading && !diff}
             <p class="muted" style="padding: 12px">{t('Загрузка diff…', 'Loading diff…')}</p>
         {:else if error}

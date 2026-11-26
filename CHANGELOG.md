@@ -12,6 +12,11 @@ All notable changes to this project are documented here. The format is based on
   reply composer, and agent findings with level, status and body. “Open” jumps to the full Threads or
   Findings tab. Replies still go through the normal publish confirmation.
 
+### Fixed
+
+- The review header now collapses on the Diff tab as well: the scroll handler follows the
+  nested diff pane (wheel, scrollbar and keyboard scrolling), not only the outer content scroller.
+
 ## [0.14.0] - 2026-11-25
 
 ### Added

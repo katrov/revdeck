@@ -43,7 +43,8 @@ The core guarantees:
   such as Rules, Analytics and Diff are not restarted on every SSE/poll tick. SSE heartbeats gate the
   polling fallback, and review, feature and project events reload only their own scope.
 - The review header collapses on downward scroll and smoothly returns on upward scroll; section tabs
-  remain visible. The same content-scroll pattern is used where a large page header is present.
+  remain visible. The same content-scroll pattern is used where a large page header is present, and
+  the Diff tab wires its nested scroller (wheel, scrollbar and keyboard) into the same handler.
 - The UI has a cross-project Open MRs/PRs page with client-side scope/search/author/target/draft
   filters; it uses the existing `reviews.remoteList` per registered project and can open either the
   read-only preview or a full review. Opening from the list records the origin, so preview/review
