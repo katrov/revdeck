@@ -328,6 +328,13 @@ pre {
     border-bottom-color: var(--accent);
 }
 
+.chrome-toggle {
+    align-self: center;
+    margin-left: auto;
+    margin-bottom: 4px;
+}
+
+
 .tab .count {
     display: inline-block;
     margin-left: 6px;
