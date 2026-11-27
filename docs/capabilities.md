@@ -42,6 +42,8 @@ The core guarantees:
   opening never waits for `glab`/`gh`. Background reloads merge into the current review, so tab loaders
   such as Rules, Analytics and Diff are not restarted on every SSE/poll tick. SSE heartbeats gate the
   polling fallback, and review, feature and project events reload only their own scope.
+- The review header can also be collapsed manually with a header button. While hidden, a restore
+  button in the tabs row brings it back; manual collapse is not reopened by the scroll timer.
 - The review header collapses on downward scroll and smoothly returns on upward scroll; section tabs
   remain visible. The same content-scroll pattern is used where a large page header is present, and
   the Diff tab wires its nested scroller (wheel, scrollbar and keyboard) into the same handler.

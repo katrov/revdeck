@@ -45,14 +45,14 @@
     let autoRefreshNonce = $state(0);
     const SIDEBAR_KEY = 'revdeck.sidebar';
 
-    function setChromeHidden(hidden: boolean): void {
+    function setChromeHidden(hidden: boolean, manual = false): void {
         if (hidden === chromeHidden) return;
         chromeHidden = hidden;
         // Свёрнутая/раскрытая шапка меняет высоту .content и может сдвинуть scrollTop.
         // Эти программные scroll-события не должны переключать шапку обратно.
         suppressChromeUntil = performance.now() + 450;
         if (chromeCheckTimer) clearTimeout(chromeCheckTimer);
-        if (hidden) {
+        if (hidden && !manual) {
             chromeCheckTimer = setTimeout(() => {
                 chromeCheckTimer = null;
                 const element = chromeScroller ?? document.querySelector('.content');
@@ -538,6 +538,13 @@
                     <div class="header-actions">
                         <button
                             class="btn icon"
+                            type="button"
+                            onclick={() => setChromeHidden(true, true)}
+                            title={t('Скрыть шапку', 'Hide header')}
+                            aria-label={t('Скрыть шапку', 'Hide header')}
+                        >⌃</button>
+                        <button
+                            class="btn icon"
                             onclick={toggleSidebar}
                             title={t('Скрыть/показать сайдбар (s)', 'Hide/show sidebar (s)')}
                             aria-label={t('Скрыть/показать сайдбар', 'Hide/show sidebar')}
@@ -618,6 +625,15 @@
                         {tab.label}{#if tab.count}<span class="count">{tab.count}</span>{/if}
                     </button>
                 {/each}
+                {#if chromeHidden}
+                    <button
+                        class="btn icon chrome-toggle"
+                        type="button"
+                        onclick={() => setChromeHidden(false, true)}
+                        title={t('Показать шапку', 'Show header')}
+                        aria-label={t('Показать шапку', 'Show header')}
+                    >⌄</button>
+                {/if}
             </nav>
 
             {#if updateBannerVisible()}
