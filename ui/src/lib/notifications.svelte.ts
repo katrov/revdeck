@@ -1,4 +1,5 @@
 import { t } from './i18n.svelte';
+import { rememberSetting } from './settings-sync';
 import type { ReviewView, Thread } from './types';
 
 const KEY = 'revdeck.notifyThreads';
@@ -18,17 +19,23 @@ function permission(): NotificationPermission | 'unsupported' {
 const initialPermission = permission();
 export const notifications = $state({ enabled: stored() && initialPermission === 'granted', permission: initialPermission });
 
-export async function setNotificationsEnabled(value: boolean): Promise<void> {
-    if (value && typeof Notification !== 'undefined' && Notification.permission === 'default') {
-        await Notification.requestPermission();
-    }
-    notifications.permission = permission();
+/** Применить значение без записи на сервер: для загрузки сохранённых настроек. */
+export function applyNotificationsEnabled(value: boolean): void {
     notifications.enabled = value && notifications.permission === 'granted';
     try {
         localStorage.setItem(KEY, notifications.enabled ? '1' : '0');
     } catch {
         // localStorage может быть недоступен.
     }
+}
+
+export async function setNotificationsEnabled(value: boolean): Promise<void> {
+    if (value && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        await Notification.requestPermission();
+    }
+    notifications.permission = permission();
+    applyNotificationsEnabled(value);
+    rememberSetting('notificationsEnabled', notifications.enabled);
 }
 
 function bodyOf(thread: Thread): string {

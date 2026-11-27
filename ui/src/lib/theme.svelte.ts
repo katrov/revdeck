@@ -1,3 +1,5 @@
+import { rememberSetting } from './settings-sync';
+
 export type ThemeMode = 'auto' | 'light' | 'dark';
 
 const KEY = 'revdeck.theme';
@@ -10,7 +12,8 @@ function apply(mode: ThemeMode): void {
     else root.dataset.theme = mode;
 }
 
-export function setTheme(mode: ThemeMode): void {
+/** Применить тему без записи на сервер: для загрузки сохранённых настроек. */
+export function applyTheme(mode: ThemeMode): void {
     theme.mode = mode;
     apply(mode);
     try {
@@ -18,6 +21,11 @@ export function setTheme(mode: ThemeMode): void {
     } catch {
         // localStorage may be unavailable.
     }
+}
+
+export function setTheme(mode: ThemeMode): void {
+    applyTheme(mode);
+    rememberSetting('theme', mode);
 }
 
 export function initTheme(): void {
@@ -28,6 +36,5 @@ export function initTheme(): void {
     } catch {
         // localStorage may be unavailable.
     }
-    theme.mode = mode;
-    apply(mode);
+    applyTheme(mode);
 }

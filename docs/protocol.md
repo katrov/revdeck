@@ -45,6 +45,10 @@ bridge is authorized by transport capability: `agent` may read and draft, but hu
 | Method | Parameters | Result |
 |---|---|---|
 | `ping` | — | version, protocol, pid |
+| `auth.status` | — / `platform`, `host` | `glab`/`gh` state per host from the project registry (or one explicit host): binary, authenticated, account, hint. Never returns a token |
+| `auth.login` | `platform`, `host`, `token` | checks the token with `GET /user`, stores it via `glab`/`gh` stdin, returns the new state; the token is not kept or echoed (human-only) |
+| `settings.get` | — | UI preferences stored on the daemon: theme, locale, hidden sections, auto-refresh, notifications |
+| `settings.put` | `patch` | merges one or more preference keys and returns the full set (human-only) |
 | `projects.list` | — | registered projects with review counts and roots |
 | `projects.register` | `root` | project resolved from that working copy |
 | `projects.update` | `project`, `title?`, `roots?` | rename a project or replace its working-copy roots |
@@ -103,7 +107,8 @@ bridge is authorized by transport capability: `agent` may read and draft, but hu
 
 Human-only methods return `CAPABILITY` on the bridge: `publish.approve`, `publish.commit`,
 `checks.run`, `decisions.put`, `comments.update/delete`, `reactions.*`, `attachments.upload`,
-`reviews.remove`, `projects.register/update/remove`, and feature administration
+`reviews.remove`, `projects.register/update/remove`, `auth.status`/`auth.login`,
+`settings.get`/`settings.put`, and feature administration
 (`features.create/update/delete/addReviews/removeReview/reorder`).
 
 ## Project scope

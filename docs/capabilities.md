@@ -23,11 +23,15 @@ The core guarantees:
   approves the exact plan in the UI or CLI on the host; the daemon then posts it. The devcontainer
   bridge has no `publish.approve`/`publish.commit` (`CAPABILITY`), so an agent cannot create an approval.
 - **Tokens stay on the host.** The daemon calls `glab`/`gh`; platform tokens are not passed over RPC
-  and are scrubbed from child environments.
+  and are scrubbed from child environments. A token pasted in Settings is verified with `GET /user` and
+  forwarded to `glab`/`gh` on stdin; the CLI stores it, revdeck keeps no copy, and `auth.status` returns
+  only the host, the account and a hint.
 - **Project rules are explicit.** For changed paths revdeck selects repository documents and exact
   sections (`AGENTS.md`, architecture, style guides, ADRs).
-- **One local database.** Reviews, projects, features, drafts, approvals and audit live in SQLite in
-  the user's state directory.
+- **One local database.** Reviews, projects, features, drafts, approvals, audit and UI preferences
+  (theme, language, hidden sections, auto-refresh, notifications) live in SQLite in the user's state
+  directory. The daemon picks a new port on every start, so browser `localStorage` cannot be the
+  source of truth for settings — the UI reads them from the daemon before the first paint.
 - **Agent work is review-only.** Checks are planned by the agent and run by a human in the UI or the
   host CLI; the bridge denies `checks.run`. Publishing, resolving and approvals remain human actions.
 
@@ -256,6 +260,8 @@ path.
 - `revdeck eject`: inverse operation; plan by default, `--yes` to apply, `--keep-config` to keep the
   config.
 - `revdeck doctor`: Node, git, `glab`/`gh` auth, daemon, adapters; knows about devcontainers.
+- Platform access in the UI: Settings lists the GitLab/GitHub hosts from the project registry with their
+  `glab`/`gh` state and lets a human paste a token; the daemon verifies it and stores it in the CLI.
 - Daemon lifecycle: start/stop/restart/status/logs/install/uninstall; systemd user unit on Linux,
   launchd on macOS.
 - Devcontainer bridge: stable socket/state mounts; host-side `glab`/`gh`; no daemon in the container.

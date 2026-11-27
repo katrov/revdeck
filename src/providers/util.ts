@@ -32,10 +32,11 @@ export function cliError(error: unknown, platform: Platform, host: string): neve
         );
     }
     if (/(auth|unauthor|401|403|not logged|token|credential|forbidden)/.test(lower)) {
-        const hint =
+        const login =
             platform === 'gitlab'
                 ? tr(`войдите в glab на этом хосте: glab auth login --hostname ${host}`, `log in to glab for this host: glab auth login --hostname ${host}`)
                 : tr(`войдите в gh: GH_HOST=${host} gh auth login`, `log in to gh: GH_HOST=${host} gh auth login`);
+        const hint = `${login}; ${tr('или введите токен в UI: Настройки → Доступ', 'or paste a token in the UI: Settings → Access')}`;
         throw new AuthError(`${platform}: ${message || tr('нет авторизации', 'not authenticated')}`, hint);
     }
     if (/(not found|404)/.test(lower)) throw new ProviderError(`${platform}: ${message}`, tr('проверьте номер ревью и доступ к проекту', 'check the review number and project access'));

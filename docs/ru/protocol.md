@@ -45,6 +45,10 @@
 | Метод | Параметры | Результат |
 |---|---|---|
 | `ping` | — | версия, протокол, pid |
+| `auth.status` | — / `platform`, `host` | состояние `glab`/`gh` по хостам из реестра проектов (или по одному явному хосту): бинарник, авторизация, аккаунт, подсказка. Токен не возвращается |
+| `auth.login` | `platform`, `host`, `token` | проверяет токен запросом `GET /user`, сохраняет его через stdin `glab`/`gh`, возвращает новое состояние; токен не сохраняется и не возвращается (human-only) |
+| `settings.get` | — | настройки UI, сохранённые демоном: тема, язык, скрытые разделы, автообновление, уведомления |
+| `settings.put` | `patch` | сливает один или несколько ключей настроек и возвращает полный набор (human-only) |
 | `projects.list` | — | зарегистрированные проекты с числом ревью и root'ами |
 | `projects.register` | `root` | проект, определённый по рабочей копии |
 | `projects.update` | `project`, `title?`, `roots?` | переименовать проект или заменить root'ы |
@@ -103,7 +107,8 @@
 
 Human-only методы возвращают `CAPABILITY` на мосту: `publish.approve`, `publish.commit`,
 `checks.run`, `decisions.put`, `comments.update/delete`, `reactions.*`, `attachments.upload`,
-`reviews.remove`, `projects.register/update/remove` и администрирование фич
+`reviews.remove`, `projects.register/update/remove`, `auth.status`/`auth.login`,
+`settings.get`/`settings.put` и администрирование фич
 (`features.create/update/delete/addReviews/removeReview/reorder`).
 
 ## Скоуп проекта

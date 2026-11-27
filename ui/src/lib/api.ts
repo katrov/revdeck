@@ -38,6 +38,14 @@ export const getState = (review: string) =>
 
 export const getProjects = () => api<{ projects: import('./types').ProjectSummary[] }>('/api/projects');
 
+/** Состояние доступа ко всем хостам из реестра или к одному явному хосту. */
+export const getAuthStatus = (target?: { platform?: import('./types').Platform; host?: string }) =>
+    rpc<{ hosts: import('./types').AuthState[] }>('auth.status', target ?? {});
+
+/** Проверить токен и отдать его glab/gh; демон копию не хранит. */
+export const loginAuth = (platform: import('./types').Platform, host: string, token: string) =>
+    rpc<{ host: import('./types').AuthState }>('auth.login', { platform, host, token });
+
 export interface RemoteReview {
     ref: { platform: 'gitlab' | 'github'; host: string; project: string; number: number };
     title: string;

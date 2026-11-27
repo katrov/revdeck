@@ -5,6 +5,7 @@ import { redact } from '../core/redact.js';
 import { messageOf, MrReviewError } from '../core/errors.js';
 import { PROTOCOL_VERSION, VERSION } from '../version.js';
 import { resolveExecutable } from '../core/exec.js';
+import { authLogin, authStatus, authTargets, parseAuthTarget, parseToken } from '../providers/auth.js';
 import type { ReviewService } from './service.js';
 import type { PublishKind } from '../core/types.js';
 import { HUMAN_POLICY, type RpcPolicy } from './capabilities.js';
@@ -72,6 +73,25 @@ export async function dispatch(
                 binaries: { glab, gh, git },
             };
         }
+        case 'auth.status': {
+            // Без параметров — все платформенные хосты из реестра проектов.
+            if (params.platform !== undefined || params.host !== undefined) {
+                return { hosts: [await authStatus(parseAuthTarget(params.platform, params.host))] };
+            }
+            const targets = authTargets(service.listProjects());
+            return { hosts: await Promise.all(targets.map((target) => authStatus(target))) };
+        }
+        case 'auth.login': {
+            // Токен проверяется запросом к платформе и уходит в stdin glab/gh:
+            // revdeck его не сохраняет и не возвращает обратно.
+            const target = parseAuthTarget(params.platform, params.host);
+            const token = parseToken(params.token);
+            return { host: await authLogin(target, token) };
+        }
+        case 'settings.get':
+            return { settings: service.uiSettings() };
+        case 'settings.put':
+            return { settings: service.updateUiSettings(params.patch ?? {}) };
         case 'projects.list':
             return { projects: service.listProjects() };
         case 'projects.register': {

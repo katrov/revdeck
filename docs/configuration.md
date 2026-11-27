@@ -366,6 +366,11 @@ reviews disable the runner. The agent can only show the plan; the bridge returns
 | `REVDECK_GLAB` | absolute path to `glab` when the daemon PATH does not contain it |
 | `REVDECK_GH` | absolute path to `gh` when the daemon PATH does not contain it |
 
+Platform credentials are not part of `.revdeck.yml`. `glab`/`gh` read them from their own
+configuration (`~/.config/glab-cli`, `~/.config/gh`, or the OS keyring). Sign in with the CLI, or paste a
+token in the UI **Settings → GitLab and GitHub access**: the daemon verifies it with `GET /user`, passes
+it to the CLI on stdin, and keeps no copy.
+
 ## Validation
 
 `revdeck config --json` shows the effective config, the path where it was found, and warnings.

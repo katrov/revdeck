@@ -1,3 +1,5 @@
+import { rememberSetting } from './settings-sync';
+
 export const AUTO_REFRESH_KEY = 'revdeck.autoRefreshMinutes';
 const LEGACY_SECONDS_KEY = 'revdeck.autoRefreshSeconds';
 /** Минуты; 0 — автообновление выключено. */
@@ -6,7 +8,8 @@ const DEFAULT_MINUTES = 10;
 
 export const autoRefresh = $state({ minutes: DEFAULT_MINUTES });
 
-export function setAutoRefreshMinutes(minutes: number): void {
+/** Применить значение без записи на сервер: для загрузки сохранённых настроек. */
+export function applyAutoRefreshMinutes(minutes: number): void {
     const next = (AUTO_REFRESH_CHOICES as readonly number[]).includes(minutes) ? minutes : 0;
     autoRefresh.minutes = next;
     try {
@@ -14,6 +17,11 @@ export function setAutoRefreshMinutes(minutes: number): void {
     } catch {
         // localStorage может быть недоступен.
     }
+}
+
+export function setAutoRefreshMinutes(minutes: number): void {
+    applyAutoRefreshMinutes(minutes);
+    rememberSetting('autoRefreshMinutes', autoRefresh.minutes);
 }
 
 export function initAutoRefresh(): void {
@@ -35,5 +43,5 @@ export function initAutoRefresh(): void {
     } catch {
         // localStorage может быть недоступен.
     }
-    autoRefresh.minutes = minutes;
+    applyAutoRefreshMinutes(minutes);
 }

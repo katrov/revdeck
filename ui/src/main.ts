@@ -1,9 +1,14 @@
 import { mount } from 'svelte';
 import './app.css';
-import { i18n, setLocale } from './lib/i18n.svelte';
+import { applyLocale, i18n } from './lib/i18n.svelte';
+import { restorePreferences } from './lib/preferences';
 import App from './App.svelte';
 
 const target = document.getElementById('app');
 if (!target) throw new Error('missing #app');
-setLocale(i18n.locale);
+
+// Локальный кеш — сразу; сохранённые на демоне настройки — до первого кадра,
+// чтобы тема и язык не мигали сбросом на значении по умолчанию.
+applyLocale(i18n.locale);
+await restorePreferences();
 mount(App, { target });

@@ -24,6 +24,10 @@ describe('RPC capabilities', () => {
             'features.update',
             'features.addReviews',
             'features.delete',
+            'auth.status',
+            'auth.login',
+            'settings.get',
+            'settings.put',
         ]) {
             await expect(dispatch(service, method, {}, AGENT_POLICY)).rejects.toMatchObject({ code: 'CAPABILITY' });
         }

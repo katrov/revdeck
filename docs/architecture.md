@@ -30,7 +30,8 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
   [publication sanitizer](threat-model.md), secret redaction, safe process execution.
 - `src/providers` — the only place that knows about platforms. `Provider` normalizes MR/PR, diff,
   full file content at a commit, threads, replies, resolution, comment creation, review verdicts and
-  platform checks/approvals.
+  platform checks/approvals. `auth.ts` serves platform access for the UI: status via `GET /user`, and a
+  token hand-off to `glab`/`gh` on stdin without keeping a copy.
 - `src/daemon/service.ts` — orchestrator: review refresh, drafts, decisions, publication plan,
   approval, idempotent writes, background sync, merge readiness and CODEOWNERS.
 - `src/daemon/update.ts` — optional npm update check: daily cache, short error backoff, no telemetry.

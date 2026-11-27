@@ -84,10 +84,11 @@ agent (MCP/CLI) ──unix socket──▶ revdeck daemon ──glab/gh──▶
 
 ## Install
 
-Requirements: Node.js ≥ 22.13 (Node 24 LTS recommended — `node:sqlite` is experimental in 22.x), `git`, and an authenticated platform CLI
-(`glab auth login` or `gh auth login`). The CLI must be in the daemon's `PATH`; set `REVDECK_GLAB` or
-`REVDECK_GH` to an absolute path if it lives in a mise/asdf/homebrew shim or a custom location. revdeck
-never reads or stores their tokens.
+Requirements: Node.js ≥ 22.13 (Node 24 LTS recommended — `node:sqlite` is experimental in 22.x), `git`, and the platform CLI
+(`glab` or `gh`) in the daemon's `PATH`. Sign in on the host (`glab auth login` / `gh auth login`), or
+paste a personal access token in the UI: **Settings → GitLab and GitHub access**. The daemon verifies the
+token and hands it to the CLI, which stores it; revdeck never keeps a copy. Set `REVDECK_GLAB` or
+`REVDECK_GH` to an absolute path if the CLI lives in a mise/asdf/homebrew shim or a custom location.
 
 ```bash
 # one-off
@@ -446,6 +447,10 @@ found. Full schema: [docs/configuration.md](docs/configuration.md).
   `Host`/`Origin` checks and CSP.
 - `glab`/`gh` run without a shell, with `cwd` outside the working copy and a scrubbed environment;
   secrets are redacted from logs and errors.
+- A token pasted in the UI is checked with a `GET /user` request, then passed to `glab`/`gh` on stdin
+  (never in argv) and stored by the CLI. revdeck does not keep a copy, `auth.status` returns only the
+  host and the account, and `auth.*` is human-only: the bridge answers `CAPABILITY`. The form is
+  disabled when the UI is not opened via `127.0.0.1`, because the token would travel over the network.
 - Rule/profile documents must be git-tracked, have a safe extension and are denied for local secrets
   (`.env*`, `.git/**`, `.npmrc`, `.revdeck.local.*`, keys); `.revdeck.local.yml` tracked by git is
   ignored as a repository file. Reads use an opened-fd realpath check to close symlink TOCTOU.
@@ -456,8 +461,9 @@ found. Full schema: [docs/configuration.md](docs/configuration.md).
 - Review text is untrusted data; agent instructions say so explicitly.
 
 Details: [docs/threat-model.md](docs/threat-model.md). The guarantee is: the token does not cross the
-sandbox boundary and is not returned over RPC. If a process can read the user's home directory, it can
-read the CLI configuration — isolate the agent.
+sandbox boundary and is not returned over RPC. A token entered in the UI is passed straight to the CLI
+and is not kept by revdeck. If a process can read the user's home directory, it can read the CLI
+configuration — isolate the agent.
 
 ## Architecture
 
