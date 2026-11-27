@@ -237,8 +237,8 @@ The UI shows the MR/PR description, supports deep links to threads, findings and
 working browser Back/Forward), and keeps a per-review "viewed" state and file filter in the diff.
 The Diff tab groups files in a collapsible folder tree that can be hidden or resized, and expands
 hidden unchanged lines around hunks. Open threads and findings are shown inline under their lines;
-threads support a quick reply (published only after confirmation). A review can be removed from the
-local sidebar with **×**; this
+threads support a quick reply (published only after confirmation). Hovering or focusing a reaction
+shows who reacted. A review can be removed from the local sidebar with **×**; this
 never deletes the MR/PR on the platform.
 A thin progress bar shows review loading. Long paths and URLs wrap or truncate inside cards, and thread,
 finding and line-comment paths have a copy button. While a text

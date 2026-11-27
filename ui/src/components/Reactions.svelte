@@ -59,17 +59,43 @@
 
 <div class="reactions">
     {#each reactions as reaction (reaction.name)}
-        <button
-            type="button"
-            class="reaction"
-            class:mine={reaction.mine}
-            class:pending={busy === reaction.name}
-            title={reaction.users.join(', ') || t('Нет авторов', 'No users')}
-            disabled={busy !== null}
-            onclick={() => void toggle(reaction.name)}
-        >
-            {EMOJI[reaction.name] ?? reaction.name} {reaction.count}
-        </button>
+        {@const emoji = EMOJI[reaction.name] ?? reaction.name}
+        {@const label = LABELS[reaction.name] ? t(LABELS[reaction.name]![0], LABELS[reaction.name]![1]) : reaction.name}
+        {@const users = reaction.users ?? []}
+        {@const visibleUsers = users.slice(0, 12)}
+        {@const hiddenUsers = users.length - visibleUsers.length}
+        <span class="reaction-wrap">
+            <button
+                type="button"
+                class="reaction"
+                class:mine={reaction.mine}
+                class:pending={busy === reaction.name}
+                aria-label={`${emoji} ${label}: ${reaction.count}${users.length ? ` — ${users.join(', ')}` : ''}`}
+                disabled={busy !== null}
+                onclick={() => void toggle(reaction.name)}
+            >
+                {emoji} {reaction.count}
+            </button>
+            <span class="reaction-tooltip" role="tooltip">
+                <span class="reaction-tooltip-head">
+                    <span>{emoji}</span>
+                    <strong>{label}</strong>
+                    <span class="muted">· {reaction.count}</span>
+                </span>
+                {#if visibleUsers.length}
+                    <span class="reaction-tooltip-users">
+                        {#each visibleUsers as user (user)}
+                            <span class="reaction-user">@{user}</span>
+                        {/each}
+                        {#if hiddenUsers > 0}
+                            <span class="reaction-user muted">+{hiddenUsers}</span>
+                        {/if}
+                    </span>
+                {:else}
+                    <span class="muted small">{t('Авторы не указаны', 'Authors are not available')}</span>
+                {/if}
+            </span>
+        </span>
     {/each}
     <button
         type="button"

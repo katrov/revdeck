@@ -73,6 +73,7 @@ The core guarantees:
   findings render inline under their lines; threads offer a quick reply that still requires publish
   confirmation, and “Open” jumps to the full tab.
 - Threads: read, reply, resolve, react; line comments from the human; reactions on MR/PR and notes.
+  Hovering or focusing a reaction shows its count and the usernames of the people who reacted.
 - Edit and delete your own platform comments.
 - Attachments: upload raster images and videos to GitLab project uploads and insert a markdown link;
   GitHub attachments are not supported by its public API.
