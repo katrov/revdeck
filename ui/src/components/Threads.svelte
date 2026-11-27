@@ -212,6 +212,7 @@
             <div class="grow">
                 <div class="card-title">
                     {thread.resolved ? t('Закрыт', 'Resolved') : t('Открыт', 'Open')}
+                    {#if thread.outdated}<span class="badge">{t('устарело', 'outdated')}</span>{/if}
                     {#if thread.path}
                         · <span class="thread-location">
                             <button class="path-link" title={`${thread.path}:${thread.line ?? '?'}`} onclick={() => focusLine(thread.path!, thread.line)}>{thread.path}:{thread.line ?? '?'}</button>

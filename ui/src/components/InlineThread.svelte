@@ -41,6 +41,7 @@
 <section class="inline-card inline-thread">
     <div class="inline-card-head">
         <span class="badge">{t('тред', 'thread')}</span>
+        {#if thread.outdated}<span class="badge">{t('устарело', 'outdated')}</span>{/if}
         <span class="muted small">
             {thread.notes.length}
             {plural(thread.notes.length, ['комментарий', 'комментария', 'комментариев'], ['comment', 'comments'])} ·

@@ -94,6 +94,7 @@ export interface Thread {
     path: string | null;
     line: number | null;
     side: 'new' | 'old' | null;
+    outdated?: boolean;
     resolvable: boolean;
     resolved: boolean;
     notes: Note[];
@@ -326,8 +327,40 @@ export interface UpdateInfo {
     error?: string;
 }
 
+export type PlatformCheckStatus = 'success' | 'failed' | 'pending' | 'neutral' | 'skipped';
+
+export interface PlatformCheck {
+    id: string;
+    name: string;
+    status: PlatformCheckStatus;
+    url: string | null;
+}
+
+export interface CodeownersInfo {
+    found: boolean;
+    path: string | null;
+    matches: { file: string; owners: string[] }[];
+    errors: string[];
+}
+
+export interface ReviewReadiness {
+    checks: PlatformCheck[];
+    approvals: { approved: number; required: number | null; changesRequested: number } | null;
+    errors: string[];
+    checkedAt: string;
+}
+
+export type ReviewVerdict = 'comment' | 'approve' | 'request_changes';
+export type PublishKind = 'reply' | 'finding' | 'note' | 'review';
+
 export interface PublishPreview {
-    plan: { reviewId: string; kind: 'reply' | 'finding' | 'note'; items: { kind: string; id: string; body: string; resolve?: boolean }[]; hash: string; createdAt: string };
+    plan: {
+        reviewId: string;
+        kind: PublishKind;
+        items: { kind: PublishKind; id: string; body: string; resolve?: boolean; verdict?: ReviewVerdict }[];
+        hash: string;
+        createdAt: string;
+    };
     warnings: string[];
 }
 

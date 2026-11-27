@@ -276,7 +276,8 @@ export interface Review {
     readOnly: boolean;
 }
 
-export type PublishKind = 'reply' | 'finding' | 'note';
+export type ReviewVerdict = 'comment' | 'approve' | 'request_changes';
+export type PublishKind = 'reply' | 'finding' | 'note' | 'review';
 
 export interface PublishItem {
     kind: PublishKind;
@@ -287,6 +288,8 @@ export interface PublishItem {
     file?: string;
     line?: number | null;
     side?: Side;
+    /** Только для kind=review: итоговый вердикт платформы. */
+    verdict?: ReviewVerdict;
 }
 
 export interface PublishPlan {
@@ -339,6 +342,29 @@ export interface RuleScope {
     file: string;
     kind: 'app' | 'test' | 'style' | 'config' | 'docs' | 'generated' | 'other';
     documents: RuleDocument[];
+}
+
+export type PlatformCheckStatus = 'success' | 'failed' | 'pending' | 'neutral' | 'skipped';
+
+export interface PlatformCheck {
+    id: string;
+    name: string;
+    status: PlatformCheckStatus;
+    url: string | null;
+}
+
+export interface ReviewApprovals {
+    approved: number;
+    required: number | null;
+    changesRequested: number;
+}
+
+/** Платформенные checks/approvals для панели готовности к мержу. */
+export interface ReviewReadiness {
+    checks: PlatformCheck[];
+    approvals: ReviewApprovals | null;
+    errors: string[];
+    checkedAt: string;
 }
 
 export interface CheckResult {

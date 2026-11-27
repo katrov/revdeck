@@ -706,7 +706,12 @@ revdeck open https://gitlab.com/group/project/-/merge_requests/42</pre>
 {/if}
 
 {#if app.publishing}
-    <PublishDialog kind={app.publishing.kind} ids={app.publishing.ids} onclose={() => (app.publishing = null)} />
+    <PublishDialog
+        kind={app.publishing.kind}
+        ids={app.publishing.ids}
+        verdict={app.publishing.verdict}
+        onclose={() => (app.publishing = null)}
+    />
 {/if}
 
 {#if paletteOpen}

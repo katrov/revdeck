@@ -20,6 +20,7 @@
     const TREE_DEFAULT = 300;
     const GAP_STEP = 10;
     const PAGE_LINES = 2600;
+    const WRAP_KEY = 'revdeck.diff.wrap';
 
     interface DirBucket {
         name: string;
@@ -51,6 +52,14 @@
         }
     }
 
+    function storedWrap(): boolean {
+        try {
+            return localStorage.getItem(WRAP_KEY) === '1';
+        } catch {
+            return false;
+        }
+    }
+
     function storedTreeHidden(): boolean {
         try {
             return localStorage.getItem(TREE_HIDDEN_KEY) === '1';
@@ -63,11 +72,15 @@
     let loading = $state(false);
     let error = $state('');
     let limit = $state(PAGE_LINES);
-    let noteTarget = $state<{ line: number } | null>(null);
+    let noteTarget = $state<{ line: number; text: string } | null>(null);
     let noteText = $state('');
     let savingNote = $state(false);
     let fileQuery = $state('');
     let filterInput = $state<HTMLInputElement | null>(null);
+    let findQuery = $state('');
+    let currentMatch = $state(0);
+    let currentIssue = $state(0);
+    let wrapLines = $state(storedWrap());
     let hideViewed = $state(false);
     let viewed = $state<Record<string, boolean>>({});
     let editingNote = $state<string | null>(null);
@@ -220,6 +233,88 @@
         return out;
     });
 
+    const findMatches = $derived.by(() => {
+        const needle = findQuery.trim().toLowerCase();
+        if (!needle) return [] as number[];
+        const out: number[] = [];
+        rows.slice(0, limit).forEach((row, index) => {
+            if (row.kind === 'line' && row.line.text.toLowerCase().includes(needle)) out.push(index);
+        });
+        return out;
+    });
+
+    $effect(() => {
+        if (currentMatch >= findMatches.length) currentMatch = 0;
+    });
+
+    $effect(() => {
+        try {
+            localStorage.setItem(WRAP_KEY, wrapLines ? '1' : '0');
+        } catch {
+            // localStorage может быть недоступен.
+        }
+    });
+
+    function parts(text: string): { text: string; hit: boolean }[] {
+        const needle = findQuery.trim();
+        if (!needle) return [{ text, hit: false }];
+        const lower = text.toLowerCase();
+        const target = needle.toLowerCase();
+        const out: { text: string; hit: boolean }[] = [];
+        let index = 0;
+        while (index < text.length) {
+            const at = lower.indexOf(target, index);
+            if (at < 0) {
+                out.push({ text: text.slice(index), hit: false });
+                break;
+            }
+            if (at > index) out.push({ text: text.slice(index, at), hit: false });
+            out.push({ text: text.slice(at, at + needle.length), hit: true });
+            index = at + needle.length;
+        }
+        return out;
+    }
+
+    const issueLines = $derived.by(() => {
+        const lines = new Set<number>();
+        for (const [line, threads] of threadsByLine) if (threads.length) lines.add(line);
+        for (const [line] of findingsByLine) lines.add(line);
+        return [...lines].sort((left, right) => left - right);
+    });
+
+    const fileIssueCounts = $derived.by(() => {
+        const map = new Map<string, { threads: number; findings: number }>();
+        for (const thread of app.review?.threads ?? []) {
+            if (!thread.path || thread.resolved) continue;
+            const current = map.get(thread.path) ?? { threads: 0, findings: 0 };
+            current.threads += 1;
+            map.set(thread.path, current);
+        }
+        for (const finding of app.review?.findings ?? []) {
+            if (finding.status === 'published' || finding.status === 'rejected') continue;
+            const current = map.get(finding.file) ?? { threads: 0, findings: 0 };
+            current.findings += 1;
+            map.set(finding.file, current);
+        }
+        return map;
+    });
+
+    function goIssue(delta: number): void {
+        if (!issueLines.length) return;
+        currentIssue = (currentIssue + delta + issueLines.length) % issueLines.length;
+        requestAnimationFrame(() => {
+            document.getElementById(`line-${issueLines[currentIssue]}`)?.scrollIntoView({ block: 'center' });
+        });
+    }
+
+    function goMatch(delta: number): void {
+        if (!findMatches.length) return;
+        currentMatch = (currentMatch + delta + findMatches.length) % findMatches.length;
+        requestAnimationFrame(() => {
+            document.querySelector(`[data-row-index="${findMatches[currentMatch]}"]`)?.scrollIntoView({ block: 'center' });
+        });
+    }
+
     /** Ключ кэша раскрытых участков не должен переезжать между файлами. */
     $effect(() => {
         const id = app.review?.id;
@@ -263,6 +358,9 @@
         contentError = '';
         expandedGaps = {};
         limit = PAGE_LINES;
+        findQuery = '';
+        currentMatch = 0;
+        currentIssue = 0;
         diff = null;
         loading = true;
         error = '';
@@ -440,6 +538,11 @@
             }
             return;
         }
+        if (event.shiftKey && event.code === 'KeyN') {
+            event.preventDefault();
+            goIssue(-1);
+            return;
+        }
         if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
         if (isEditingText()) return;
         if (document.querySelector('.overlay, [role="dialog"]')) return;
@@ -471,6 +574,10 @@
             case 'KeyV':
                 event.preventDefault();
                 if (file) toggleViewed(file, !(viewed[file] ?? false));
+                break;
+            case 'KeyN':
+                event.preventDefault();
+                goIssue(1);
                 break;
         }
     }
@@ -610,10 +717,15 @@
 
     const fileNotes = $derived((app.review?.notes ?? []).filter((note) => note.file === file));
 
-    function pickLine(lineNumber: number | null): void {
+    function pickLine(lineNumber: number | null, text = ''): void {
         if (!lineNumber || app.preview) return;
-        noteTarget = { line: lineNumber };
+        noteTarget = { line: lineNumber, text };
         noteText = '';
+    }
+
+    function suggest(): void {
+        if (!noteTarget) return;
+        noteText = `\`\`\`suggestion\n${noteTarget.text}\n\`\`\`\n`;
     }
 
     async function submitNote(): Promise<void> {
@@ -711,6 +823,14 @@
                         >
                             {#if row.item.status === 'added'}<span class="badge ok">A</span>{:else if row.item.status === 'deleted'}<span class="badge err">D</span>{:else if row.item.status === 'renamed'}<span class="badge">R</span>{:else}<span class="badge">M</span>{/if}
                             <span class="name">{name}</span>
+                            {#if fileIssueCounts.get(row.item.path)}
+                                {@const issues = fileIssueCounts.get(row.item.path)!}
+                                {#if issues.threads || issues.findings}
+                                    <span class="file-issues" title={t(`Открытые треды: ${issues.threads} · замечания: ${issues.findings}`, `Open threads: ${issues.threads} · findings: ${issues.findings}`)}>
+                                        {#if issues.threads}💬{issues.threads}{/if}{#if issues.findings} ⚑{issues.findings}{/if}
+                                    </span>
+                                {/if}
+                            {/if}
                             <span class="counts">{row.item.additions}/{row.item.deletions}</span>
                         </button>
                     </div>
@@ -758,8 +878,34 @@
         {:else if diff.binary}
             <p class="muted" style="padding: 12px">{t('Бинарный файл: diff не отображается.', 'Binary file: no diff to display.')}</p>
         {:else}
-            <div class="diff-content">
-                {#each rows.slice(0, limit) as row}
+            <div class="diff-toolbar">
+                <input
+                    class="diff-find"
+                    bind:value={findQuery}
+                    placeholder={t('Найти в diff…', 'Find in diff…')}
+                    aria-label={t('Найти в diff', 'Find in diff')}
+                    onkeydown={(event) => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault();
+                            goMatch(event.shiftKey ? -1 : 1);
+                        }
+                    }}
+                />
+                <span class="muted small">{findQuery.trim() ? `${findMatches.length ? currentMatch + 1 : 0}/${findMatches.length}` : ''}</span>
+                <button class="btn icon" type="button" title={t('Предыдущее совпадение', 'Previous match')} disabled={!findMatches.length} onclick={() => goMatch(-1)}>↑</button>
+                <button class="btn icon" type="button" title={t('Следующее совпадение', 'Next match')} disabled={!findMatches.length} onclick={() => goMatch(1)}>↓</button>
+                <div style="flex: 1"></div>
+                <label class="switch small">
+                    <input type="checkbox" bind:checked={wrapLines} style="width: auto" />
+                    {t('Переносить строки', 'Wrap lines')}
+                </label>
+                <span class="diff-toolbar-sep"></span>
+                <span class="muted small">{issueLines.length ? `${currentIssue + 1}/${issueLines.length}` : ''}</span>
+                <button class="btn icon" type="button" title={t('Предыдущее обсуждение (Shift+N)', 'Previous discussion (Shift+N)')} disabled={!issueLines.length} onclick={() => goIssue(-1)}>↑</button>
+                <button class="btn icon" type="button" title={t('Следующее обсуждение (n)', 'Next discussion (n)')} disabled={!issueLines.length} onclick={() => goIssue(1)}>↓</button>
+            </div>
+            <div class="diff-content" class:wrap={wrapLines}>
+                {#each rows.slice(0, limit) as row, rowIndex}
                     {#if row.kind === 'hunk'}
                         <div class="hunk-head">{row.header}</div>
                     {:else if row.kind === 'gap'}
@@ -808,12 +954,13 @@
                             class:add={line.kind === '+'}
                             class:del={line.kind === '-'}
                             class:target-line={app.diffFocus?.line === number && app.diffFocus?.file === diff.path}
+                            data-row-index={rowIndex}
                             id={`line-${number}`}
-                            onclick={() => pickLine(line.newLine)}
+                            onclick={() => pickLine(line.newLine, line.text)}
                             onkeydown={(event) => {
                                 if (event.key === 'Enter' || event.key === ' ') {
                                     event.preventDefault();
-                                    pickLine(line.newLine);
+                                    pickLine(line.newLine, line.text);
                                 }
                             }}
                             role="button"
@@ -824,7 +971,7 @@
                             <span class="n">{line.oldLine ?? ''}</span>
                             <span class="k">{line.kind === ' ' ? '' : line.kind}</span>
                             <span class="text">
-                                {line.text}{#if marks.has(number)}<span class="badge minor" style="margin-left: 8px">{truncate(marks.get(number)!.join(', '), 40)}</span>{/if}
+                                {#each parts(line.text) as part, partIndex (partIndex)}{#if part.hit}<mark>{part.text}</mark>{:else}{part.text}{/if}{/each}{#if marks.has(number)}<span class="badge minor" style="margin-left: 8px">{truncate(marks.get(number)!.join(', '), 40)}</span>{/if}
                             </span>
                         </div>
                         {#if line.newLine !== null && ((threadsByLine.get(number)?.length ?? 0) > 0 || (findingsByLine.get(number)?.length ?? 0) > 0)}
@@ -863,6 +1010,7 @@
                     />
                     <div class="row end" style="margin-top: 6px">
                         <span class="muted small">{t('Агент увидит комментарий в контексте ревью.', 'The agent sees this comment in the review context.')}</span>
+                        <button class="btn" type="button" title={t('Подставить блок suggestion с этой строкой', 'Insert a suggestion block with this line')} onclick={suggest}>{t('Предложить правку', 'Suggest change')}</button>
                         <button class="btn icon" type="button" title={t('Скопировать ссылку на строку', 'Copy line link')} onclick={() => copyFocusLink({ kind: 'line', file: file ?? '', line: noteTarget?.line ?? 0 }, 'diff')}>🔗</button>
                         <button class="btn primary" onclick={() => void submitNote()} disabled={savingNote || !noteText.trim()}>{t('Сохранить', 'Save')}</button>
                     </div>

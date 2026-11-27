@@ -29,9 +29,10 @@ agent (MCP/CLI) ──▶ revdeck daemon ──glab/gh──▶ GitLab/GitHub
 - `src/core` — pure functions and models: project identity and keys, unified diff parser, rules, finding fingerprints,
   [publication sanitizer](threat-model.md), secret redaction, safe process execution.
 - `src/providers` — the only place that knows about platforms. `Provider` normalizes MR/PR, diff,
-  full file content at a commit, threads, replies, resolution, and comment creation.
+  full file content at a commit, threads, replies, resolution, comment creation, review verdicts and
+  platform checks/approvals.
 - `src/daemon/service.ts` — orchestrator: review refresh, drafts, decisions, publication plan,
-  approval, idempotent writes, background sync.
+  approval, idempotent writes, background sync, merge readiness and CODEOWNERS.
 - `src/daemon/update.ts` — optional npm update check: daily cache, short error backoff, no telemetry.
 - `src/daemon/store.ts` — SQLite (`node:sqlite`): projects and their roots, reviews, diff/thread snapshot,
   drafts, findings, decisions, comments, approvals, audit.
@@ -152,6 +153,8 @@ documents declared in `context.sources` of each repository (`context.maxBytes` c
 - The diff is parsed on the server; the UI receives files as a list and hunks one file at a time.
   Expanding hidden lines requests `/api/file`: the service tries `git show <sha>:<path>` in the
   review root first, falls back to the provider raw API, and caches the parsed lines for 10 minutes.
+- Merge readiness is cached for 60 seconds and CODEOWNERS for five minutes per review; the UI does
+  not call the platform directly.
 - The UI never calls npm or GitHub directly (its CSP allows same-origin `connect-src` only). The
   daemon checks the npm `latest` dist-tag at most once per day via `/api/update`, caches failures for
   five minutes, and disables the check with `REVDECK_UPDATE_CHECK=0`.

@@ -1,12 +1,12 @@
 import { tmpdir } from 'node:os';
-import { REACTIONS, type DiffFile, type MergeInfo, type MergeState, type Note, type Platform, type Reaction, type ReviewInfo, type ReviewRef, type Thread, type UploadedAttachment, type User } from '../core/types.js';
+import { REACTIONS, type DiffFile, type ReviewReadiness, type MergeInfo, type MergeState, type Note, type Platform, type Reaction, type ReviewInfo, type ReviewRef, type Thread, type UploadedAttachment, type User } from '../core/types.js';
 import { parseUnifiedDiff } from '../core/diff.js';
-import { ProviderError } from '../core/errors.js';
+import { messageOf, ProviderError } from '../core/errors.js';
 import { redact } from '../core/redact.js';
 import { run as realRun, type Runner } from '../core/exec.js';
 import { parseJson, cliError, query, withTempJson } from './util.js';
 import { tr } from '../core/locale.js';
-import type { CreateThreadInput, CreatedThread, ListOptions, Provider, ProviderOptions, ReviewListItem, UploadInput } from './provider.js';
+import type { CreateThreadInput, CreatedThread, ListOptions, Provider, ProviderOptions, ReviewListItem, SubmitReviewInput, UploadInput } from './provider.js';
 
 interface GlUser {
     id: number;
@@ -57,6 +57,19 @@ interface GlMergeRequest {
     merge_status?: string;
     detailed_merge_status?: string;
     diff_refs?: { base_sha?: string; start_sha?: string; head_sha?: string } | null;
+}
+
+interface GlApprovals {
+    approved?: boolean;
+    approvals_required?: number;
+    approvals_left?: number;
+    approved_by?: { user?: GlUser }[];
+}
+
+interface GlPipeline {
+    id: number;
+    status: string;
+    web_url?: string;
 }
 
 interface GlDiffFile {
@@ -227,6 +240,43 @@ export class GitLabProvider implements Provider {
         return this.call([query(endpoint, { ref })]);
     }
 
+    async readiness(): Promise<ReviewReadiness> {
+        const errors: string[] = [];
+        let checks: ReviewReadiness['checks'] = [];
+        let approvals: ReviewReadiness['approvals'] = null;
+        try {
+            const pipelines = await this.json<GlPipeline[]>([query(this.endpoint('/pipelines'), { per_page: 1 })]);
+            const pipeline = Array.isArray(pipelines) ? pipelines[0] : undefined;
+            if (pipeline) {
+                const status =
+                    pipeline.status === 'success'
+                        ? ('success' as const)
+                        : pipeline.status === 'failed'
+                          ? ('failed' as const)
+                          : pipeline.status === 'running' || pipeline.status === 'pending' || pipeline.status === 'created'
+                            ? ('pending' as const)
+                            : pipeline.status === 'canceled'
+                              ? ('skipped' as const)
+                              : ('neutral' as const);
+                checks = [{ id: String(pipeline.id), name: `Pipeline #${pipeline.id}`, status, url: pipeline.web_url ?? null }];
+            }
+        } catch (error) {
+            errors.push(`pipeline: ${messageOf(error)}`);
+        }
+        try {
+            const data = await this.json<GlApprovals>([this.endpoint('/approvals')]);
+            const required = Number(data.approvals_required);
+            approvals = {
+                approved: (data.approved_by ?? []).length,
+                required: Number.isFinite(required) ? required : null,
+                changesRequested: 0,
+            };
+        } catch (error) {
+            errors.push(`approvals: ${messageOf(error)}`);
+        }
+        return { checks, approvals, errors, checkedAt: new Date().toISOString() };
+    }
+
     async threads(): Promise<Thread[]> {
         const discussions = await this.paged<GlDiscussion>(this.endpoint('/discussions'));
         const threads: Thread[] = [];
@@ -361,6 +411,24 @@ export class GitLabProvider implements Provider {
 
     async reactToReview(emoji: string): Promise<{ active: boolean }> {
         return this.toggleAward(this.endpoint('/award_emoji'), emoji);
+    }
+
+    async submitReview(input: SubmitReviewInput): Promise<{ id: string }> {
+        const note = await withTempJson({ body: input.body }, async (file) =>
+            this.json<GlNote>(['--method', 'POST', this.endpoint('/notes'), '--input', file]),
+        );
+        if (input.verdict === 'approve') {
+            await this.call(['--method', 'POST', this.endpoint('/approve')]);
+        } else if (input.verdict === 'request_changes') {
+            // GitLab не умеет «request changes»: снимаем approval и оставляем note.
+            // Если approval ещё не было, GitLab отвечает 404 — это не ошибка вердикта.
+            try {
+                await this.call(['--method', 'POST', this.endpoint('/unapprove')]);
+            } catch {
+                // уже без approval
+            }
+        }
+        return { id: String(note.id) };
     }
 
     async updateNote(noteId: string, body: string): Promise<void> {

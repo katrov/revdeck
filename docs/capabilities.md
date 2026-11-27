@@ -73,6 +73,23 @@ The core guarantees:
   findings render inline under their lines; threads offer a quick reply that still requires publish
   confirmation, and “Open” jumps to the full tab.
 - Threads: read, reply, resolve, react; line comments from the human; reactions on MR/PR and notes.
+- Diff search: find in the open file with match count and previous/next navigation, plus a persistent
+  wrap-lines mode for long lines.
+- Suggested changes: the line-comment composer inserts a ```suggestion block with the current line,
+  and the platform renders its native “apply suggestion” action after publish approval.
+- CODEOWNERS: the Overview resolves owners for changed files from the working copy or the platform
+  head and links each file back to the Diff tab.
+- Optional browser notifications for new open threads while the tab is in the background; permission
+  is requested from Settings and the choice stays in `localStorage`.
+- Incremental re-review: the UI stores the head commit marked as reviewed per review and shows a
+  banner when the head changed, with the number of stale findings, a diff link and a mark-reviewed
+  action.
+- Merge readiness in the Overview: GitHub check runs or the latest GitLab pipeline, approvals,
+  conflicts, behind-target and open threads, with links to checks and a manual refresh. The endpoint
+  is read-only and cached for 60 seconds.
+- Review summary publishing: the stored summary (changes, focus, coverage, unknowns) can be posted as
+  a GitHub review with an `approve`/`request_changes`/`comment` verdict, or as a GitLab note plus
+  approve/unapprove. The plan hash covers the exact text and verdict; publishing stays human-only.
   Hovering or focusing a reaction shows its count and the usernames of the people who reacted.
 - Edit and delete your own platform comments.
 - Attachments: upload raster images and videos to GitLab project uploads and insert a markdown link;
@@ -170,7 +187,7 @@ a permanent project link; a project appears in a feature while at least one of i
 - Review tabs: Overview, Threads, Findings, Diff, Rules, Analytics.
 - Keyboard shortcuts: `1`–`6` tabs; `o`, `r`, `s`, `p`, `?`/`⌘K`, `h` globally; on Diff `[`/`]`
   switch files, `f` focuses the filter, `t` toggles the tree, `e` expands/collapses hidden lines and
-  `v` marks the file viewed. Letter shortcuts use physical keys (layout-independent) and are skipped
+  `v` marks the file viewed. `n`/`N` move between inline discussions. Letter shortcuts use physical keys (layout-independent) and are skipped
   in inputs and dialogs. Command palette, deep links to threads, findings and diff lines with browser
   Back/Forward.
 - Command reference page (`#/help`): searchable CLI usage, common flags and UI shortcuts, with

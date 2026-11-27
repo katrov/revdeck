@@ -1,11 +1,12 @@
 import { tmpdir } from 'node:os';
-import type { DiffFile, MergeInfo, MergeState, Note, Platform, Reaction, ReviewInfo, ReviewRef, Thread, UploadedAttachment, User } from '../core/types.js';
+import type { DiffFile, ReviewReadiness, MergeInfo, MergeState, Note, Platform, Reaction, ReviewInfo, ReviewRef, Thread, UploadedAttachment, User } from '../core/types.js';
 import { parseUnifiedDiff } from '../core/diff.js';
+import { messageOf } from '../core/errors.js';
 import { ProviderError } from '../core/errors.js';
 import { run as realRun, type Runner } from '../core/exec.js';
 import { parseJson, cliError, query, withTempJson } from './util.js';
 import { tr } from '../core/locale.js';
-import type { CreateThreadInput, CreatedThread, ListOptions, Provider, ProviderOptions, ReviewListItem, UploadInput } from './provider.js';
+import type { CreateThreadInput, CreatedThread, ListOptions, Provider, ProviderOptions, ReviewListItem, SubmitReviewInput, UploadInput } from './provider.js';
 
 interface GhUser {
     login: string;
@@ -39,6 +40,25 @@ interface GhFile {
     additions?: number;
     deletions?: number;
     patch?: string;
+}
+
+interface GhReview {
+    id: number;
+    user: GhUser | null;
+    state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | string;
+}
+
+interface GhCheckRun {
+    id: number;
+    name: string;
+    status: string;
+    conclusion: string | null;
+    details_url?: string | null;
+    html_url?: string | null;
+}
+
+interface GhCheckRuns {
+    check_runs: GhCheckRun[];
 }
 
 interface GhComment {
@@ -273,6 +293,50 @@ export class GitHubProvider implements Provider {
         return this.call(['-H', 'Accept: application/vnd.github.raw', query(`repos/${this.repo}/contents/${encoded}`, { ref })]);
     }
 
+    async readiness(): Promise<ReviewReadiness> {
+        const errors: string[] = [];
+        let checks: ReviewReadiness['checks'] = [];
+        let approvals: ReviewReadiness['approvals'] = null;
+        const info = await this.info();
+        try {
+            const data = await this.json<GhCheckRuns>([query(`repos/${this.repo}/commits/${encodeURIComponent(info.commit.head)}/check-runs`, { per_page: 100 })]);
+            checks = (data.check_runs ?? []).map((run) => ({
+                id: String(run.id),
+                name: run.name,
+                status:
+                    run.status !== 'completed'
+                        ? ('pending' as const)
+                        : run.conclusion === 'success'
+                          ? ('success' as const)
+                          : run.conclusion === 'failure' || run.conclusion === 'timed_out' || run.conclusion === 'action_required'
+                            ? ('failed' as const)
+                            : run.conclusion === 'skipped'
+                              ? ('skipped' as const)
+                              : ('neutral' as const),
+                url: run.html_url ?? run.details_url ?? null,
+            }));
+        } catch (error) {
+            errors.push(`checks: ${messageOf(error)}`);
+        }
+        try {
+            const reviews = await this.paged<GhReview>(`${this.pullBase}/reviews`);
+            const latest = new Map<string, string>();
+            for (const review of reviews) {
+                const login = review.user?.login;
+                if (!login || (review.state !== 'APPROVED' && review.state !== 'CHANGES_REQUESTED')) continue;
+                latest.set(login, review.state);
+            }
+            approvals = {
+                approved: [...latest.values()].filter((state) => state === 'APPROVED').length,
+                required: null,
+                changesRequested: [...latest.values()].filter((state) => state === 'CHANGES_REQUESTED').length,
+            };
+        } catch (error) {
+            errors.push(`approvals: ${messageOf(error)}`);
+        }
+        return { checks, approvals, errors, checkedAt: new Date().toISOString() };
+    }
+
     async threads(): Promise<Thread[]> {
         const nodes: GqlThread[] = [];
         let after: string | null = null;
@@ -298,6 +362,7 @@ export class GitHubProvider implements Provider {
                     path: node.path,
                     line: node.line ?? node.originalLine,
                     side: node.diffSide === 'LEFT' ? ('old' as const) : ('new' as const),
+                    ...(node.isOutdated ? { outdated: true } : {}),
                     resolvable: true,
                     resolved: node.isResolved,
                     notes,
@@ -436,6 +501,14 @@ export class GitHubProvider implements Provider {
 
     async reactToReview(emoji: string): Promise<{ active: boolean }> {
         return this.toggleReaction(`repos/${this.repo}/issues/${this.ref.number}/reactions`, emoji);
+    }
+
+    async submitReview(input: SubmitReviewInput): Promise<{ id: string }> {
+        const event = input.verdict === 'approve' ? 'APPROVE' : input.verdict === 'request_changes' ? 'REQUEST_CHANGES' : 'COMMENT';
+        const review = await withTempJson({ body: input.body, event }, async (file) =>
+            this.json<{ id: number }>(['--method', 'POST', `${this.pullBase}/reviews`, '--input', file]),
+        );
+        return { id: String(review.id) };
     }
 
     async updateNote(noteId: string, body: string): Promise<void> {

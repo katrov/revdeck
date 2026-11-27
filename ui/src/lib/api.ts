@@ -83,6 +83,16 @@ export const getDiff = (review: string, file: string) =>
 export const getFileContent = (review: string, file: string) =>
     api<{ file: import('./types').FileContentPayload }>(`/api/file?review=${encodeURIComponent(review)}&file=${encodeURIComponent(file)}`);
 
+export const getCodeowners = (review: string, refresh = false) =>
+    api<{ codeowners: import('./types').CodeownersInfo }>(
+        `/api/codeowners?review=${encodeURIComponent(review)}${refresh ? '&refresh=1' : ''}`,
+    );
+
+export const getReadiness = (review: string, refresh = false) =>
+    api<{ readiness: import('./types').ReviewReadiness }>(
+        `/api/readiness?review=${encodeURIComponent(review)}${refresh ? '&refresh=1' : ''}`,
+    );
+
 export const getUpdate = (refresh = false) =>
     api<{ update: import('./types').UpdateInfo }>(`/api/update${refresh ? '?refresh=1' : ''}`);
 
@@ -231,11 +241,23 @@ function fileToBase64(file: File): Promise<string> {
     });
 }
 
-export const previewPublish = (review: string, kind: 'reply' | 'finding' | 'note', ids: string[]) =>
-    api<{ preview: import('./types').PublishPreview }>('/api/publish/preview', { body: { review, kind, ids } });
+export const previewPublish = (
+    review: string,
+    kind: import('./types').PublishKind,
+    ids: string[],
+    verdict?: import('./types').ReviewVerdict,
+) => api<{ preview: import('./types').PublishPreview }>('/api/publish/preview', { body: { review, kind, ids, ...(verdict ? { verdict } : {}) } });
 
-export const approvePublish = (review: string, kind: 'reply' | 'finding' | 'note', ids: string[], hash: string) =>
-    api<{ approval: { id: string; expiresAt: string } }>('/api/publish/approve', { body: { review, kind, ids, hash } });
+export const approvePublish = (
+    review: string,
+    kind: import('./types').PublishKind,
+    ids: string[],
+    hash: string,
+    verdict?: import('./types').ReviewVerdict,
+) =>
+    api<{ approval: { id: string; expiresAt: string } }>('/api/publish/approve', {
+        body: { review, kind, ids, hash, ...(verdict ? { verdict } : {}) },
+    });
 
 export const commitPublish = (review: string, approvalId: string) =>
     api<{ result: import('./types').PublishResult }>('/api/publish/commit', { body: { review, approvalId } });

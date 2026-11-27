@@ -305,5 +305,6 @@ export const SHORTCUTS: { keys: string; ru: string; en: string }[] = [
     { keys: 't', ru: 'скрыть/показать дерево файлов (Diff)', en: 'hide/show the file tree (Diff)' },
     { keys: 'e', ru: 'раскрыть/свернуть скрытые строки (Diff)', en: 'expand/collapse hidden lines (Diff)' },
     { keys: 'v', ru: 'отметить файл просмотренным (Diff)', en: 'mark the file viewed (Diff)' },
+    { keys: 'n / N', ru: 'следующее/предыдущее обсуждение (Diff)', en: 'next/previous discussion (Diff)' },
     { keys: 'Esc', ru: 'закрыть диалог или отменить комментарий', en: 'close a dialog or cancel a comment' },
 ];

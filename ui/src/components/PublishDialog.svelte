@@ -5,7 +5,17 @@
     import { truncate } from '../lib/format';
     import { t } from '../lib/i18n.svelte';
 
-    let { kind, ids, onclose }: { kind: 'reply' | 'finding' | 'note'; ids: string[]; onclose: () => void } = $props();
+    let {
+        kind,
+        ids,
+        verdict,
+        onclose,
+    }: {
+        kind: 'reply' | 'finding' | 'note' | 'review';
+        ids: string[];
+        verdict?: 'comment' | 'approve' | 'request_changes';
+        onclose: () => void;
+    } = $props();
 
     let preview = $state<PublishPreview | null>(null);
     let loading = $state(true);
@@ -17,6 +27,7 @@
         reply: t('Ответы в треды', 'Thread replies'),
         finding: t('Замечания к строкам', 'Line findings'),
         note: t('Комментарии к строкам', 'Line comments'),
+        review: t('Итоговое ревью', 'Review verdict'),
     };
 
     $effect(() => {
@@ -24,7 +35,7 @@
         if (!reviewId) return;
         loading = true;
         error = '';
-        void previewPublish(reviewId, kind, ids)
+        void previewPublish(reviewId, kind, ids, verdict)
             .then((data) => {
                 preview = data.preview;
             })
@@ -42,7 +53,7 @@
         publishing = true;
         error = '';
         try {
-            const approval = await approvePublish(review.id, kind, ids, preview.plan.hash);
+            const approval = await approvePublish(review.id, kind, ids, preview.plan.hash, verdict);
             const committed = await commitPublish(review.id, approval.approval.id);
             results = committed.result.results;
             const failed = results.filter((item) => !item.ok);
@@ -86,9 +97,14 @@
                     <section class="card flat">
                         <div class="card-head">
                             <span class="badge">{item.kind}</span>
-                            <span class="mono small muted">{truncate(item.id, 40)}</span>
+                            {#if item.kind !== 'review'}
+                                <span class="mono small muted">{truncate(item.id, 40)}</span>
+                            {/if}
                             {#if item.resolve !== undefined}
                                 <span class="badge" class:ok={item.resolve}>{item.resolve ? t('закрыть тред', 'resolve thread') : t('оставить открытым', 'leave open')}</span>
+                            {/if}
+                            {#if item.verdict}
+                                <span class="badge" class:ok={item.verdict === 'approve'}>{item.verdict === 'approve' ? t('одобрить', 'approve') : item.verdict === 'request_changes' ? t('запросить изменения', 'request changes') : t('комментарий', 'comment')}</span>
                             {/if}
                         </div>
                         <pre style="white-space: pre-wrap; margin: 8px 0 0">{item.body || t('(только закрытие треда)', '(resolve only)')}</pre>

@@ -1,8 +1,9 @@
 <script lang="ts">
     import { app, errorText, focusLine, focusNote, focusThread, notify, relativeTime, setTab } from '../lib/state.svelte';
-    import { addAgentMessage, getVersions } from '../lib/api';
+    import { addAgentMessage, getCodeowners, getReadiness, getVersions } from '../lib/api';
     import { plainText, truncate } from '../lib/format';
     import { plural, t } from '../lib/i18n.svelte';
+import type { CodeownersInfo, ReviewReadiness } from '../lib/types';
     import Markdown from './Markdown.svelte';
     import Reactions from './Reactions.svelte';
 
@@ -19,6 +20,68 @@
     let versions = $state<{ id: number; headSha: string; createdAt: string; files: number; findings: number; additions: number; deletions: number }[]>([]);
     let question = $state('');
     let sending = $state(false);
+    let readiness = $state<ReviewReadiness | null>(null);
+    let readinessLoading = $state(false);
+    let codeowners = $state<CodeownersInfo | null>(null);
+    let reviewedHead = $state<string | null>(null);
+
+    const newCommits = $derived(Boolean(reviewedHead && review.info.commit.head && reviewedHead !== review.info.commit.head));
+    const staleFindings = $derived(review.findings.filter((finding) => finding.status === 'stale').length);
+
+    function markReviewed(): void {
+        const head = review.info.commit.head;
+        if (!head) return;
+        reviewedHead = head;
+        try {
+            localStorage.setItem(`revdeck.reviewedHead.${review.id}`, head);
+        } catch {
+            // localStorage может быть недоступен.
+        }
+        notify(t('Версия отмечена как просмотренная', 'Version marked as reviewed'), 'ok');
+    }
+
+    async function loadCodeowners(): Promise<void> {
+        try {
+            codeowners = (await getCodeowners(review.id)).codeowners;
+        } catch {
+            codeowners = null;
+        }
+    }
+
+    async function loadReadiness(force = false): Promise<void> {
+        if (readinessLoading) return;
+        readinessLoading = true;
+        try {
+            const result = await getReadiness(review.id, force);
+            readiness = result.readiness;
+        } catch {
+            // Панель готовности не должна ломать Overview; ошибка видна в самой карточке.
+            readiness = { checks: [], approvals: null, errors: [t('Не удалось прочитать готовность к мержу.', 'Could not read merge readiness.')], checkedAt: new Date().toISOString() };
+        } finally {
+            readinessLoading = false;
+        }
+    }
+
+    const mergeLabel = $derived(
+        review.info.merge?.state === 'clean'
+            ? t('конфликтов нет', 'no conflicts')
+            : review.info.merge?.state === 'conflict'
+              ? t('конфликт', 'conflict')
+              : review.info.merge?.state === 'behind'
+                ? t('ветка отстаёт', 'behind target')
+                : t('статус неизвестен', 'unknown'),
+    );
+    const failedChecks = $derived((readiness?.checks ?? []).filter((check) => check.status === 'failed').length);
+    const pendingChecks = $derived((readiness?.checks ?? []).filter((check) => check.status === 'pending').length);
+    const readinessState = $derived.by(() => {
+        const merge = review.info.merge?.state ?? 'unknown';
+        const changes = readiness?.approvals?.changesRequested ?? 0;
+        const required = readiness?.approvals?.required ?? null;
+        const approved = readiness?.approvals?.approved ?? 0;
+        if (merge === 'conflict' || failedChecks > 0 || changes > 0 || (required !== null && approved < required)) return 'blocked';
+        if (merge !== 'clean' || pendingChecks > 0 || openThreads.length > 0 || !readiness) return 'attention';
+        return 'ready';
+    });
 
     async function askAgent(): Promise<void> {
         const text = question.trim();
@@ -45,6 +108,24 @@
         const id = review.id;
         void getVersions(id).then((result) => (versions = result.versions)).catch(() => undefined);
     });
+
+    $effect(() => {
+        review.id;
+        void loadReadiness();
+        void loadCodeowners();
+    });
+
+    $effect(() => {
+        try {
+            reviewedHead = localStorage.getItem(`revdeck.reviewedHead.${review.id}`);
+        } catch {
+            reviewedHead = null;
+        }
+    });
+
+    function publishReview(verdict: 'comment' | 'approve' | 'request_changes'): void {
+        app.publishing = { kind: 'review', ids: ['review'], verdict };
+    }
 
     function copyPath(path: string, line: number | null): void {
         const value = `${path}${line ? `:${line}` : ''}`;
@@ -87,6 +168,78 @@
         <div><div class="value">{review.findings.length}</div><div class="label">{plural(review.findings.length, ['замечание', 'замечания', 'замечаний'], ['finding', 'findings'])}</div></div>
     {/if}
 </div>
+
+<section class="card">
+    <div class="card-head">
+        <div class="card-title">{t('Готовность к мержу', 'Merge readiness')}</div>
+        <span class="badge" class:ok={readinessState === 'ready'} class:err={readinessState === 'blocked'}>
+            {readinessState === 'ready' ? t('готово', 'ready') : readinessState === 'blocked' ? t('есть блокеры', 'blocked') : t('нужно внимание', 'needs attention')}
+        </span>
+        <div class="grow"></div>
+        <button class="btn icon" type="button" title={t('Обновить готовность', 'Refresh readiness')} aria-label={t('Обновить готовность', 'Refresh readiness')} disabled={readinessLoading} onclick={() => void loadReadiness(true)}>↻</button>
+    </div>
+    <div class="row readiness-chips">
+        <span class="readiness-chip" class:bad={review.info.merge?.state === 'conflict'}>{t('Мерж', 'Merge')}: {mergeLabel}</span>
+        <span class="readiness-chip" class:bad={openThreads.length > 0}>{t('Открытые треды', 'Open threads')}: {openThreads.length}</span>
+        {#if readiness?.approvals}
+            <span class="readiness-chip" class:bad={(readiness.approvals.changesRequested ?? 0) > 0}>
+                {t('Approvals', 'Approvals')}: {readiness.approvals.approved}{readiness.approvals.required === null ? '' : ` / ${readiness.approvals.required}`}
+                {#if readiness.approvals.changesRequested > 0} · {t('запрошены изменения', 'changes requested')}{/if}
+            </span>
+        {:else}
+            <span class="readiness-chip">{t('Approvals', 'Approvals')}: {t('нет данных', 'no data')}</span>
+        {/if}
+        {#if readiness?.checks.length}
+            <span class="readiness-chip" class:bad={failedChecks > 0}>{t('Checks', 'Checks')}: {readiness.checks.length - failedChecks - pendingChecks}/{readiness.checks.length}</span>
+        {:else}
+            <span class="readiness-chip">{t('Checks', 'Checks')}: {t('нет данных', 'no data')}</span>
+        {/if}
+    </div>
+    {#if readiness?.checks.length}
+        <div class="readiness-checks">
+            {#each readiness.checks as check (check.id)}
+                <a class="readiness-check {check.status}" href={check.url ?? undefined} target="_blank" rel="noreferrer noopener">
+                    <span class="check-dot"></span>
+                    <span>{check.name}</span>
+                    <span class="muted small">{check.status}</span>
+                </a>
+            {/each}
+        </div>
+    {/if}
+    {#each readiness?.errors ?? [] as error}
+        <p class="muted small" style="margin: 6px 0 0">{error}</p>
+    {/each}
+</section>
+
+{#if newCommits && !app.preview}
+    <div class="alert update-note">
+        <strong>{t('Появились новые коммиты', 'New commits since your last review')}</strong>
+        <span class="mono small">{reviewedHead?.slice(0, 8)} → {review.info.commit.head.slice(0, 8)}</span>
+        {#if staleFindings}<span class="muted small">· {staleFindings} {t('замечаний устарели', 'findings became stale')}</span>{/if}
+        <div class="row end" style="margin-top: 8px">
+            <button class="btn" type="button" onclick={() => setTab('diff')}>{t('Смотреть diff', 'Open diff')}</button>
+            <button class="btn primary" type="button" onclick={markReviewed}>{t('Отметить версию просмотренной', 'Mark this version reviewed')}</button>
+        </div>
+    </div>
+{/if}
+
+{#if codeowners?.matches.length}
+    <section class="card">
+        <div class="card-head">
+            <div class="card-title">{t('Code owners', 'Code owners')}</div>
+            {#if codeowners.path}<span class="muted small mono">{codeowners.path}</span>{/if}
+        </div>
+        <div class="stack" style="margin-top: 8px">
+            {#each codeowners.matches as match (match.file)}
+                <div class="row" style="gap: 8px">
+                    <button class="path-link mono small" type="button" onclick={() => focusLine(match.file, null)}>{match.file}</button>
+                    <div style="flex: 1"></div>
+                    {#each match.owners as owner (owner)}<span class="badge">{owner}</span>{/each}
+                </div>
+            {/each}
+        </div>
+    </section>
+{/if}
 
 {#if !app.preview}
 <section class="card">
@@ -212,6 +365,14 @@
                     'Покрытие не указано. Пока агент не запишет coverage (что проверено) и unknowns (что не проверено), «замечаний нет» не означает «проверено».',
                     'Coverage is missing. Until the agent records coverage (what was checked) and unknowns (what was not), “no findings” does not mean “checked”.',
                 )}
+            </div>
+        {/if}
+        {#if !app.preview && !review.readOnly}
+            <div class="row end" style="margin-top: 12px">
+                <span class="muted small">{t('Опубликовать выжимку в платформу:', 'Publish this summary to the platform:')}</span>
+                <button class="btn" type="button" onclick={() => publishReview('comment')}>{t('Комментарием', 'As a comment')}</button>
+                <button class="btn" type="button" onclick={() => publishReview('request_changes')}>{t('Запросить изменения', 'Request changes')}</button>
+                <button class="btn primary" type="button" onclick={() => publishReview('approve')}>{t('Одобрить', 'Approve')}</button>
             </div>
         {/if}
     </section>

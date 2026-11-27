@@ -7,7 +7,7 @@ import { ReviewService } from '../src/daemon/service.js';
 import { Store } from '../src/daemon/store.js';
 import { parseUnifiedDiff } from '../src/core/diff.js';
 import { VERSION } from '../src/version.js';
-import type { CreateThreadInput, Provider, ReviewListItem, UploadInput } from '../src/providers/provider.js';
+import type { CreateThreadInput, Provider, ReviewListItem, SubmitReviewInput, UploadInput } from '../src/providers/provider.js';
 import type { DiffFile, Note, Reaction, ReviewInfo, ReviewRef, Thread } from '../src/core/types.js';
 
 const PATCH = `diff --git a/src/app.ts b/src/app.ts
@@ -170,6 +170,22 @@ class FakeProvider implements Provider {
         return { name: input.name, url, markdown: `![${input.name}](${url})` };
     }
 
+    readonly submittedReviews: SubmitReviewInput[] = [];
+
+    async readiness() {
+        return {
+            checks: [{ id: 'check-1', name: 'unit', status: 'success' as const, url: null }],
+            approvals: { approved: 1, required: 1, changesRequested: 0 },
+            errors: [],
+            checkedAt: '2026-01-01T00:00:00Z',
+        };
+    }
+
+    async submitReview(input: SubmitReviewInput): Promise<{ id: string }> {
+        this.submittedReviews.push(input);
+        return { id: `review-${this.submittedReviews.length}` };
+    }
+
     async createThread(input: CreateThreadInput) {
         this.created.push(input);
         return { discussionId: `d-${this.created.length}`, noteId: `n-${this.created.length}` };
@@ -232,6 +248,14 @@ describe('ReviewService', () => {
         expect(service.listReviews()).toHaveLength(0);
         expect(service.qualityMetrics().reviews.total).toBe(0);
         expect(service.diffFile(preview.id, 'src/app.ts')?.hunks).toHaveLength(1);
+    });
+
+    it('returns platform readiness and caches it', async () => {
+        const review = await open();
+        const first = await service.readiness(review.id);
+        expect(first.checks[0]).toMatchObject({ name: 'unit', status: 'success' });
+        expect(first.approvals).toMatchObject({ approved: 1, required: 1 });
+        expect(await service.readiness(review.id)).toBe(first);
     });
 
     it('reports a newer version from npm and caches it', async () => {
@@ -418,6 +442,28 @@ rules: { sources: [AGENTS.md] }
         const again = service.previewPublish(review.id, 'reply', ['d1']);
         expect(again.plan.items).toHaveLength(0);
         expect(again.warnings[0]).toMatch(/уже опубликован/);
+    });
+
+    it('publishes the review summary with a verdict', async () => {
+        const review = await open();
+        service.setSummary(review.id, {
+            title: 'Idempotency',
+            scope: 'main...feature',
+            summary: 'Adds idempotency keys.',
+            changes: ['POST /refunds requires a key'],
+            focus: ['concurrent requests'],
+            coverage: ['src/app.ts'],
+            unknowns: ['integration test not run'],
+        });
+        const preview = service.previewPublish(review.id, 'review', ['review'], 'approve');
+        expect(preview.plan.items).toHaveLength(1);
+        expect(preview.plan.items[0]).toMatchObject({ kind: 'review', id: 'review', verdict: 'approve' });
+        expect(preview.plan.items[0]!.body).toContain('## Idempotency');
+        expect(preview.plan.items[0]!.body).toContain('### Что не проверено');
+        const approval = service.approve(review.id, 'review', ['review'], preview.plan.hash, 'approve');
+        const result = await service.publish(review.id, approval.id);
+        expect(result.results[0]!.ok).toBe(true);
+        expect(provider.submittedReviews).toEqual([{ body: preview.plan.items[0]!.body, verdict: 'approve' }]);
     });
 
     it('publishes a finding as a line comment and posts a general comment without line', async () => {
