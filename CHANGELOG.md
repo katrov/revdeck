@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Settings has a **GitLab and GitHub access** card: it shows the `glab`/`gh` state for every platform
+  host in the project registry and lets you paste a personal access token. The daemon checks the token
+  with `GET /user` and passes it to the CLI on stdin, so `glab`/`gh` store it and revdeck keeps no copy;
+  the form is disabled when the UI is not served from `127.0.0.1`.
+- RPC methods `auth.status` and `auth.login` (human-only; the devcontainer bridge returns `CAPABILITY`).
+  `auth.status` never returns a token, only the host, the account and a hint.
+- `revdeck doctor` checks only the CLI of the project's platform and points to Settings when access is
+  missing.
+- Settings persist across daemon restarts: theme, interface language, hidden sections, auto-refresh and
+  notifications are stored by the daemon in SQLite (`settings.get`/`settings.put`, human-only) instead
+  of the browser's `localStorage`. The UI applies them before the first paint, so there is no theme or
+  language flash.
+
+### Fixed
+
+- The access card has a gap between the token input and the buttons, and the host input uses the same
+  style as the token input.
+
 ## [0.16.1] - 2026-11-27
 
 ### Fixed

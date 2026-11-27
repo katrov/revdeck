@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { redact } from '../core/redact.js';
-import { messageOf } from '../core/errors.js';
+import { messageOf, MrReviewError } from '../core/errors.js';
 import { findRepoRoot, findConfigFile } from '../core/paths.js';
 import { loadConfig, readConfigFile, readConfigPrefix } from '../core/config.js';
 import { assertSafeDocument } from '../core/doc-policy.js';
@@ -700,6 +700,35 @@ export class ReviewService {
 
     listProjects(): ReturnType<Store['listProjects']> {
         return this.store.listProjects();
+    }
+
+    /** Настройки интерфейса переживают перезапуск демона, в отличие от localStorage. */
+    uiSettings(): Record<string, unknown> {
+        return this.store.uiSettings();
+    }
+
+    /**
+     * Частичное обновление настроек. Ключи и размеры ограничены: база не должна
+     * превращаться в свалку произвольного JSON даже для доверенного человека.
+     */
+    updateUiSettings(patch: unknown): Record<string, unknown> {
+        if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+            throw new MrReviewError(tr('нужен объект настроек', 'an object of settings is required'), 'BAD_INPUT');
+        }
+        const entries = Object.entries(patch as Record<string, unknown>);
+        if (entries.length > 50) {
+            throw new MrReviewError(tr('слишком много настроек за один раз', 'too many settings at once'), 'BAD_INPUT');
+        }
+        for (const [key, value] of entries) {
+            if (!/^[a-zA-Z][a-zA-Z0-9]{0,63}$/.test(key)) {
+                throw new MrReviewError(tr(`некорректный ключ настройки: ${key}`, `invalid settings key: ${key}`), 'BAD_INPUT');
+            }
+            const json = JSON.stringify(value);
+            if (json === undefined || json.length > 4096) {
+                throw new MrReviewError(tr(`слишком большое значение настройки: ${key}`, `the value of ${key} is too large`), 'BAD_INPUT');
+            }
+        }
+        return this.store.updateUiSettings(patch as Record<string, unknown>);
     }
 
     /** Резолвит проект по рабочей копии и регистрирует его без открытия ревью. */

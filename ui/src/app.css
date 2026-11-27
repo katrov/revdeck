@@ -492,6 +492,7 @@ pre {
 
 textarea,
 input[type='text'],
+input[type='password'],
 input[type='number'],
 select {
     width: 100%;
@@ -1865,6 +1866,91 @@ mark {
     display: flex;
     flex-direction: column;
     gap: 3px;
+}
+
+.auth-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.auth-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-2);
+}
+
+.auth-ident {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.auth-platform {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+}
+
+.auth-badge {
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.auth-badge.ok {
+    color: var(--ok, #22c55e);
+}
+
+.auth-badge.warn {
+    color: var(--warn, #f59e0b);
+}
+
+.auth-badge.muted {
+    color: var(--muted);
+}
+
+.auth-detail {
+    grid-column: 1 / -1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.auth-form {
+    display: grid;
+    grid-template-columns: minmax(0, 160px) minmax(0, 1fr);
+    gap: 0 12px;
+    margin-top: 12px;
+}
+
+.auth-form .auth-token,
+.auth-form .row {
+    grid-column: 1 / -1;
+}
+
+.auth-form .row {
+    margin-top: 14px;
+}
+
+.auth-warning {
+    margin-top: 8px;
+    color: var(--warn, #f59e0b);
+}
+
+.auth-error {
+    margin-top: 10px;
+    color: var(--danger, #ef4444);
+    overflow-wrap: anywhere;
 }
 
 .mr-row > .grow {

@@ -396,6 +396,11 @@ export class Store {
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS review_versions_review ON review_versions(review_id, created_at);
+            CREATE TABLE IF NOT EXISTS ui_settings (
+                key TEXT PRIMARY KEY,
+                value_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
         `);
         // Мягкая миграция старых баз: CREATE TABLE IF NOT EXISTS не добавляет новые колонки.
         const findingColumns = this.db.prepare('PRAGMA table_info(findings)').all() as Row[];
@@ -578,6 +583,39 @@ export class Store {
 
     getProject(key: string): ProjectSummary | null {
         return this.listProjects().find((project) => project.key === key) ?? null;
+    }
+
+    /**
+     * Настройки UI. Порт демона выбирается заново при каждом запуске, поэтому
+     * localStorage в браузере привязан к origin и после перезапуска пуст:
+     * единственное надёжное место для настроек — база на хосте.
+     */
+    uiSettings(): Record<string, unknown> {
+        const rows = this.db.prepare('SELECT key, value_json FROM ui_settings ORDER BY key').all() as Row[];
+        const settings: Record<string, unknown> = {};
+        for (const row of rows) {
+            try {
+                settings[text(row, 'key')] = JSON.parse(text(row, 'value_json'));
+            } catch {
+                // Одно битое значение не должно ломать остальные настройки.
+            }
+        }
+        return settings;
+    }
+
+    updateUiSettings(patch: Record<string, unknown>, now = new Date().toISOString()): Record<string, unknown> {
+        const upsert = this.db.prepare(
+            `INSERT INTO ui_settings (key, value_json, updated_at) VALUES (?, ?, ?)
+             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
+        );
+        this.transaction(() => {
+            for (const [key, value] of Object.entries(patch)) {
+                const json = JSON.stringify(value);
+                if (json === undefined) continue;
+                upsert.run(key, json, now);
+            }
+        });
+        return this.uiSettings();
     }
 
     /** Переименование проекта и явное управление root'ами рабочих копий. */

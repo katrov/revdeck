@@ -1,5 +1,8 @@
 <script lang="ts">
-    import { app, notify, relativeTime, setFeaturesHidden, showHelp } from '../lib/state.svelte';
+    import { onMount } from 'svelte';
+    import { getAuthStatus, loginAuth } from '../lib/api';
+    import type { AuthState, Platform } from '../lib/types';
+    import { app, errorText, notify, relativeTime, setFeaturesHidden, showHelp } from '../lib/state.svelte';
     import { i18n, setLocale, t } from '../lib/i18n.svelte';
     import { setTheme, theme, type ThemeMode } from '../lib/theme.svelte';
     import { AUTO_REFRESH_CHOICES, autoRefresh, setAutoRefreshMinutes } from '../lib/auto-refresh.svelte';
@@ -12,6 +15,122 @@
         { id: 'dark', label: 'Dark', icon: '☾' },
     ];
 
+    // Токен уходит демону и дальше в stdin glab/gh: в браузере и в состоянии UI его нет.
+    let authHosts = $state<AuthState[]>([]);
+    let authLoaded = $state(false);
+    let authLoading = $state(false);
+    let authError = $state('');
+    let authPlatform = $state<Platform>('gitlab');
+    let authHost = $state('');
+    let authToken = $state('');
+    let authSaving = $state(false);
+    let authChecking = $state(false);
+
+    // Проверка запускается только с loopback: иначе токен поедет по сети без TLS.
+    const loopback = typeof location === 'undefined' || ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
+    const targets = $derived(projectTargets());
+
+    function platformLabel(platform: Platform): string {
+        return platform === 'gitlab' ? 'GitLab' : 'GitHub';
+    }
+
+    function mergeAuth(next: AuthState): void {
+        const rest = authHosts.filter((item) => item.platform !== next.platform || item.host !== next.host);
+        authHosts = [...rest, next].sort((left, right) => {
+            if (left.authenticated !== right.authenticated) return left.authenticated ? -1 : 1;
+            return `${left.platform}:${left.host}`.localeCompare(`${right.platform}:${right.host}`);
+        });
+    }
+
+    function projectTargets(): { platform: Platform; host: string }[] {
+        const seen = new Map<string, { platform: Platform; host: string }>();
+        for (const project of app.projects) seen.set(`${project.platform}:${project.host}`, { platform: project.platform, host: project.host });
+        return [...seen.values()];
+    }
+
+    async function loadAuth(): Promise<void> {
+        authLoading = true;
+        try {
+            const result = await getAuthStatus();
+            authHosts = result.hosts.sort((left, right) => {
+                if (left.authenticated !== right.authenticated) return left.authenticated ? -1 : 1;
+                return `${left.platform}:${left.host}`.localeCompare(`${right.platform}:${right.host}`);
+            });
+            authError = '';
+        } catch (cause) {
+            authError = errorText(cause);
+        } finally {
+            authLoading = false;
+            authLoaded = true;
+        }
+    }
+
+    function suggestTarget(): void {
+        const active = app.projects.find((project) => project.key === app.activeProject);
+        const target = active ?? app.projects[0];
+        authPlatform = target?.platform ?? 'gitlab';
+        authHost = target?.host ?? 'gitlab.com';
+    }
+
+    async function checkHost(platform: Platform, host: string): Promise<void> {
+        if (!host.trim()) {
+            authError = t('Укажите хост платформы', 'Enter the platform host');
+            return;
+        }
+        authChecking = true;
+        authError = '';
+        try {
+            const result = await getAuthStatus({ platform, host: host.trim() });
+            for (const state of result.hosts) mergeAuth(state);
+        } catch (cause) {
+            authError = errorText(cause);
+        } finally {
+            authChecking = false;
+        }
+    }
+
+    async function submitAuth(event: SubmitEvent): Promise<void> {
+        event.preventDefault();
+        if (authSaving) return;
+        const host = authHost.trim();
+        const token = authToken.trim();
+        if (!host) {
+            authError = t('Укажите хост платформы', 'Enter the platform host');
+            return;
+        }
+        if (!token) {
+            authError = t('Вставьте токен доступа', 'Paste an access token');
+            return;
+        }
+        authSaving = true;
+        authError = '';
+        try {
+            const result = await loginAuth(authPlatform, host, token);
+            authToken = '';
+            mergeAuth(result.host);
+            if (result.host.authenticated) {
+                notify(
+                    t(
+                        `Доступ к ${platformLabel(result.host.platform)} настроен: ${result.host.account ?? result.host.host}`,
+                        `${platformLabel(result.host.platform)} access is set up: ${result.host.account ?? result.host.host}`,
+                    ),
+                    'ok',
+                );
+            } else {
+                authError = result.host.error ?? result.host.hint ?? t('Токен сохранён, но доступ не подтверждён', 'The token was saved but access is not confirmed');
+            }
+        } catch (cause) {
+            authError = errorText(cause);
+        } finally {
+            authSaving = false;
+        }
+    }
+
+    onMount(() => {
+        suggestTarget();
+        void loadAuth();
+    });
+
     function copyUpdateCommand(): void {
         void navigator.clipboard?.writeText('npm install -g revdeck@latest').then(
             () => notify(t('Команда скопирована', 'Command copied'), 'ok'),
@@ -22,7 +141,113 @@
 
 <div class="settings">
     <h1>{t('Настройки', 'Settings')}</h1>
-    <p class="muted small">{t('Интерфейс, язык и разделы revdeck.', 'Interface, language and revdeck sections.')}</p>
+    <p class="muted small">{t('Интерфейс, доступ к платформам и разделы revdeck.', 'Interface, platform access and revdeck sections.')}</p>
+
+    <section class="card">
+        <div class="card-title">{t('Доступ к GitLab и GitHub', 'GitLab and GitHub access')}</div>
+        <p class="muted small">
+            {t(
+                'Токен проверяется запросом к платформе и сохраняется в конфигурации glab/gh на хосте: revdeck его не хранит и не показывает. Права: GitLab — api, GitHub — repo и read:org.',
+                'The token is checked against the platform and stored in the host glab/gh configuration: revdeck neither keeps nor shows it. Scopes: GitLab — api, GitHub — repo and read:org.',
+            )}
+        </p>
+        {#if !loopback}
+            <p class="muted small auth-warning">
+                {t(
+                    'Страница открыта не с 127.0.0.1: токен пойдёт к демону по сети без TLS. Вводите его только в доверенной сети.',
+                    'The page is not served from 127.0.0.1: the token reaches the daemon over the network without TLS. Enter it only on a trusted network.',
+                )}
+            </p>
+        {/if}
+
+        {#if authLoading && !authLoaded}
+            <p class="muted small">{t('Проверяю доступ…', 'Checking access…')}</p>
+        {:else if authHosts.length}
+            <ul class="auth-list">
+                {#each authHosts as item (`${item.platform}:${item.host}`)}
+                    <li class="auth-row">
+                        <div class="auth-ident">
+                            <span class="auth-platform">{platformLabel(item.platform)}</span>
+                            <span class="mono">{item.host}</span>
+                        </div>
+                        <span
+                            class="auth-badge"
+                            class:ok={item.authenticated}
+                            class:warn={!item.binary}
+                            class:muted={item.binary && !item.authenticated}
+                        >
+                            {item.binary
+                                ? item.authenticated
+                                    ? `✓ ${item.account ?? t('есть доступ', 'authenticated')}`
+                                    : t('нет доступа', 'not authenticated')
+                                : t('CLI не найден', 'CLI not found')}
+                        </span>
+                        <button
+                            class="btn"
+                            type="button"
+                            disabled={authChecking}
+                            onclick={() => void checkHost(item.platform, item.host)}
+                        >{t('Проверить', 'Check')}</button>
+                        {#if !item.authenticated && (item.error || item.hint)}
+                            <div class="auth-detail muted small">
+                                {#if item.error}<span class="mono">{item.error}</span>{:else}{item.hint}{/if}
+                            </div>
+                        {/if}
+                    </li>
+                {/each}
+            </ul>
+        {:else}
+            <p class="muted small">
+                {t('Проектов пока нет: укажите платформу и хост вручную ниже.', 'No projects yet: pick a platform and host below.')}
+            </p>
+        {/if}
+
+        <form class="auth-form" onsubmit={submitAuth}>
+            <label class="field">
+                <span>{t('Платформа', 'Platform')}</span>
+                <select bind:value={authPlatform}>
+                    <option value="gitlab">GitLab</option>
+                    <option value="github">GitHub</option>
+                </select>
+            </label>
+            <label class="field">
+                <span>{t('Хост', 'Host')}</span>
+                <input type="text" bind:value={authHost} placeholder="gitlab.example.com" autocomplete="off" spellcheck="false" list="auth-hosts" />
+                <datalist id="auth-hosts">
+                    {#each targets as target (`${target.platform}:${target.host}`)}
+                        <option value={target.host}>{platformLabel(target.platform)}</option>
+                    {/each}
+                </datalist>
+            </label>
+            <label class="field auth-token">
+                <span>{t('Токен доступа', 'Access token')}</span>
+                <input
+                    type="password"
+                    bind:value={authToken}
+                    placeholder="glpat-… / ghp_…"
+                    autocomplete="off"
+                    spellcheck="false"
+                    disabled={!loopback}
+                />
+                {#if !loopback}
+                    <small class="muted">
+                        {t('Ввод отключён: откройте UI по 127.0.0.1.', 'Disabled: open the UI via 127.0.0.1.')}
+                    </small>
+                {/if}
+            </label>
+            <div class="row">
+                <button class="btn primary" type="submit" disabled={authSaving || !loopback}>
+                    {authSaving ? t('Сохраняю…', 'Saving…') : t('Проверить и сохранить', 'Check and save')}
+                </button>
+                <button class="btn" type="button" disabled={authChecking} onclick={() => void checkHost(authPlatform, authHost)}>
+                    {t('Только проверить', 'Check only')}
+                </button>
+            </div>
+        </form>
+        {#if authError}
+            <p class="auth-error">{authError}</p>
+        {/if}
+    </section>
 
     <section class="card">
         <div class="card-title">{t('Тема', 'Theme')}</div>

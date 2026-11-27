@@ -11,7 +11,7 @@ import type { ReviewView } from '../daemon/view.js';
 import { daemonBinaries, isDaemonRunning, ensureDaemon, daemonInfo, uiBaseUrl, isDevContainer, type DaemonClient } from '../client.js';
 import { resolveExecutable, run } from '../core/exec.js';
 import { redactLine } from '../core/redact.js';
-import { gitRemote } from '../core/git.js';
+import { gitRemote, detectPlatform } from '../core/git.js';
 import { reviewId as makeReviewId, parseReviewUrl } from '../core/refs.js';
 import { VERSION } from '../version.js';
 import { detectLocale, locale, plural, setLocale, tr } from '../core/locale.js';
@@ -1330,9 +1330,11 @@ async function doctor(root: string): Promise<void> {
     }
 
     let host: string | undefined;
+    let providerType: 'auto' | 'gitlab' | 'github' = 'auto';
     try {
         const loaded = await loadConfig(root);
         host = loaded.config.provider.host ?? (await gitRemote(root))?.host;
+        providerType = loaded.config.provider.type;
         rows.push(['config', loaded.path ? 'ok' : 'warn', loaded.path ?? tr('нет .revdeck.yml (автообнаружение)', 'no .revdeck.yml (auto-discovery)')]);
         if (loaded.localPath) rows.push(['local config', 'ok', loaded.localPath]);
         for (const warning of loaded.warnings) rows.push(['warning', 'warn', warning]);
@@ -1341,20 +1343,24 @@ async function doctor(root: string): Promise<void> {
     }
 
     if (!container) {
-        if (host && binaries.glab) {
+        // Проверяем CLI той платформы, к которой относится проект; хост без
+        // узнаваемого имени оставляет обе проверки.
+        const platform = providerType !== 'auto' ? providerType : detectPlatform(host ?? '');
+        const uiHint = tr('или введите токен в UI: Настройки → Доступ', 'or paste a token in the UI: Settings → Access');
+        if (host && binaries.glab && platform !== 'github') {
             try {
                 await run('glab', ['auth', 'status', '--hostname', host], { timeoutMs: 15_000 });
                 rows.push(['glab auth', 'ok', host]);
             } catch (error) {
-                rows.push(['glab auth', 'warn', `${tr('нет доступа к', 'no access to')} ${host}: ${redactLine(error).slice(0, 120)}`]);
+                rows.push(['glab auth', 'warn', `${tr('нет доступа к', 'no access to')} ${host}: ${redactLine(error).slice(0, 120)}; ${uiHint}`]);
             }
         }
-        if (host && binaries.gh) {
+        if (host && binaries.gh && platform !== 'gitlab') {
             try {
                 await run('gh', ['auth', 'status'], { timeoutMs: 15_000, env: { GH_HOST: host } });
                 rows.push(['gh auth', 'ok', host]);
             } catch (error) {
-                rows.push(['gh auth', 'warn', `${tr('нет доступа к', 'no access to')} ${host}: ${redactLine(error).slice(0, 120)}`]);
+                rows.push(['gh auth', 'warn', `${tr('нет доступа к', 'no access to')} ${host}: ${redactLine(error).slice(0, 120)}; ${uiHint}`]);
             }
         }
     }

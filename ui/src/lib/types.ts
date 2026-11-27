@@ -226,6 +226,17 @@ export interface ProjectSummary {
     lastActivity: string;
 }
 
+/** Доступ к платформе: токен хранит glab/gh, в UI приходит только состояние. */
+export interface AuthState {
+    platform: Platform;
+    host: string;
+    binary: boolean;
+    authenticated: boolean;
+    account?: string;
+    hint?: string;
+    error?: string;
+}
+
 export interface FeatureSummary {
     id: string;
     title: string;

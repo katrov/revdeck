@@ -1,4 +1,5 @@
 import type { Locale } from './types';
+import { rememberSetting } from './settings-sync';
 
 const STORAGE_KEY = 'revdeck-locale';
 
@@ -15,7 +16,7 @@ function initialLocale(): Locale {
 
 export const i18n = $state<{ locale: Locale }>({ locale: initialLocale() });
 
-export function setLocale(value: Locale): void {
+export function applyLocale(value: Locale): void {
     i18n.locale = value;
     try {
         localStorage.setItem(STORAGE_KEY, value);
@@ -23,6 +24,11 @@ export function setLocale(value: Locale): void {
         // не критично
     }
     if (typeof document !== 'undefined') document.documentElement.lang = value;
+}
+
+export function setLocale(value: Locale): void {
+    applyLocale(value);
+    rememberSetting('locale', value);
 }
 
 /** Двуязычная строка: первый аргумент — русский, второй — английский. */

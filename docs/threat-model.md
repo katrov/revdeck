@@ -4,7 +4,8 @@
 
 ## Assets
 
-1. GitLab/GitHub tokens (in the `glab`/`gh` configuration on the host).
+1. GitLab/GitHub tokens (in the `glab`/`gh` configuration on the host; a token pasted in the UI is
+   passed to the CLI and is not kept by revdeck).
 2. The code and diff of the repository under review, including private repositories.
 3. Threads and comments, including personal data.
 4. The right to publish on the user's behalf.
@@ -30,6 +31,9 @@
 | Prompt injection from comments/diff | Instructions in the text are marked as data; the agent does not publish on its own; publishing requires human approval; the sanitizer blocks hidden characters and quick actions | The model can still propose harmful text — a human sees it in the plan |
 | Accidental publication of the wrong text | A plan with the exact bodies and a hash; `approve` verifies the hash; `commit` executes only the plan items; a repeat send is skipped | A human may approve without looking — the UI shows the full text |
 | Cross-site requests to loopback (DNS rebinding, CSRF) | Only `127.0.0.1`/`localhost` in `Host`; an `Origin` check for POST; `HttpOnly`, `SameSite=Strict` cookies; a launch token; CSP | A local process of another user with access to the socket is out of scope (permissions 0600/0700) |
+| A malicious page submits a credential through `auth.login` | The token is accepted only in the authenticated UI session (`Host`/`Origin` checks, launch cookie, CSP); `auth.login` is human-only; the UI disables the form when it is not served from `127.0.0.1` | A page that can act as the browser session has the same authority as the human |
+| An entered token leaks into logs, argv or RPC | The token goes to `glab`/`gh` on stdin, never as an argument (no `ps` exposure); it is never written to SQLite, never returned by `auth.status`, and CLI errors are redacted before they reach the UI | The token lives in the CLI config, which any process of the user can read |
+| The agent rewrites platform credentials | `auth.*` is not in the agent method set: the bridge and an agent-scoped HTTP token get `CAPABILITY` | An agent with shell access to `$HOME` can run `gh auth login` itself — the same residual risk as before |
 | Symlink/TOCTOU in the working directory | State is stored in a private directory, writes are atomic; rules/profiles are read only from git-tracked safe documents; the opened fd's realpath is checked inside the root on Linux (`/proc/self/fd`); macOS/Windows use a path + inode comparison | macOS/Windows keep a narrow path/inode race; it does not grant publish rights |
 | Local secrets via rules/profiles | `rules.sources`/`context.sources` must be git-tracked, have a safe extension and are denied for `.env*`, `.git/**`, `.npmrc`, `.revdeck.local.*` and key files; a tracked `.revdeck.local.yml` is ignored | A tracked document can still contain secrets committed to the repository — that is the MR content, not the reviewer's local file |
 | A malicious `.revdeck.yml` executes code | The bridge denies `checks.run` (`CAPABILITY`); checks are run by a human in the UI or the host CLI, which shows the full argv; the CLI refuses `--run` inside a devcontainer | A human may still run a malicious command from someone else's MR in the UI/host CLI — read the argv; host checks are not sandboxed yet |

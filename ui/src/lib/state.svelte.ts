@@ -3,6 +3,7 @@ import type { FeatureDetail, FeatureSummary, PreviewRef, ProjectSummary, ReviewL
 import { projectKeyFromReviewId } from './projects';
 import { i18n, localeTag, t } from './i18n.svelte';
 import { notifyNewThreads } from './notifications.svelte';
+import { rememberSetting } from './settings-sync';
 
 export interface Toast {
     text: string;
@@ -149,7 +150,8 @@ export function setTab(tab: Tab, push = true): void {
 
 const FEATURES_HIDDEN_KEY = 'revdeck.featuresHidden';
 
-export function setFeaturesHidden(hidden: boolean): void {
+/** Применить значение без записи на сервер: для загрузки сохранённых настроек. */
+export function applyFeaturesHidden(hidden: boolean): void {
     app.featuresHidden = hidden;
     try {
         localStorage.setItem(FEATURES_HIDDEN_KEY, hidden ? '1' : '0');
@@ -158,11 +160,16 @@ export function setFeaturesHidden(hidden: boolean): void {
     }
 }
 
+export function setFeaturesHidden(hidden: boolean): void {
+    applyFeaturesHidden(hidden);
+    rememberSetting('featuresHidden', hidden);
+}
+
 export function initFeaturesHidden(): void {
     try {
-        app.featuresHidden = localStorage.getItem(FEATURES_HIDDEN_KEY) === '1';
+        applyFeaturesHidden(localStorage.getItem(FEATURES_HIDDEN_KEY) === '1');
     } catch {
-        app.featuresHidden = false;
+        applyFeaturesHidden(false);
     }
 }
 
