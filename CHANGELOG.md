@@ -4,12 +4,12 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.16.0] - 2026-11-27
 
 ### Added
 
 - The review header can be collapsed with a button in the header; while hidden, a restore button in the
-tabs row brings it back without scrolling. Manual collapse is not auto-reopened by the scroll timer.
+  tabs row brings it back without scrolling. Manual collapse is not auto-reopened by the scroll timer.
 
 ## [0.15.0] - 2026-11-27
 
