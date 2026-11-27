@@ -20,7 +20,7 @@ All notable changes to this project are documented here. The format is based on
 - The Overview has a merge-readiness card: platform CI checks (GitHub check runs, GitLab pipeline),
   approvals, merge conflicts and open threads, with links to failing jobs and a manual refresh. It is
   read-only and cached for a minute.
-- Line comments can be turned into suggested changes: the composer inserts a ```suggestion block with
+- Line comments can be turned into suggested changes: the composer inserts a fenced `suggestion` block with
   the current line, so GitHub/GitLab can render and apply the fix after the normal publish approval.
 - Review summaries can now be published as a final review: GitHub receives a review with an
   approve/request-changes/comment verdict, GitLab receives a note plus approve/unapprove. The

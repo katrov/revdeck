@@ -183,6 +183,8 @@ human socket.
 | POST | `/api/comments` | `action: update/delete` for own platform comments |
 | POST | `/api/attachments` | upload an image/video and return an absolute link |
 | POST | `/api/publish/preview`, `/approve`, `/commit` | publishing |
+Publish endpoints accept `kind: "review"` and `verdict: comment|approve|request_changes`;
+the plan hash covers the summary text and the verdict.
 | POST | `/api/checks` | checks |
 | POST | `/api/rpc` | RPC proxy for the HTTP transport |
 

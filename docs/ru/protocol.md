@@ -182,6 +182,8 @@ Human-only методы возвращают `CAPABILITY` на мосту: `publ
 | POST | `/api/comments` | `action: update/delete` для своих комментариев платформы |
 | POST | `/api/attachments` | загрузить картинку/видео и вернуть абсолютную ссылку |
 | POST | `/api/publish/preview`, `/approve`, `/commit` | публикация |
+Publish-эндпоинты принимают `kind: "review"` и `verdict: comment|approve|request_changes`;
+хеш плана покрывает текст выжимки и вердикт.
 | POST | `/api/checks` | проверки |
 | POST | `/api/rpc` | RPC-прокси для HTTP-транспорта |
 
