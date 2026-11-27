@@ -2,6 +2,7 @@ import { getFeature, getFeatureContext, getFeatures, getFeaturesForReview, getPr
 import type { FeatureDetail, FeatureSummary, PreviewRef, ProjectSummary, ReviewListItem, ReviewView, Tab } from './types';
 import { projectKeyFromReviewId } from './projects';
 import { i18n, localeTag, t } from './i18n.svelte';
+import { notifyNewThreads } from './notifications.svelte';
 
 export interface Toast {
     text: string;
@@ -53,7 +54,7 @@ export const app = $state({
     toast: null as Toast | null,
     diffFile: null as string | null,
     diffFocus: null as { file: string; line: number } | null,
-    publishing: null as null | { kind: 'reply' | 'finding' | 'note'; ids: string[] },
+    publishing: null as null | { kind: 'reply' | 'finding' | 'note' | 'review'; ids: string[]; verdict?: 'comment' | 'approve' | 'request_changes' },
     palette: false,
 });
 
@@ -439,6 +440,7 @@ function applyReviewState(state: CachedReviewState, push: boolean, hydrate: bool
     app.previewRef = null;
     const current = app.review;
     const switching = !current || current.id !== state.review.id;
+    const previousThreads = current ? { ...current, threads: current.threads.map((thread) => ({ ...thread })) } : null;
     if (force || switching) {
         app.review = state.review;
     } else if (current !== state.review) {
@@ -447,6 +449,7 @@ function applyReviewState(state: CachedReviewState, push: boolean, hydrate: bool
         // и страница мигает «Загрузка…» каждые несколько секунд.
         Object.assign(current, state.review);
     }
+    if (previousThreads && !switching) notifyNewThreads(previousThreads as ReviewView, state.review);
     if (switching) app.reviewFeatures = [];
     const nextReviews = state.reviews.filter((item) => item.projectKey === key);
     if (!sameReviewList(nextReviews, app.reviews)) app.reviews = nextReviews;

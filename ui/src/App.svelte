@@ -41,6 +41,7 @@
     let lastWheelAt = 0;
     let touchY: number | null = null;
     let chromeCheckTimer: ReturnType<typeof setTimeout> | null = null;
+    let chromeScroller: HTMLElement | null = null;
     let autoRefreshNonce = $state(0);
     const SIDEBAR_KEY = 'revdeck.sidebar';
 
@@ -54,16 +55,24 @@
         if (hidden) {
             chromeCheckTimer = setTimeout(() => {
                 chromeCheckTimer = null;
-                const element = document.querySelector('.content');
+                const element = chromeScroller ?? document.querySelector('.content');
                 if (element && element.scrollTop <= 16) setChromeHidden(false);
             }, 520);
         }
     }
 
+    /** На Diff прокручивается вложенный .diff-view, а не .content. */
+    function scrollOwner(target: EventTarget | null, fallback: HTMLElement): HTMLElement {
+        const node = target instanceof Element ? target.closest<HTMLElement>('.diff-view') : null;
+        return node ?? fallback;
+    }
+
     function onContentWheel(event: WheelEvent): void {
         lastWheelAt = performance.now();
         if (Math.abs(event.deltaY) < 1) return;
-        const element = event.currentTarget as HTMLElement;
+        if (event.target instanceof Element && event.target.closest('.file-list')) return;
+        const element = scrollOwner(event.target, event.currentTarget as HTMLElement);
+        chromeScroller = element;
         const nearBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 40;
         if (event.deltaY > 0 && element.scrollTop > 16 && !nearBottom) setChromeHidden(true);
         else if (event.deltaY < 0) setChromeHidden(false);
@@ -83,8 +92,8 @@
         touchY = currentY;
     }
 
-    function onContentScroll(event: Event): void {
-        const element = event.currentTarget as HTMLElement;
+    function handleScroll(element: HTMLElement): void {
+        chromeScroller = element;
         const top = element.scrollTop;
         const now = performance.now();
         if (now < suppressChromeUntil) {
@@ -97,13 +106,20 @@
             return;
         }
         // Scrollbar / keyboard scrolling has no wheel events. Use position fallback
-        // only when the wheel has been idle long enough to avoid fighting layout-induced scroll.
-        if (now - lastWheelAt > 600) {
+        // only when the wheel has been idle long enough to avoid fighting layout-induced
+        // scroll. The nested Diff pane scrolls after its wheel event, so trust its
+        // own scroll position immediately.
+        const nested = element.classList.contains('diff-view');
+        if (nested || now - lastWheelAt > 600) {
             const nearBottom = top + element.clientHeight >= element.scrollHeight - 40;
             if (top > lastScrollTop + 10 && !nearBottom) setChromeHidden(true);
             else if (top < lastScrollTop - 10) setChromeHidden(false);
         }
         lastScrollTop = top;
+    }
+
+    function onContentScroll(event: Event): void {
+        handleScroll(event.currentTarget as HTMLElement);
     }
 
     $effect(() => {
@@ -112,6 +128,7 @@
         app.tab;
         if (chromeCheckTimer) clearTimeout(chromeCheckTimer);
         chromeCheckTimer = null;
+        chromeScroller = null;
         chromeHidden = false;
         lastScrollTop = 0;
     });
@@ -640,7 +657,7 @@
                 {:else if app.tab === 'findings'}
                     <Findings />
                 {:else if app.tab === 'diff'}
-                    <Diff />
+                    <Diff onContentScroll={handleScroll} />
                 {:else if app.tab === 'analytics'}
                     <Analytics />
                 {:else}
@@ -689,7 +706,12 @@ revdeck open https://gitlab.com/group/project/-/merge_requests/42</pre>
 {/if}
 
 {#if app.publishing}
-    <PublishDialog kind={app.publishing.kind} ids={app.publishing.ids} onclose={() => (app.publishing = null)} />
+    <PublishDialog
+        kind={app.publishing.kind}
+        ids={app.publishing.ids}
+        verdict={app.publishing.verdict}
+        onclose={() => (app.publishing = null)}
+    />
 {/if}
 
 {#if paletteOpen}

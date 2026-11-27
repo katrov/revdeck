@@ -113,6 +113,28 @@ describe('GitLabProvider', () => {
         expect(await provider.currentUser()).toEqual({ username: 'me', name: 'Me' });
     });
 
+    it('reads pipeline and approval readiness', async () => {
+        const { runner: impl } = runner((call) => {
+            const endpoint = call.args.find((arg) => arg.startsWith('projects/')) ?? '';
+            if (endpoint.includes('/pipelines')) return [{ id: 5, status: 'failed', web_url: 'https://gitlab.example.com/p/5' }];
+            if (endpoint.includes('/approvals')) return { approvals_required: 2, approved_by: [{ user: { username: 'a' } }] };
+            return {};
+        });
+        const provider = new GitLabProvider(gitlabRef, { root: '/tmp', runImpl: impl });
+        const readiness = await provider.readiness();
+        expect(readiness.checks[0]).toMatchObject({ id: '5', status: 'failed', url: 'https://gitlab.example.com/p/5' });
+        expect(readiness.approvals).toEqual({ approved: 1, required: 2, changesRequested: 0 });
+        expect(readiness.errors).toEqual([]);
+    });
+
+    it('submits a review summary with a verdict', async () => {
+        const { runner: impl, calls } = runner(() => ({ id: 55 }));
+        const provider = new GitLabProvider(gitlabRef, { root: '/tmp', runImpl: impl });
+        expect(await provider.submitReview({ body: 'summary', verdict: 'approve' })).toEqual({ id: '55' });
+        expect(calls.some((call) => call.args.includes('POST') && call.args.some((arg) => arg.includes('/notes')))).toBe(true);
+        expect(calls.some((call) => call.args.includes('POST') && call.args.some((arg) => arg.endsWith('/approve')))).toBe(true);
+    });
+
     it('reads the full file content at a commit', async () => {
         const calls: string[][] = [];
         const impl: Runner = async (_command, args) => {
@@ -317,6 +339,36 @@ describe('GitHubProvider', () => {
         const threads = await provider.threads();
         expect(threads[0]).toMatchObject({ id: 'PRRT_1', path: 'src/app.ts', line: 2, resolved: false });
         expect(threads[0]!.notes[0]).toMatchObject({ id: '501', author: 'reviewer' });
+    });
+
+    it('reads check runs and review approvals', async () => {
+        const { runner: impl } = runner((call) => {
+            const endpoint = call.args.find((arg) => arg.startsWith('repos/')) ?? '';
+            if (endpoint.includes('/check-runs')) {
+                return { check_runs: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success', html_url: 'https://x/1' }] };
+            }
+            if (endpoint.includes('/reviews')) {
+                return [
+                    { id: 1, user: { login: 'alice' }, state: 'APPROVED' },
+                    { id: 2, user: { login: 'bob' }, state: 'CHANGES_REQUESTED' },
+                ];
+            }
+            if (endpoint.includes('/pulls/7')) return GH_PR;
+            return [];
+        });
+        const provider = new GitHubProvider(githubRef, { root: '/tmp', runImpl: impl });
+        const readiness = await provider.readiness();
+        expect(readiness.checks[0]).toMatchObject({ name: 'build', status: 'success' });
+        expect(readiness.approvals).toEqual({ approved: 1, required: null, changesRequested: 1 });
+    });
+
+    it('submits a review with a verdict event', async () => {
+        const { runner: impl, calls } = runner(() => ({ id: 77 }));
+        const provider = new GitHubProvider(githubRef, { root: '/tmp', runImpl: impl });
+        expect(await provider.submitReview({ body: 'summary', verdict: 'request_changes' })).toEqual({ id: '77' });
+        const post = calls.find((call) => call.payload && typeof call.payload === 'object' && 'event' in (call.payload as object))!;
+        expect(post.args.some((arg) => arg.includes('/pulls/7/reviews'))).toBe(true);
+        expect(post.payload).toEqual({ body: 'summary', event: 'REQUEST_CHANGES' });
     });
 
     it('reads the full file content at a commit', async () => {

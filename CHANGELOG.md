@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The Overview shows CODEOWNERS matches for changed files, read from the working copy or the head
+  commit; owners are shown as chips and the file can be opened in the Diff tab.
+- Optional browser notifications for new open threads while the revdeck tab is in the background;
+  Settings requests the browser permission and stores the choice locally.
+- The Diff tab has an in-file search with match count and previous/next navigation, plus a persistent
+  “wrap lines” toggle for long code.
+- The Overview remembers the head commit you marked as reviewed (per review, in `localStorage`) and
+  shows a banner when new commits arrived, with a link to the diff, the stale-findings count and a
+  “mark reviewed” action.
+- The Overview has a merge-readiness card: platform CI checks (GitHub check runs, GitLab pipeline),
+  approvals, merge conflicts and open threads, with links to failing jobs and a manual refresh. It is
+  read-only and cached for a minute.
+- Line comments can be turned into suggested changes: the composer inserts a fenced `suggestion` block with
+  the current line, so GitHub/GitLab can render and apply the fix after the normal publish approval.
+- Review summaries can now be published as a final review: GitHub receives a review with an
+  approve/request-changes/comment verdict, GitLab receives a note plus approve/unapprove. The
+  existing approval hash covers the exact summary text and verdict, and the publish dialog shows
+  both before anything is sent.
+- The Diff tab now renders review context inline: open threads under their lines with notes and a quick
+  reply composer, and agent findings with level, status and body. “Open” jumps to the full Threads or
+  Findings tab. Replies still go through the normal publish confirmation.
+- Reactions show a tooltip with the emoji label, count and usernames when hovered or focused.
+
+### Fixed
+
+- The review header now collapses on the Diff tab as well: the scroll handler follows the
+  nested diff pane (wheel, scrollbar and keyboard scrolling), not only the outer content scroller.
+
 ## [0.14.0] - 2026-11-25
 
 ### Added

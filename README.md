@@ -68,7 +68,8 @@ and a web UI. Platform tokens stay on the host.
   state. Conflict or "behind target" is surfaced before findings, so a clean merge-base diff is not
   mistaken for a mergeable MR. Local diffs and snapshots from older versions may not have merge info.
 - **Compact on scroll.** The review header collapses when scrolling down and returns when scrolling
-  up; the section tabs stay at the top.
+  up; the section tabs stay at the top. This also works inside the independently scrolling Diff pane,
+  including its scrollbar and keyboard scrolling.
 - **Large lists stay light.** Threads and findings render only visible pages; focus, editors and deep
   links keep working, and small reviews are rendered in full.
 
@@ -227,16 +228,23 @@ UI shortcuts: `1`–`6` switch tabs, `o` opens a review, `r` refreshes, `s` hide
 sidebar, `p` opens the project switcher (or publishing when a plan is ready), `?` or `⌘K`/`Ctrl+K`
 opens the command palette, `h` opens the command reference. On the Diff tab `[`/`]` switch files,
 `f` focuses the file filter, `t` hides/shows the file tree, `e` expands/collapses hidden lines and
-`v` marks the current file viewed. Letter shortcuts use the physical key, so they work in any
+`v` marks the current file viewed. `n`/`N` jump to the next/previous discussion in the Diff. Letter shortcuts use the physical key, so they work in any
 keyboard layout and are ignored in text fields and dialogs. The sidebar has a **Command reference**
 link (`#/help`) with searchable CLI usage, common flags and UI shortcuts; click a command to copy it.
 The sidebar and the active project are stored in `localStorage`.
 
 The UI shows the MR/PR description, supports deep links to threads, findings and diff lines (with
 working browser Back/Forward), and keeps a per-review "viewed" state and file filter in the diff.
-The Diff tab groups files in a collapsible folder tree that can be hidden or resized, and expands
-hidden unchanged lines around hunks. A review can be removed from the local sidebar with **×**; this
-never deletes the MR/PR on the platform.
+The Diff tab groups files in a collapsible folder tree that can be hidden or resized, expands hidden
+unchanged lines around hunks, has in-file search and a persistent wrap-lines toggle, and renders open
+threads and findings inline. Threads support a quick reply (published only after confirmation), and
+line comments can insert a `suggestion` block that GitHub/GitLab can apply directly. Review summaries
+can be published as a GitHub review or GitLab note with an approve/request-changes verdict after the
+usual confirmation. The Overview has a merge-readiness panel (platform CI checks, approvals,
+conflicts and open threads), CODEOWNERS for changed files, and a reviewed-head marker that warns about
+new commits. Browser notifications about new threads can be enabled in Settings; hovering or focusing
+a reaction shows who reacted. A review can be removed from the local sidebar with **×**; this never
+deletes the MR/PR on the platform.
 A thin progress bar shows review loading. Long paths and URLs wrap or truncate inside cards, and thread,
 finding and line-comment paths have a copy button. While a text
 field is focused, background updates are deferred so typing is never overwritten; the agent reply on a

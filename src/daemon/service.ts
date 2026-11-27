@@ -13,6 +13,7 @@ import { buildEffectiveRules, renderRules } from '../core/rules.js';
 import { DEFAULT_REVIEW_ROLES, effectiveRoleIds, resolveReviewRole, type ResolvedReviewRole } from '../core/review-roles.js';
 import { diffStats, changedPaths, findNewLine, linePosition, snippetAround } from '../core/diff.js';
 import { computeGroups } from '../core/groups.js';
+import { codeownersFor, parseCodeowners } from '../core/codeowners.js';
 import { scanLines, type SecretFinding } from '../core/secrets.js';
 import { sanitizeBody, normalizeMediaLinks } from '../core/sanitize.js';
 import { attachmentSpec, decodeAttachment, matchesSignature } from '../core/attachments.js';
@@ -47,7 +48,9 @@ import type {
     Review,
     ReviewInfo,
     ReviewRef,
+    ReviewReadiness,
     ReviewSummary,
+    ReviewVerdict,
     Side,
     Thread,
     UploadedAttachment,
@@ -105,6 +108,13 @@ export interface ReviewFileContent {
     truncated: boolean;
 }
 
+export interface CodeownersInfo {
+    found: boolean;
+    path: string | null;
+    matches: { file: string; owners: string[] }[];
+    errors: string[];
+}
+
 const EMPTY_DRAFT = (threadId: string): ReplyDraft => ({
     threadId,
     body: '',
@@ -134,6 +144,26 @@ function markedFindingBody(finding: Finding, body: string): string {
     return finding.file && finding.line === null ? `${marker} \`${finding.file}\`\n\n${body}` : `${marker}\n\n${body}`;
 }
 
+/** Текст итогового ревью для платформы: только решения, без внутренних служебных списков. */
+function renderPublishedSummary(summary: ReviewSummary): string {
+    const lines: string[] = [];
+    const title = summary.title.trim();
+    lines.push(`## ${title || tr('Результат ревью', 'Review result')}`);
+    if (summary.scope.trim()) lines.push('', `\`${summary.scope.trim()}\``);
+    if (summary.summary.trim()) lines.push('', summary.summary.trim());
+    const section = (label: string, items: string[] | undefined): void => {
+        const list = (items ?? []).map((item) => item.trim()).filter(Boolean);
+        if (!list.length) return;
+        lines.push('', `### ${label}`);
+        for (const item of list) lines.push(`- ${item}`);
+    };
+    section(tr('Что изменено', 'What changed'), summary.changes);
+    section(tr('На что смотреть', 'What to focus on'), summary.focus);
+    section(tr('Что проверено', 'What was checked'), summary.coverage);
+    section(tr('Что не проверено', 'Not checked'), summary.unknowns);
+    return lines.join('\n').trim();
+}
+
 /**
  * Оркестратор: единая точка между провайдерами, хранилищем и интерфейсами.
  *
@@ -161,6 +191,8 @@ export class ReviewService {
     private readonly previews = new Map<string, { ref: ReviewRef; view: ReviewView; diff: DiffFile[]; root: string; at: number }>();
     /** Полные файлы для раскрытия diff; ключ включает head/base, коммит и путь. */
     private readonly fileContentCache = new Map<string, { value: ReviewFileContent; at: number }>();
+    private readonly readinessCache = new Map<string, { value: ReviewReadiness; at: number }>();
+    private readonly codeownersCache = new Map<string, { value: CodeownersInfo; at: number }>();
 
     constructor(options: ServiceOptions) {
         this.store = options.store;
@@ -1061,6 +1093,91 @@ export class ReviewService {
         return { path: found.path, status: found.status, binary: found.binary, hunks: found.hunks };
     }
 
+    /** CI/approvals платформы; кешируется на минуту, чтобы Overview не дёргал API на каждый рендер. */
+    async readiness(id: string, force = false): Promise<ReviewReadiness> {
+        const cached = this.readinessCache.get(id);
+        if (!force && cached && this.now().getTime() - cached.at < 60_000) return cached.value;
+        const preview = this.previews.get(id);
+        let provider: Provider;
+        try {
+            provider =
+                preview && this.now().getTime() - preview.at < 60 * 60_000
+                    ? await this.providerFactory(preview.ref, preview.root)
+                    : await this.providerFor(id);
+        } catch (error) {
+            return {
+                checks: [],
+                approvals: null,
+                errors: [tr(`не удалось подключиться к платформе: ${redact(messageOf(error))}`, `could not reach the platform: ${redact(messageOf(error))}`)],
+                checkedAt: this.now().toISOString(),
+            };
+        }
+        let value: ReviewReadiness;
+        try {
+            value = await provider.readiness();
+        } catch (error) {
+            value = {
+                checks: [],
+                approvals: null,
+                errors: [tr(`не удалось прочитать готовность: ${redact(messageOf(error))}`, `could not read readiness: ${redact(messageOf(error))}`)],
+                checkedAt: this.now().toISOString(),
+            };
+        }
+        this.readinessCache.set(id, { value, at: this.now().getTime() });
+        return value;
+    }
+
+    /** CODEOWNERS из рабочей копии или head платформы; только чтение. */
+    async codeowners(id: string, force = false): Promise<CodeownersInfo> {
+        const cached = this.codeownersCache.get(id);
+        if (!force && cached && this.now().getTime() - cached.at < 5 * 60_000) return cached.value;
+        const preview = this.previews.get(id);
+        const stored = preview ? null : this.store.getReview(id);
+        if (!preview && !stored) throw Object.assign(new Error(tr(`ревью ${id} не найдено`, `review ${id} not found`)), { status: 404 });
+        const info = preview?.view.info ?? this.store.info(id)!;
+        const root = preview?.root ?? stored!.row.root;
+        const files = (preview?.diff ?? stored!.snapshot.diff).map((file) => file.path);
+        const candidates = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS', '.gitlab/CODEOWNERS'];
+        let text: string | null = null;
+        let foundPath: string | null = null;
+        for (const candidate of candidates) {
+            try {
+                text = await readConfigFile(root, candidate, 1_000_000);
+                foundPath = candidate;
+                break;
+            } catch {
+                // следующая локация
+            }
+        }
+        if (text === null && info.commit.head) {
+            try {
+                const provider = preview ? await this.providerFactory(preview.ref, preview.root) : await this.providerFor(id);
+                for (const candidate of candidates) {
+                    try {
+                        const raw = await provider.fileContent(candidate, info.commit.head);
+                        if (raw.trim()) {
+                            text = raw;
+                            foundPath = candidate;
+                            break;
+                        }
+                    } catch {
+                        // следующая локация
+                    }
+                }
+            } catch {
+                // платформа недоступна: просто нет CODEOWNERS
+            }
+        }
+        const value: CodeownersInfo = {
+            found: text !== null,
+            path: foundPath,
+            matches: text === null ? [] : codeownersFor(files, parseCodeowners(text)),
+            errors: [],
+        };
+        this.codeownersCache.set(id, { value, at: this.now().getTime() });
+        return value;
+    }
+
     /** Последняя версия revdeck в npm; force=true — ручная проверка из настроек. */
     async updateInfo(force = false): Promise<UpdateInfo> {
         return this.updates.check(force);
@@ -1532,15 +1649,32 @@ export class ReviewService {
 
     // ---------------------------------------------------------------- publish
 
-    previewPublish(id: string, kind: PublishKind, ids: string[]): PublishPreview {
+    previewPublish(id: string, kind: PublishKind, ids: string[], verdict: ReviewVerdict = 'comment'): PublishPreview {
         const review = this.getReview(id);
         const items: PublishItem[] = [];
         const warnings: string[] = [];
         const max = this.configOf(id)?.publish?.maxComments ?? 50;
-        for (const itemId of ids) {
+        const reviewVerdict: ReviewVerdict = verdict === 'approve' || verdict === 'request_changes' ? verdict : 'comment';
+        const targets = kind === 'review' ? ['review'] : ids;
+        for (const itemId of targets) {
             if (items.length >= max) {
                 warnings.push(tr(`достигнут лимит ${max} комментариев за раз`, `limit of ${max} comments per batch reached`));
                 break;
+            }
+            if (kind === 'review') {
+                const summary = this.store.getSummary(id);
+                if (!summary) {
+                    warnings.push(tr('выжимки ревью нет: сначала запишите summary', 'there is no review summary: write one first'));
+                    continue;
+                }
+                const body = renderPublishedSummary(summary);
+                const check = sanitizeBody(body, review.info.ref.platform, { host: review.info.ref.host });
+                if (!check.ok) {
+                    warnings.push(tr(`выжимка ревью: ${check.reason}`, `review summary: ${check.reason}`));
+                    continue;
+                }
+                items.push({ kind: 'review', id: 'review', body, verdict: reviewVerdict });
+                continue;
             }
             if (kind === 'reply') {
                 const thread = review.threads.find((item) => item.id === itemId);
@@ -1624,9 +1758,9 @@ export class ReviewService {
         return { reviewId: id, kind, items, hash, createdAt: this.now().toISOString() };
     }
 
-    approve(id: string, kind: PublishKind, ids: string[], expectedHash: string): Approval {
+    approve(id: string, kind: PublishKind, ids: string[], expectedHash: string, verdict: ReviewVerdict = 'comment'): Approval {
         this.assertWritable(id);
-        const preview = this.previewPublish(id, kind, ids);
+        const preview = this.previewPublish(id, kind, ids, verdict);
         if (preview.plan.hash !== expectedHash) {
             throw new Error(tr('набор изменений изменился после подтверждения: обновите страницу и подтвердите заново', 'the plan changed after confirmation: refresh and confirm again'));
         }
@@ -1678,6 +1812,15 @@ export class ReviewService {
             const result: PublishResultItem = { kind: item.kind, id: item.id, ok: false };
             results.push(result);
             try {
+                if (item.kind === 'review') {
+                    const body = String(item.body ?? '').trim();
+                    if (!body) throw new Error(tr('пустая выжимка ревью', 'empty review summary'));
+                    const check = sanitizeBody(body, platform, { host: review.info.ref.host });
+                    if (!check.ok) throw new Error(check.reason);
+                    await provider.submitReview({ body, verdict: item.verdict ?? 'comment' });
+                    result.ok = true;
+                    continue;
+                }
                 if (item.kind === 'reply') {
                     const thread = review.threads.find((entry) => entry.id === item.id);
                     const draft = this.store.getDraft(id, item.id) ?? EMPTY_DRAFT(item.id);

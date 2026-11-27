@@ -1,5 +1,5 @@
 import type { ReviewConfig } from '../core/config.js';
-import type { DiffFile, Platform, Reaction, ReviewInfo, ReviewRef, Thread, UploadedAttachment, User, Note } from '../core/types.js';
+import type { DiffFile, Platform, Reaction, ReviewInfo, ReviewReadiness, ReviewRef, ReviewVerdict, Thread, UploadedAttachment, User, Note } from '../core/types.js';
 import type { Runner } from '../core/exec.js';
 import { currentBranch, gitRemote } from '../core/git.js';
 import { ProviderError } from '../core/errors.js';
@@ -40,6 +40,11 @@ export interface CreateThreadInput {
 export interface CreatedThread {
     discussionId: string;
     noteId: string;
+}
+
+export interface SubmitReviewInput {
+    body: string;
+    verdict: ReviewVerdict;
 }
 
 export interface ProviderCapabilities {
@@ -86,6 +91,10 @@ export interface Provider {
     /** Загружает вложение в платформу и возвращает абсолютную ссылку. */
     upload(input: UploadInput): Promise<UploadedAttachment>;
     createThread(input: CreateThreadInput): Promise<CreatedThread>;
+    /** Опубликовать итоговую выжимку и вердикт ревью. */
+    submitReview(input: SubmitReviewInput): Promise<{ id: string }>;
+    /** Платформенные checks и approvals для панели готовности к мержу. */
+    readiness(): Promise<ReviewReadiness>;
 }
 
 export interface ProjectContext {

@@ -4,6 +4,7 @@
     import { setTheme, theme, type ThemeMode } from '../lib/theme.svelte';
     import { AUTO_REFRESH_CHOICES, autoRefresh, setAutoRefreshMinutes } from '../lib/auto-refresh.svelte';
     import { checkForUpdates, update } from '../lib/update.svelte';
+    import { notifications, setNotificationsEnabled } from '../lib/notifications.svelte';
 
     const themes: { id: ThemeMode; label: string; icon: string }[] = [
         { id: 'auto', label: 'Auto', icon: '◐' },
@@ -73,6 +74,26 @@
                 >{minutes === 0 ? t('Выкл', 'Off') : `${minutes} ${t('мин', 'min')}`}</button>
             {/each}
         </div>
+    </section>
+
+    <section class="card">
+        <div class="card-title">{t('Уведомления', 'Notifications')}</div>
+        <label class="settings-toggle">
+            <input
+                type="checkbox"
+                checked={notifications.enabled}
+                onchange={(event) => void setNotificationsEnabled(event.currentTarget.checked)}
+            />
+            <span>
+                <strong>{t('Новые треды в фоне', 'New threads in the background')}</strong>
+                <span class="muted small">{t('Браузерное уведомление, когда вкладка revdeck не активна. Потребуется разрешение браузера.', 'A browser notification while the revdeck tab is in the background. Browser permission is required.')}</span>
+            </span>
+        </label>
+        {#if notifications.permission === 'denied'}
+            <p class="muted small">{t('Браузер запретил уведомления для этого адреса. Разрешите их в настройках сайта.', 'The browser blocked notifications for this origin. Allow them in the site settings.')}</p>
+        {:else if notifications.permission === 'unsupported'}
+            <p class="muted small">{t('Этот браузер не поддерживает Notification API.', 'This browser does not support the Notification API.')}</p>
+        {/if}
     </section>
 
     <section class="card">

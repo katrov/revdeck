@@ -232,6 +232,18 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                 reply(res, 200, { ok: true, update });
                 return;
             }
+            if (req.method === 'GET' && url.pathname === '/api/codeowners') {
+                const review = url.searchParams.get('review') ?? '';
+                const codeowners = await service.codeowners(review, url.searchParams.get('refresh') === '1');
+                reply(res, 200, { ok: true, codeowners });
+                return;
+            }
+            if (req.method === 'GET' && url.pathname === '/api/readiness') {
+                const review = url.searchParams.get('review') ?? '';
+                const readiness = await service.readiness(review, url.searchParams.get('refresh') === '1');
+                reply(res, 200, { ok: true, readiness });
+                return;
+            }
             if (req.method === 'GET' && url.pathname === '/api/health') {
                 reply(res, 200, { ok: true, version: options.version ?? 'dev', reviews: service.listReviews().length });
                 return;
@@ -472,7 +484,12 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                         return;
                     }
                     case '/api/publish/preview': {
-                        const preview = service.previewPublish(review, String(body.kind ?? 'reply') as PublishKind, Array.isArray(body.ids) ? body.ids.map(String) : []);
+                        const preview = service.previewPublish(
+                            review,
+                            String(body.kind ?? 'reply') as PublishKind,
+                            Array.isArray(body.ids) ? body.ids.map(String) : [],
+                            body.verdict === 'approve' || body.verdict === 'request_changes' ? body.verdict : 'comment',
+                        );
                         reply(res, 200, { ok: true, preview });
                         return;
                     }
@@ -482,6 +499,7 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                             String(body.kind ?? 'reply') as PublishKind,
                             Array.isArray(body.ids) ? body.ids.map(String) : [],
                             String(body.hash ?? ''),
+                            body.verdict === 'approve' || body.verdict === 'request_changes' ? body.verdict : 'comment',
                         );
                         reply(res, 200, { ok: true, approval: { id: approval.id, expiresAt: approval.expiresAt } });
                         return;

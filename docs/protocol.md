@@ -159,6 +159,8 @@ human socket.
 | GET | `/` | SPA; `?t=<token>` sets the cookie and redirects |
 | GET | `/assets/*` | static build assets |
 | GET | `/api/health` | liveness |
+| GET | `/api/readiness?review=&refresh=1` | platform CI checks, approvals, merge context and open threads |
+| GET | `/api/codeowners?review=&refresh=1` | CODEOWNERS matches for changed files |
 | GET | `/api/update?refresh=1` | current/latest version from the npm `latest` dist-tag; `refresh=1` bypasses the daemon cache |
 | GET | `/api/projects` | registered projects |
 | GET | `/api/reviews?project=` | review list, optionally scoped |
@@ -181,6 +183,8 @@ human socket.
 | POST | `/api/comments` | `action: update/delete` for own platform comments |
 | POST | `/api/attachments` | upload an image/video and return an absolute link |
 | POST | `/api/publish/preview`, `/approve`, `/commit` | publishing |
+Publish endpoints accept `kind: "review"` and `verdict: comment|approve|request_changes`;
+the plan hash covers the summary text and the verdict.
 | POST | `/api/checks` | checks |
 | POST | `/api/rpc` | RPC proxy for the HTTP transport |
 

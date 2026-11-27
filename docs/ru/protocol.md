@@ -158,6 +158,8 @@ Human-only методы возвращают `CAPABILITY` на мосту: `publ
 | GET | `/` | SPA; `?t=<token>` ставит cookie и редиректит |
 | GET | `/assets/*` | статика сборки |
 | GET | `/api/health` | живость |
+| GET | `/api/readiness?review=&refresh=1` | CI-проверки, approvals, контекст мержа и открытые треды платформы |
+| GET | `/api/codeowners?review=&refresh=1` | совпадения CODEOWNERS для изменённых файлов |
 | GET | `/api/update?refresh=1` | текущая/последняя версия из npm `latest`; `refresh=1` обходит кеш демона |
 | GET | `/api/projects` | зарегистрированные проекты |
 | GET | `/api/reviews?project=` | список ревью, опционально в скоупе |
@@ -180,6 +182,8 @@ Human-only методы возвращают `CAPABILITY` на мосту: `publ
 | POST | `/api/comments` | `action: update/delete` для своих комментариев платформы |
 | POST | `/api/attachments` | загрузить картинку/видео и вернуть абсолютную ссылку |
 | POST | `/api/publish/preview`, `/approve`, `/commit` | публикация |
+Publish-эндпоинты принимают `kind: "review"` и `verdict: comment|approve|request_changes`;
+хеш плана покрывает текст выжимки и вердикт.
 | POST | `/api/checks` | проверки |
 | POST | `/api/rpc` | RPC-прокси для HTTP-транспорта |
 
