@@ -42,17 +42,25 @@
     let touchY: number | null = null;
     let chromeCheckTimer: ReturnType<typeof setTimeout> | null = null;
     let chromeScroller: HTMLElement | null = null;
+    /** Ручное скрытие приоритетнее авто-раскрытия при скролле и смене вкладки. */
+    let chromePinnedHidden = false;
     let autoRefreshNonce = $state(0);
     const SIDEBAR_KEY = 'revdeck.sidebar';
 
     function setChromeHidden(hidden: boolean, manual = false): void {
-        if (hidden === chromeHidden) return;
+        // Ручное скрытие не должно раскрываться от скролла: только кнопка.
+        if (!hidden && !manual && chromePinnedHidden) return;
+        if (hidden === chromeHidden) {
+            if (manual) chromePinnedHidden = hidden;
+            return;
+        }
+        if (manual) chromePinnedHidden = hidden;
         chromeHidden = hidden;
         // Свёрнутая/раскрытая шапка меняет высоту .content и может сдвинуть scrollTop.
         // Эти программные scroll-события не должны переключать шапку обратно.
         suppressChromeUntil = performance.now() + 450;
         if (chromeCheckTimer) clearTimeout(chromeCheckTimer);
-        if (hidden && !manual) {
+        if (hidden && !manual && !chromePinnedHidden) {
             chromeCheckTimer = setTimeout(() => {
                 chromeCheckTimer = null;
                 const element = chromeScroller ?? document.querySelector('.content');
@@ -123,13 +131,23 @@
     }
 
     $effect(() => {
-        // При смене ревью или вкладки шапка всегда снова на месте.
+        // Новое ревью — новый контекст: ручная защёлка сбрасывается.
         app.review?.id;
-        app.tab;
+        chromePinnedHidden = false;
         if (chromeCheckTimer) clearTimeout(chromeCheckTimer);
         chromeCheckTimer = null;
         chromeScroller = null;
         chromeHidden = false;
+        lastScrollTop = 0;
+    });
+
+    $effect(() => {
+        // Вкладка не отменяет ручное скрытие шапки.
+        app.tab;
+        if (chromeCheckTimer) clearTimeout(chromeCheckTimer);
+        chromeCheckTimer = null;
+        chromeScroller = null;
+        if (!chromePinnedHidden) chromeHidden = false;
         lastScrollTop = 0;
     });
 

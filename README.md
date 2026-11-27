@@ -69,8 +69,8 @@ and a web UI. Platform tokens stay on the host.
   mistaken for a mergeable MR. Local diffs and snapshots from older versions may not have merge info.
 - **Compact on scroll.** The review header collapses when scrolling down and returns when scrolling
   up; the section tabs stay at the top. This also works inside the independently scrolling Diff pane,
-  including its scrollbar and keyboard scrolling. A header button hides it manually; a small
-  restore button in the tabs row brings it back.
+  including its scrollbar and keyboard scrolling. A header button hides it manually; while
+  pinned, scrolling and tab switches do not reopen it — only the restore button in the tabs row does.
 - **Large lists stay light.** Threads and findings render only visible pages; focus, editors and deep
   links keep working, and small reviews are rendered in full.
 
