@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The Diff tab now renders review context inline: open threads under their lines with notes and a quick
+  reply composer, and agent findings with level, status and body. “Open” jumps to the full Threads or
+  Findings tab. Replies still go through the normal publish confirmation.
+
 ## [0.14.0] - 2026-11-25
 
 ### Added

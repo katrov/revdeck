@@ -68,7 +68,9 @@ The core guarantees:
 - Unified diff with per-file hunks, line numbers in old/new versions, changed-file filters and
   viewed-state per review. Files are grouped into a collapsible folder tree that can be hidden or
   resized, and hidden unchanged lines around hunks expand in place (10 lines at a time or all at
-  once); the full file is served from the local commit or the platform raw API.
+  once); the full file is served from the local commit or the platform raw API. Open threads and
+  findings render inline under their lines; threads offer a quick reply that still requires publish
+  confirmation, and “Open” jumps to the full tab.
 - Threads: read, reply, resolve, react; line comments from the human; reactions on MR/PR and notes.
 - Edit and delete your own platform comments.
 - Attachments: upload raster images and videos to GitLab project uploads and insert a markdown link;

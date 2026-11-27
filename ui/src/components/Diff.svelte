@@ -2,11 +2,13 @@
     import { onMount } from 'svelte';
     import { app, copyFocusLink, errorText, focusNote, isEditingText, notify } from '../lib/state.svelte';
     import { addNote, deleteNote, getDiff, getFileContent, updateNote } from '../lib/api';
-    import type { DiffLine, DiffPayload, FileContentPayload, FileSummary } from '../lib/types';
+    import type { DiffLine, DiffPayload, FileContentPayload, FileSummary, Finding, Thread } from '../lib/types';
     import { truncate } from '../lib/format';
     import { plural, t } from '../lib/i18n.svelte';
     import MarkdownEditor from './MarkdownEditor.svelte';
     import Markdown from './Markdown.svelte';
+    import InlineThread from './InlineThread.svelte';
+    import InlineFinding from './InlineFinding.svelte';
 
     const TREE_WIDTH_KEY = 'revdeck.diff.treeWidth';
     const TREE_HIDDEN_KEY = 'revdeck.diff.treeHidden';
@@ -583,6 +585,27 @@
         return map;
     });
 
+    const threadsByLine = $derived.by(() => {
+        const map = new Map<number, Thread[]>();
+        if (!diff) return map;
+        for (const thread of app.review?.threads ?? []) {
+            if (thread.path !== diff.path || thread.line === null || thread.resolved) continue;
+            if (thread.side === 'old') continue;
+            map.set(thread.line, [...(map.get(thread.line) ?? []), thread]);
+        }
+        return map;
+    });
+
+    const findingsByLine = $derived.by(() => {
+        const map = new Map<number, Finding[]>();
+        if (!diff) return map;
+        for (const finding of app.review?.findings ?? []) {
+            if (finding.file !== diff.path || finding.line === null) continue;
+            map.set(finding.line, [...(map.get(finding.line) ?? []), finding]);
+        }
+        return map;
+    });
+
     const fileNotes = $derived((app.review?.notes ?? []).filter((note) => note.file === file));
 
     function pickLine(lineNumber: number | null): void {
@@ -802,6 +825,16 @@
                                 {line.text}{#if marks.has(number)}<span class="badge minor" style="margin-left: 8px">{truncate(marks.get(number)!.join(', '), 40)}</span>{/if}
                             </span>
                         </div>
+                        {#if line.newLine !== null && ((threadsByLine.get(number)?.length ?? 0) > 0 || (findingsByLine.get(number)?.length ?? 0) > 0)}
+                            <div class="inline-review">
+                                {#each threadsByLine.get(number) ?? [] as thread (thread.id)}
+                                    <InlineThread {thread} />
+                                {/each}
+                                {#each findingsByLine.get(number) ?? [] as finding (finding.id)}
+                                    <InlineFinding {finding} />
+                                {/each}
+                            </div>
+                        {/if}
                     {/if}
                 {/each}
             </div>
