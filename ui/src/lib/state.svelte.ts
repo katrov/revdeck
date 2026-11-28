@@ -1,9 +1,10 @@
-import { getFeature, getFeatureContext, getFeatures, getFeaturesForReview, getProjects, getReactions, getReviews, getState, openPreview as openPreviewApi, refreshReview } from './api';
+import { ApiError, DaemonUnavailableError, DAEMON_LOST_EVENT, SESSION_EXPIRED_EVENT, getFeature, getFeatureContext, getFeatures, getFeaturesForReview, getProjects, getReactions, getReviews, getState, openPreview as openPreviewApi, refreshReview } from './api';
 import type { FeatureDetail, FeatureSummary, PreviewRef, ProjectSummary, ReviewListItem, ReviewView, Tab } from './types';
 import { projectKeyFromReviewId } from './projects';
 import { i18n, localeTag, t } from './i18n.svelte';
 import { notifyNewThreads } from './notifications.svelte';
 import { rememberSetting } from './settings-sync';
+import { clearReviewDraftBackups } from './draft-backup';
 
 export interface Toast {
     text: string;
@@ -52,6 +53,9 @@ export const app = $state({
     focus: null as Focus,
     loading: false,
     error: '',
+    /** Демон остановлен/перезапущен или cookie-сессия устарела: показываем отдельный экран. */
+    daemonLost: false,
+    daemonLostKind: 'offline' as DaemonLostKind,
     toast: null as Toast | null,
     diffFile: null as string | null,
     diffFocus: null as { file: string; line: number } | null,
@@ -79,6 +83,7 @@ const REVIEW_CACHE_LIMIT = 4;
 
 export function forgetReview(id: string): void {
     reviewCache.delete(id);
+    clearReviewDraftBackups(id);
 }
 
 function rememberReview(state: CachedReviewState): void {
@@ -139,6 +144,78 @@ export function notify(text: string, kind: Toast['kind'] = 'info'): void {
 
 export function errorText(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+export type DaemonLostKind = 'offline' | 'expired';
+
+export function markDaemonLost(kind: DaemonLostKind): void {
+    app.daemonLost = true;
+    app.daemonLostKind = kind;
+    app.error = '';
+}
+
+/** Единая точка реакции на сеть: сырые «Failed to fetch» и «нет авторизации» не показываем. */
+function handleLoadError(error: unknown): void {
+    if (error instanceof DaemonUnavailableError) {
+        markDaemonLost('offline');
+        return;
+    }
+    if (error instanceof ApiError && error.status === 401) {
+        markDaemonLost('expired');
+        return;
+    }
+    app.error = errorText(error);
+}
+
+/** Подписка на события API: любой компонент, упёршийся в мёртвый демон, поднимает экран. */
+export function watchDaemon(): () => void {
+    const lost = (): void => markDaemonLost('offline');
+    const expired = (): void => markDaemonLost('expired');
+    // Сеть вернулась или вкладку снова открыли — не ждём следующего тика опроса.
+    const online = (): void => {
+        if (app.daemonLost) void recoverDaemon();
+    };
+    const visible = (): void => {
+        if (document.visibilityState === 'visible' && app.daemonLost) void recoverDaemon();
+    };
+    window.addEventListener(DAEMON_LOST_EVENT, lost);
+    window.addEventListener(SESSION_EXPIRED_EVENT, expired);
+    window.addEventListener('online', online);
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+        window.removeEventListener(DAEMON_LOST_EVENT, lost);
+        window.removeEventListener(SESSION_EXPIRED_EVENT, expired);
+        window.removeEventListener('online', online);
+        document.removeEventListener('visibilitychange', visible);
+    };
+}
+
+export async function probeDaemon(): Promise<'ok' | DaemonLostKind> {
+    try {
+        const response = await fetch('/api/health', { credentials: 'same-origin', cache: 'no-store' });
+        if (response.ok) return 'ok';
+        return response.status === 401 ? 'expired' : 'offline';
+    } catch {
+        return 'offline';
+    }
+}
+
+/** Проверить доступ и перезагрузить вкладку, если демон снова авторизует её. */
+export async function recoverDaemon(): Promise<'ok' | DaemonLostKind> {
+    const state = await probeDaemon();
+    if (state === 'ok') {
+        // location.reload сохраняет hash-маршрут: пользователь возвращается туда же.
+        location.reload();
+        return state;
+    }
+    if (state === 'expired') markDaemonLost('expired');
+    return state;
+}
+
+/** Ручная проверка: при восстановлении доступа перезагружаем вкладку на том же маршруте. */
+export async function retryDaemonConnection(): Promise<void> {
+    const state = await recoverDaemon();
+    if (state !== 'ok') markDaemonLost(state);
 }
 
 export function setTab(tab: Tab, push = true): void {
@@ -226,7 +303,7 @@ export async function loadProjects(): Promise<void> {
             storeProject(app.activeProject);
         }
     } catch (error) {
-        app.error = errorText(error);
+        handleLoadError(error);
     }
 }
 
@@ -235,7 +312,7 @@ export async function loadReviews(): Promise<void> {
         const next = (await getReviews(app.activeProject ?? undefined)).reviews;
         if (!sameReviewList(next, app.reviews)) app.reviews = next;
     } catch (error) {
-        app.error = errorText(error);
+        handleLoadError(error);
     }
 }
 
@@ -246,7 +323,7 @@ export async function loadFeatures(): Promise<void> {
         app.features = next;
         app.featureRevision += 1;
     } catch (error) {
-        app.error = errorText(error);
+        handleLoadError(error);
     }
 }
 
@@ -281,7 +358,7 @@ export async function loadFeature(id: string, options: { push?: boolean } = {}):
         writeHash(options.push ?? true);
     } catch (error) {
         if (request !== featureRequest || epoch !== routeEpoch) return;
-        app.error = errorText(error);
+        handleLoadError(error);
     }
 }
 
@@ -525,9 +602,9 @@ export async function loadPreview(
         writeHash(options.push ?? false);
     } catch (error) {
         if (request !== loadRequest || epoch !== routeEpoch) return;
-        app.error = errorText(error);
+        handleLoadError(error);
         // Тихий refresh не должен выбрасывать пользователя из уже открытого preview.
-        if (!options.silent || !app.review) {
+        if (!app.daemonLost && (!options.silent || !app.review)) {
             app.review = null;
             app.preview = false;
             app.previewRef = null;
@@ -585,8 +662,8 @@ export async function loadReview(id: string, options: { refresh?: boolean; silen
         rememberReview({ review: app.review ?? data.review, reviews: data.reviews });
     } catch (error) {
         if (request !== loadRequest || epoch !== routeEpoch) return;
-        app.error = errorText(error);
-        if (!options.silent) notify(app.error, 'error');
+        handleLoadError(error);
+        if (!app.daemonLost && !options.silent) notify(app.error, 'error');
     } finally {
         if (request === loadRequest) {
             app.loading = false;
@@ -610,6 +687,9 @@ export async function refreshCurrent(options: { silent?: boolean } = {}): Promis
 }
 
 export function scheduleReload(scope?: ReloadScope): void {
+    // Пока показан экран потери связи, фоновые перезагрузки только шумят:
+    // восстановление идёт через probeDaemon/retryDaemonConnection.
+    if (app.daemonLost) return;
     if (scope) pendingReloadScopes.add(scope);
     if (isEditingText()) {
         reloadPending = true;
@@ -664,8 +744,13 @@ export function scheduleReload(scope?: ReloadScope): void {
 export function subscribe(): () => void {
     const source = new EventSource('/api/events');
     let lastEventAt = Date.now();
+    let probeTimer: ReturnType<typeof setTimeout> | null = null;
     const markAlive = (): void => {
         lastEventAt = Date.now();
+        if (probeTimer) {
+            clearTimeout(probeTimer);
+            probeTimer = null;
+        }
     };
     source.addEventListener('review', () => {
         markAlive();
@@ -681,6 +766,18 @@ export function subscribe(): () => void {
     });
     source.addEventListener('hello', markAlive);
     source.addEventListener('heartbeat', markAlive);
+    // Перезапуск может сменить порт (занят, --port): тогда SSE не восстановится
+    // сам. Пять секунд покрывают короткий обрыв, дальше показываем экран «нет связи».
+    source.addEventListener('error', () => {
+        if (probeTimer || source.readyState === EventSource.OPEN) return;
+        probeTimer = setTimeout(() => {
+            probeTimer = null;
+            if (source.readyState === EventSource.OPEN) return;
+            void probeDaemon().then((state) => {
+                if (state !== 'ok') markDaemonLost(state);
+            });
+        }, 5000);
+    });
     // Страховка только для действительно мёртвого/забуференного SSE: пока идут
     // heartbeat'ы, поллинг не нужен и не дёргает /api/state каждые 10 секунд.
     const poll = setInterval(() => {
@@ -691,6 +788,7 @@ export function subscribe(): () => void {
     return () => {
         source.close();
         clearInterval(poll);
+        if (probeTimer) clearTimeout(probeTimer);
     };
 }
 

@@ -8,18 +8,42 @@ export class ApiError extends Error {
     }
 }
 
+/** Сеть недоступна: демон остановлен, перезапускается или сменил порт. */
+export class DaemonUnavailableError extends Error {
+    constructor() {
+        super('revdeck daemon is unreachable');
+        this.name = 'DaemonUnavailableError';
+    }
+}
+
+export const DAEMON_LOST_EVENT = 'revdeck:daemon-lost';
+export const SESSION_EXPIRED_EVENT = 'revdeck:session-expired';
+
+function signalDaemon(kind: 'lost' | 'expired'): void {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new Event(kind === 'lost' ? DAEMON_LOST_EVENT : SESSION_EXPIRED_EVENT));
+}
+
 export async function rpc<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     const data = await api<{ result: T }>('/api/rpc', { body: { method, params } });
     return data.result;
 }
 
 export async function api<T>(path: string, options: { method?: 'GET' | 'POST'; body?: unknown } = {}): Promise<T> {
-    const response = await fetch(path, {
-        method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
-        credentials: 'same-origin',
-        headers: options.body === undefined ? {} : { 'content-type': 'application/json' },
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    });
+    let response: Response;
+    try {
+        response = await fetch(path, {
+            method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
+            credentials: 'same-origin',
+            headers: options.body === undefined ? {} : { 'content-type': 'application/json' },
+            body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        });
+    } catch {
+        // fetch падает только на уровне сети: показываем страницу «демон недоступен»,
+        // а не сырое «Failed to fetch» в красной плашке.
+        signalDaemon('lost');
+        throw new DaemonUnavailableError();
+    }
     const text = await response.text();
     let data: { ok?: boolean; error?: string } & Record<string, unknown> = {};
     try {
@@ -28,6 +52,7 @@ export async function api<T>(path: string, options: { method?: 'GET' | 'POST'; b
         throw new ApiError(text.slice(0, 300) || `HTTP ${response.status}`, response.status);
     }
     if (!response.ok || data.ok === false) {
+        if (response.status === 401) signalDaemon('expired');
         throw new ApiError(String(data.error ?? `HTTP ${response.status}`), response.status);
     }
     return data as T;

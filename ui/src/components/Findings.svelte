@@ -7,6 +7,8 @@
     import Markdown from './Markdown.svelte';
     import MarkdownEditor from './MarkdownEditor.svelte';
     import VirtualList from './VirtualList.svelte';
+    import { clearDraftBackup, readDraftBackup, writeDraftBackup } from '../lib/draft-backup';
+    import { untrack } from 'svelte';
 
     let levelFilter = $state<'all' | Level>('all');
     let statusFilter = $state<'all' | 'open' | 'published'>('all');
@@ -53,8 +55,20 @@
         const review = app.review;
         if (!review) return;
         saving = true;
+        // Снимок того, что уходит на демон: копию стираем только если пользователь
+        // не успел дописать текст, пока шёл запрос.
+        const sent = new Map(review.findings.map((finding) => [finding.id, { comment: finding.comment, agentNote: finding.agentNote ?? '' }]));
         try {
             const result = await saveFindings(review.id, review.findings);
+            // Что успело уйти без правок пользователя во время запроса.
+            const saved = new Set(
+                review.findings
+                    .filter((finding) => {
+                        const before = sent.get(finding.id);
+                        return Boolean(before && before.comment === finding.comment && before.agentNote === (finding.agentNote ?? ''));
+                    })
+                    .map((finding) => finding.id),
+            );
             for (const updated of result.findings) {
                 const local = review.findings.find((finding) => finding.id === updated.id);
                 if (!local) continue;
@@ -63,6 +77,7 @@
                 local.publishedAt = updated.publishedAt;
                 local.comment = updated.comment;
                 local.publishError = updated.publishError;
+                if (saved.has(local.id)) clearDraftBackup(review.id, 'finding', local.id);
             }
         } catch (error) {
             notify(errorText(error), 'error');
@@ -106,6 +121,32 @@
             () => notify(t('Не удалось скопировать', 'Could not copy'), 'error'),
         );
     }
+
+    /** Возвращаем несохранённые правки после перезагрузки вкладки. */
+    $effect(() => {
+        const reviewId = app.review?.id;
+        if (!reviewId) return;
+        untrack(() => {
+            for (const finding of app.review?.findings ?? []) {
+                if (finding.status === 'published') {
+                    clearDraftBackup(reviewId, 'finding', finding.id);
+                    continue;
+                }
+                const backup = readDraftBackup(reviewId, 'finding', finding.id);
+                if (!backup) continue;
+                let dirty = false;
+                if (backup.comment !== undefined && backup.comment !== finding.comment) {
+                    finding.comment = backup.comment;
+                    dirty = true;
+                }
+                if (backup.agentNote !== undefined && backup.agentNote !== (finding.agentNote ?? '')) {
+                    finding.agentNote = backup.agentNote;
+                    dirty = true;
+                }
+                if (dirty) scheduleSave();
+            }
+        });
+    });
 
     $effect(() => {
         const focus = app.focus;
@@ -192,7 +233,10 @@
         <MarkdownEditor
             id={`comment-${finding.id}`}
             bind:value={finding.comment}
-            onchange={scheduleSave}
+            onchange={(value) => {
+                if (app.review) writeDraftBackup(app.review.id, 'finding', finding.id, { comment: value });
+                scheduleSave();
+            }}
             rows={3}
             autoGrow
             disabled={finding.status === 'published'}
@@ -203,6 +247,7 @@
             value={finding.agentNote ?? ''}
             onchange={(value) => {
                 finding.agentNote = value;
+                if (app.review) writeDraftBackup(app.review.id, 'finding', finding.id, { agentNote: value });
                 scheduleSave();
             }}
             rows={2}

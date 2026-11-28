@@ -7,6 +7,8 @@
     import Reactions from './Reactions.svelte';
     import MarkdownEditor from './MarkdownEditor.svelte';
     import VirtualList from './VirtualList.svelte';
+    import { clearDraftBackup, readDraftBackup, writeDraftBackup } from '../lib/draft-backup';
+    import { untrack } from 'svelte';
 
     let filter = $state<'open' | 'all'>('open');
     let selected = $state<string[]>([]);
@@ -42,6 +44,31 @@
         return draftFor(threadId) ?? { ...EMPTY_DRAFT, threadId };
     }
 
+    /**
+     * После перезагрузки возвращаем текст, который не успел уйти на демон.
+     * untrack: восстановление не должно запускаться от каждого нажатия клавиши.
+     */
+    $effect(() => {
+        const reviewId = app.review?.id;
+        if (!reviewId) return;
+        untrack(() => {
+            for (const draft of app.review?.drafts ?? []) {
+                const backup = readDraftBackup(reviewId, 'thread', draft.threadId);
+                if (!backup) continue;
+                let dirty = false;
+                if (backup.body !== undefined && backup.body !== draft.body) {
+                    draft.body = backup.body;
+                    dirty = true;
+                }
+                if (backup.noteForAgent !== undefined && backup.noteForAgent !== draft.noteForAgent) {
+                    draft.noteForAgent = backup.noteForAgent;
+                    dirty = true;
+                }
+                if (dirty) scheduleSave(draft.threadId);
+            }
+        });
+    });
+
     function scheduleSave(threadId: string): void {
         const existing = timers.get(threadId);
         if (existing) clearTimeout(existing);
@@ -64,6 +91,9 @@
                 agentAction: draft.agentAction,
             };
             const result = await saveDraft(review.id, threadId, sent);
+            // Сохранилось ровно то, что ушло, только если пользователь не дописал
+            // текст, пока шёл запрос.
+            const savedAsSent = draft.body === sent.body && draft.noteForAgent === sent.noteForAgent;
             // Не затираем то, что пользователь успел напечатать, пока шёл запрос.
             if (draft.body === sent.body) draft.body = result.draft.body;
             if (draft.resolve === sent.resolve) draft.resolve = result.draft.resolve;
@@ -73,6 +103,7 @@
             draft.replied = result.draft.replied;
             draft.resolved = result.draft.resolved;
             draft.error = result.draft.error;
+            if (savedAsSent) clearDraftBackup(review.id, 'thread', threadId);
             return true;
         } catch (error) {
             notify(errorText(error), 'error');
@@ -280,7 +311,10 @@
         <div class="stack" style="margin-top: 12px">
             <MarkdownEditor
                 bind:value={draft.body}
-                onchange={() => scheduleSave(thread.id)}
+                onchange={() => {
+                    if (app.review) writeDraftBackup(app.review.id, 'thread', thread.id, { body: draft.body });
+                    scheduleSave(thread.id);
+                }}
                 placeholder={t('Черновик ответа. Публикуется только после подтверждения.', 'Draft reply. Published only after confirmation.')}
                 rows={3}
             />
@@ -312,6 +346,7 @@
                         value={draft.noteForAgent}
                         oninput={(event) => {
                             draft.noteForAgent = event.currentTarget.value;
+                            if (app.review) writeDraftBackup(app.review.id, 'thread', thread.id, { noteForAgent: draft.noteForAgent });
                             scheduleSave(thread.id);
                         }}
                         placeholder={t('Что сделать: исправить, переписать ответ, пересмотреть правку…', 'What to do: fix, rewrite the reply, revise the change…')}

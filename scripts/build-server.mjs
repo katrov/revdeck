@@ -11,8 +11,13 @@ const entries = [
     ['mcp', 'src/mcp/main.ts'],
 ];
 
-await rm(path.join(root, 'dist'), { recursive: true, force: true });
+// Только серверные бандлы: dist/ui собирает build:ui, и build:server не должен
+// оставлять демон без интерфейса (иначе GET / отдаёт 500 с ENOENT index.html).
 await mkdir(path.join(root, 'dist'), { recursive: true });
+for (const name of ['cli', 'daemon', 'mcp']) {
+    await rm(path.join(root, 'dist', `${name}.js`), { force: true });
+    await rm(path.join(root, 'dist', `${name}.js.map`), { force: true });
+}
 
 for (const [name, entry] of entries) {
     const result = await build({

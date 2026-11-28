@@ -1947,6 +1947,88 @@ mark {
     color: var(--warn, #f59e0b);
 }
 
+.auth-missing {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--border));
+    background: var(--warn-soft);
+    border-radius: 9px;
+}
+
+.auth-missing-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.auth-missing-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--warn);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.auth-missing p {
+    margin: 6px 0 0;
+}
+
+.auth-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.auth-tool {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--panel);
+}
+
+.auth-tool-name {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 110px;
+}
+
+.auth-tool-command {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--code);
+    font: 12px/1.5 var(--mono);
+}
+
+.auth-restart {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.auth-restart .btn.icon {
+    padding: 2px 6px;
+}
+
+
 .auth-error {
     margin-top: 10px;
     color: var(--danger, #ef4444);
@@ -3220,5 +3302,175 @@ mark {
     .sidebar-reopen {
         left: 12px;
         bottom: 12px;
+    }
+}
+
+/* Потеря связи с демоном: отдельный экран вместо сырых сетевых ошибок. */
+.lost-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    padding: 26px;
+    overflow: auto;
+    background:
+        radial-gradient(900px 520px at 12% -12%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 62%),
+        radial-gradient(760px 460px at 112% 112%, color-mix(in srgb, var(--purple) 13%, transparent), transparent 60%),
+        var(--bg);
+}
+
+.lost-card {
+    width: min(574px, 100%);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 26px 30px 22px;
+    box-shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 18px 50px rgb(16 24 40 / 10%);
+}
+
+.lost-brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.lost-brand img {
+    width: 24px;
+    height: 24px;
+}
+
+.lost-chip {
+    margin-left: auto;
+    padding: 3px 9px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 650;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.lost-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 26px;
+    padding: 4px 10px 4px 8px;
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border));
+    background: var(--warn-soft);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.lost-pill.ok {
+    border-color: color-mix(in srgb, var(--ok) 35%, var(--border));
+    background: var(--ok-soft);
+}
+
+.lost-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--warn);
+    flex: none;
+}
+
+.lost-pill.ok .lost-dot {
+    background: var(--ok);
+}
+
+.lost-card h1 {
+    margin: 12px 0 10px;
+    font-size: 25px;
+    line-height: 1.2;
+    letter-spacing: -0.025em;
+}
+
+.lost-lead {
+    margin: 0 0 20px;
+    color: var(--muted);
+    font-size: 13.5px;
+    line-height: 1.6;
+}
+
+.lost-command {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 8px 8px 12px;
+    background: var(--code);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.lost-command code {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    font: 12.5px/1.5 var(--mono);
+}
+
+.lost-command .btn {
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.lost-command .btn:focus,
+.lost-card .btn:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.lost-hint {
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 12.5px;
+}
+
+.lost-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.lost-actions .lost-hint {
+    margin: 0;
+}
+
+.lost-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+    color: var(--muted);
+    font-size: 11.5px;
+}
+
+.lost-foot .mono {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+    .lost-card {
+        padding: 22px 20px 18px;
+    }
+
+    .lost-card h1 {
+        font-size: 22px;
+    }
+
+    .lost-actions {
+        flex-wrap: wrap;
     }
 }

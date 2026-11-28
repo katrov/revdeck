@@ -227,6 +227,13 @@ export interface ProjectSummary {
 }
 
 /** Доступ к платформе: токен хранит glab/gh, в UI приходит только состояние. */
+export interface AuthInstall {
+    /** Официальная инструкция по установке CLI. */
+    url: string;
+    /** Команда для найденного на хосте пакетного менеджера; UI её только копирует. */
+    command?: string;
+}
+
 export interface AuthState {
     platform: Platform;
     host: string;
@@ -235,6 +242,7 @@ export interface AuthState {
     account?: string;
     hint?: string;
     error?: string;
+    install?: AuthInstall;
 }
 
 export interface FeatureSummary {

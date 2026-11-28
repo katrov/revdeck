@@ -586,9 +586,9 @@ export class Store {
     }
 
     /**
-     * Настройки UI. Порт демона выбирается заново при каждом запуске, поэтому
-     * localStorage в браузере привязан к origin и после перезапуска пуст:
-     * единственное надёжное место для настроек — база на хосте.
+     * Настройки UI. Порт обычно переиспользуется, но может смениться (занят,
+     * --port, смена хоста), поэтому localStorage в браузере привязан к origin и
+     * после перезапуска может быть пуст: надёжное место — база на хосте.
      */
     uiSettings(): Record<string, unknown> {
         const rows = this.db.prepare('SELECT key, value_json FROM ui_settings ORDER BY key').all() as Row[];

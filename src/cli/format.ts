@@ -1,5 +1,6 @@
 import { redact } from '../core/redact.js';
 import { locale, type Locale } from '../core/locale.js';
+import { errorLine } from './report.js';
 
 export interface CliWriters {
     out(text: string): void;
@@ -16,8 +17,7 @@ export function printJson(value: unknown): void {
 }
 
 export function fail(message: string, hint?: string): never {
-    writers.err(`revdeck: ${redact(message)}`);
-    if (hint) writers.err(`  ${redact(hint)}`);
+    for (const line of errorLine(redact(message), hint ? redact(hint) : undefined)) writers.err(line);
     process.exit(1);
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RunOptions, Runner } from '../src/core/exec.js';
 import { authLogin, authStatus, authTargets, parseAuthTarget, parseToken } from '../src/providers/auth.js';
+import { setLocale } from '../src/core/locale.js';
 
 interface Call {
     command: string;
@@ -46,6 +47,18 @@ describe('platform auth', () => {
         expect(calls).toHaveLength(0);
         expect(state).toMatchObject({ binary: false, authenticated: false });
         expect(state.hint).toContain('glab');
+    });
+
+    it('suggests a package-manager command only when that manager exists', async () => {
+        setLocale('ru');
+        const withBrew = await authStatus(target, {
+            resolve: async (command) => (command === 'brew' ? '/opt/homebrew/bin/brew' : null),
+        });
+        expect(withBrew.install).toEqual({ url: 'https://docs.gitlab.com/cli/installation/', command: 'brew install glab' });
+        expect(withBrew.hint).toContain('перезапустите демон');
+
+        const without = await authStatus(target, { resolve: async () => null });
+        expect(without.install).toEqual({ url: 'https://docs.gitlab.com/cli/installation/' });
     });
 
     it('explains why the check failed and suggests a way in', async () => {

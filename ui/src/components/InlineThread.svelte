@@ -5,6 +5,8 @@
     import { plural, t } from '../lib/i18n.svelte';
     import Markdown from './Markdown.svelte';
     import MarkdownEditor from './MarkdownEditor.svelte';
+    import { clearDraftBackup, readDraftBackup, writeDraftBackup } from '../lib/draft-backup';
+    import { untrack } from 'svelte';
 
     let { thread }: { thread: Thread } = $props();
 
@@ -12,6 +14,17 @@
     const draft = $derived(draftFor(thread.id));
     const visibleNotes = $derived(thread.notes.length <= 2 ? thread.notes : [thread.notes[0]!, thread.notes[thread.notes.length - 1]!]);
     const hiddenNotes = $derived(Math.max(0, thread.notes.length - visibleNotes.length));
+
+    // Тот же черновик, что и в полном списке тредов: после перезагрузки
+    // возвращаем текст, который не успел сохраниться.
+    $effect(() => {
+        const reviewId = app.review?.id;
+        if (!reviewId || !draft) return;
+        untrack(() => {
+            const backup = readDraftBackup(reviewId, 'thread', thread.id);
+            if (backup?.body !== undefined && backup.body !== draft.body) draft.body = backup.body;
+        });
+    });
 
     async function reply(): Promise<void> {
         const review = app.review;
@@ -25,10 +38,12 @@
                 agentAction: draft.agentAction,
             };
             const result = await saveDraft(review.id, thread.id, sent);
+            const savedAsSent = draft.body === sent.body && draft.noteForAgent === sent.noteForAgent;
             if (draft.body === sent.body) draft.body = result.draft.body;
             draft.posted = result.draft.posted;
             draft.replied = result.draft.replied;
             draft.error = result.draft.error;
+            if (savedAsSent) clearDraftBackup(review.id, 'thread', thread.id);
             app.publishing = { kind: 'reply', ids: [thread.id] };
         } catch (error) {
             notify(errorText(error), 'error');
@@ -70,6 +85,9 @@
         <div class="inline-reply">
             <MarkdownEditor
                 bind:value={draft.body}
+                onchange={(value) => {
+                    if (app.review) writeDraftBackup(app.review.id, 'thread', thread.id, { body: value });
+                }}
                 rows={2}
                 disabled={busy}
                 placeholder={t('Быстрый ответ. Публикуется после подтверждения.', 'Quick reply. Published after confirmation.')}

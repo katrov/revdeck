@@ -2,8 +2,9 @@ import http from 'node:http';
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { redact } from '../core/redact.js';
+import { locale as daemonLocale, type Locale } from '../core/locale.js';
 import { messageOf } from '../core/errors.js';
 import type { ReviewService } from './service.js';
 import type { PublishKind } from '../core/types.js';
@@ -55,6 +56,13 @@ const SECURITY_HEADERS: Record<string, string> = {
         "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; media-src 'self' http: https:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
 };
 
+/** Адрес интерфейса для UI: wildcard-адреса показываем как loopback. */
+function hostAuthority(host: string): string {
+    if (host === '0.0.0.0') return '127.0.0.1';
+    if (host === '::') return '[::1]';
+    return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+}
+
 const COOKIE = 'revdeck_session';
 
 function safeEqual(left: string, right: string): boolean {
@@ -97,6 +105,222 @@ function reply(res: http.ServerResponse, status: number, data: unknown): void {
     res.end(body);
 }
 
+function escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+}
+
+/** Язык страницы — по браузеру: она показывается человеку, а не CLI. */
+function pageLocale(header: string | undefined): Locale {
+    const first = String(header ?? '').split(',')[0]?.trim().toLowerCase() ?? '';
+    if (first.startsWith('ru')) return 'ru';
+    if (first.startsWith('en')) return 'en';
+    return daemonLocale();
+}
+
+interface LaunchPageOptions {
+    /** Браузер прислал cookie, но launch-токен уже сменился перезапуском. */
+    stale: boolean;
+    nonce: string;
+    version?: string;
+    locale: Locale;
+}
+
+/**
+ * Страница вместо голого 401: после перезапуска демона старый адрес и cookie
+ * перестают работать. Объясняем это по-человечески, даём команду для новой
+ * ссылки и сами перезагружаем вкладку, когда доступ восстановится.
+ */
+function launchPage(options: LaunchPageOptions): string {
+    const text = (ru: string, en: string): string => (options.locale === 'ru' ? ru : en);
+    const title = options.stale
+        ? text('Сессия демона устарела', 'The daemon session expired')
+        : text('Нужна ссылка запуска', 'A launch link is required');
+    const lead = options.stale
+        ? text(
+              'Демон перезапускался и сменил launch-токен и порт. Cookie-сессия этого браузера больше не действует.',
+              'The daemon restarted and rotated its launch token and port. This browser’s cookie session is no longer valid.',
+          )
+        : text(
+              'Интерфейс открывается по одноразовой ссылке из терминала: она авторизует браузер и не требует пароля.',
+              'The interface opens from a one-time link in your terminal: it authorizes this browser and needs no password.',
+          );
+    const command = 'revdeck daemon start && revdeck ui --open';
+    const labels = {
+        copy: text('Копировать', 'Copy'),
+        copied: text('Скопировано', 'Copied'),
+        checking: text('Проверяем доступ…', 'Checking access…'),
+        waiting: text('Нужна новая ссылка', 'A new link is required'),
+        ok: text('Доступ восстановлен, обновляем…', 'Access restored, reloading…'),
+        offline: text('Демон не отвечает', 'The daemon is not responding'),
+    };
+    const version = options.version ? `<span>revdeck ${escapeHtml(options.version)}</span>` : '<span>revdeck</span>';
+    return `<!doctype html>
+<html lang="${options.locale}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>revdeck — ${escapeHtml(title)}</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+    :root {
+        color-scheme: light dark;
+        --bg: #f6f7f9; --panel: #ffffff; --border: #dfe3e8; --text: #16191d; --muted: #68707a;
+        --accent: #3b6ef5; --accent-soft: #e6edff; --code: #f1f3f6; --ok: #1f8f4e; --warn: #b26a00; --danger: #c93838;
+        --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+        --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, 'Helvetica Neue', sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --bg: #101216; --panel: #171a20; --border: #2a2f38; --text: #e6e9ee; --muted: #98a1ad;
+            --accent: #6f95ff; --accent-soft: #1e2a4d; --code: #1f242c; --ok: #4cc27d; --warn: #e0a33a; --danger: #f07a7a;
+        }
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 26px;
+        background:
+            radial-gradient(900px 520px at 12% -12%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 62%),
+            radial-gradient(760px 460px at 112% 112%, color-mix(in srgb, #7c5cff 13%, transparent), transparent 60%),
+            var(--bg);
+        color: var(--text); font: 14px/1.55 var(--sans);
+    }
+    .card {
+        width: 100%; max-width: 574px; background: var(--panel); border: 1px solid var(--border);
+        border-radius: 18px; padding: 26px 30px 22px;
+        box-shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 18px 50px rgb(16 24 40 / 10%);
+    }
+    .brand { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+    .brand img { width: 24px; height: 24px; }
+    .chip {
+        margin-left: auto; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px;
+        color: var(--muted); font-size: 10.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase;
+    }
+    h1 { margin: 28px 0 10px; font-size: 25px; line-height: 1.2; letter-spacing: -0.025em; }
+    .lead { margin: 0 0 20px; color: var(--muted); font-size: 13.5px; }
+    .command {
+        display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px;
+        background: var(--code); border: 1px solid var(--border); border-radius: 10px;
+    }
+    .command code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 12.5px/1.5 var(--mono); }
+    .command button, .reload {
+        border: 1px solid var(--border); background: var(--panel); color: var(--text);
+        border-radius: 7px; padding: 5px 10px; font: inherit; font-size: 12px; font-weight: 600;
+        white-space: nowrap; cursor: pointer;
+    }
+    .command button:hover, .reload:hover { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+        .command button:focus, .reload:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .command button.copied { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+    .hint { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; }
+    .status {
+        display: flex; align-items: center; gap: 8px; margin-top: 22px; padding-top: 15px;
+        border-top: 1px solid var(--border); color: var(--muted); font-size: 12.5px;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; }
+    .status[data-state="checking"] .dot { background: var(--warn); animation: pulse 1.4s ease-in-out infinite; }
+    .status[data-state="waiting"] .dot { background: var(--warn); }
+    .status[data-state="ok"] .dot { background: var(--ok); }
+    .status[data-state="offline"] .dot { background: var(--danger); }
+    @keyframes pulse { 50% { opacity: 0.3; } }
+    .actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+    .actions .hint { margin: 0; }
+    .foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 18px; color: var(--muted); font-size: 11.5px; }
+    .origin { font-family: var(--mono); overflow-wrap: anywhere; }
+    @media (max-width: 480px) { .card { padding: 22px 20px 18px; } h1 { font-size: 22px; } .actions { flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+<main class="card">
+    <div class="brand"><img src="/favicon.svg" alt="">revdeck<span class="chip">${text('локальный демон', 'local daemon')}</span></div>
+    <h1>${escapeHtml(title)}</h1>
+    <p class="lead">${escapeHtml(lead)}</p>
+    <div class="command">
+        <code>${escapeHtml(command)}</code>
+        <button id="copy" type="button">${escapeHtml(labels.copy)}</button>
+    </div>
+    <p class="hint">${text(
+        'Команда запустит демон, если он остановлен, и откроет свежую ссылку. Данные остаются на этом хосте.',
+        'The command starts the daemon if needed and opens a fresh link. Everything stays on this host.',
+    )}</p>
+    <div class="status" id="status" data-state="checking" role="status" aria-live="polite">
+        <span class="dot" aria-hidden="true"></span><span id="status-text">${escapeHtml(labels.checking)}</span>
+    </div>
+    <div class="actions">
+        <button class="reload" id="reload" type="button">${text('Проверить снова', 'Check again')}</button>
+        <span class="hint">${text(
+            'Вкладка переподключится сама, когда появится доступ.',
+            'This tab reconnects by itself once access is restored.',
+        )}</span>
+    </div>
+    <div class="foot">${version}<span class="origin" id="origin"></span></div>
+</main>
+<script nonce="${options.nonce}">
+(function () {
+    var command = ${JSON.stringify(command)};
+    var labels = ${JSON.stringify(labels)};
+    var copyButton = document.getElementById('copy');
+    var reloadButton = document.getElementById('reload');
+    var status = document.getElementById('status');
+    var statusText = document.getElementById('status-text');
+    var origin = document.getElementById('origin');
+    if (origin) origin.textContent = location.origin;
+    copyButton.addEventListener('click', function () {
+        function done() {
+            copyButton.textContent = labels.copied;
+            copyButton.classList.add('copied');
+            setTimeout(function () {
+                copyButton.textContent = labels.copy;
+                copyButton.classList.remove('copied');
+            }, 1800);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(command).then(done, function () { fallback(); done(); });
+            return;
+        }
+        fallback();
+        done();
+        function fallback() {
+            var area = document.createElement('textarea');
+            area.value = command;
+            area.setAttribute('readonly', '');
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            try { document.execCommand('copy'); } catch (error) {}
+            area.remove();
+        }
+    });
+    reloadButton.addEventListener('click', function () { location.reload(); });
+    var checking = false;
+    function probe() {
+        if (checking) return;
+        checking = true;
+        fetch('/api/health', { credentials: 'same-origin', cache: 'no-store' }).then(function (response) {
+            checking = false;
+            if (response.ok) {
+                status.dataset.state = 'ok';
+                statusText.textContent = labels.ok;
+                setTimeout(function () { location.reload(); }, 250);
+                return;
+            }
+            status.dataset.state = 'waiting';
+            statusText.textContent = labels.waiting;
+        }, function () {
+            checking = false;
+            status.dataset.state = 'offline';
+            statusText.textContent = labels.offline;
+        });
+    }
+    setTimeout(probe, 1500);
+    setInterval(probe, 5000);
+})();
+</script>
+</body>
+</html>`;
+}
+
 export async function startHttpServer(options: HttpOptions): Promise<HttpHandle> {
     const { service, token } = options;
     const host = options.host ?? '127.0.0.1';
@@ -104,6 +328,8 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
     const server = http.createServer(async (req, res) => {
         const port = (server.address() as { port: number } | null)?.port ?? 0;
         const expectedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]);
+        // При --host на конкретный интерфейс браузер/health приходят именно на него.
+        if (host !== '0.0.0.0' && host !== '::') expectedHosts.add(`${hostAuthority(host).toLowerCase()}:${port}`);
         for (const name of options.allowedHosts ?? []) expectedHosts.add(`${name}:${port}`);
         // Docker Desktop на macOS доставляет host.docker.internal на loopback-порт хоста.
         expectedHosts.add(`host.docker.internal:${port}`);
@@ -140,7 +366,8 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                 const provided = url.searchParams.get('t');
                 if (provided && safeEqual(provided, token)) {
                     // Остальные параметры (например, review) сохраняем при переходе на чистый URL.
-                    const next = new URL('/', url);
+                    // new URL('/', url) теряет query — копируем текущий адрес и убираем только t.
+                    const next = new URL(url.href);
                     next.searchParams.delete('t');
                     res.writeHead(302, {
                         ...SECURITY_HEADERS,
@@ -151,8 +378,14 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
                     return;
                 }
                 if (!authorized) {
-                    res.writeHead(401, { ...SECURITY_HEADERS, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-                    res.end('<meta charset="utf-8"><h1>Нужна ссылка запуска</h1><p>Откройте адрес из терминала: он содержит одноразовый токен.</p>');
+                    const nonce = randomBytes(16).toString('base64');
+                    res.writeHead(401, {
+                        ...SECURITY_HEADERS,
+                        'content-security-policy': `default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; script-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+                        'content-type': 'text/html; charset=utf-8',
+                        'cache-control': 'no-store',
+                    });
+                    res.end(launchPage({ stale: presented !== '', nonce, version: options.version, locale: pageLocale(req.headers['accept-language']) }));
                     return;
                 }
                 const html = await readFile(path.join(options.uiDir, 'index.html'));
@@ -542,7 +775,7 @@ export async function startHttpServer(options: HttpOptions): Promise<HttpHandle>
     });
     const port = (server.address() as { port: number }).port;
     return {
-        url: `http://127.0.0.1:${port}`,
+        url: `http://${hostAuthority(host)}:${port}`,
         port,
         close: () =>
             new Promise<void>((resolve) => {

@@ -50,10 +50,20 @@ and a web UI. Platform tokens stay on the host.
   text, author, target and draft filters; each row can be previewed read-only or opened as a review.
   Opening from the list keeps a clickable breadcrumb, and returning restores the filters and scroll.
 - **Settings page.** Theme (system/light/dark), interface language, command reference, the
-  Features-section visibility and the auto-refresh interval live on a separate Settings page; the
-  choices are stored locally. Auto-refresh repeats the header “Refresh” action
+  Features-section visibility and the auto-refresh interval live on a separate Settings page. The
+  daemon stores the choices in SQLite, so they survive a restart; `localStorage` is just a cache for
+  the first paint. Auto-refresh repeats the header “Refresh” action
   (off/10/30/60 min, default 10 min) while a review or preview is open and skips background tabs,
   typing and open dialogs.
+- **Restart-friendly shell.** A restart rotates the launch token but reuses the last port when it is
+  free, so the open tab keeps its origin. The tab and the login page explain what happened and offer
+  `revdeck daemon start && revdeck ui --open`; the tab reconnects by itself once a fresh link is
+  opened. Unsaved replies and finding comments are kept in `localStorage`; raw `Failed to fetch` and
+  401 text is no longer shown.
+- **Readable daemon output.** `revdeck daemon start|restart|status|stop` prints one aligned block with
+  the UI link, socket, state and health. `daemon logs` renders local timestamps and supports `--follow`
+  and `--json`; the log rotates at 1 MiB. `daemon start/restart` accept `--port`. Colors appear only in
+  a TTY, so pipes, CI and journald stay clean.
 - **Update notice.** The sidebar shows the running version and, when a newer npm release exists, a
   badge; review pages show a dismissible banner with the release link and update command. The About
   card in Settings checks npm manually. The daemon checks at most once per day; set
@@ -87,8 +97,13 @@ agent (MCP/CLI) ──unix socket──▶ revdeck daemon ──glab/gh──▶
 Requirements: Node.js ≥ 22.13 (Node 24 LTS recommended — `node:sqlite` is experimental in 22.x), `git`, and the platform CLI
 (`glab` or `gh`) in the daemon's `PATH`. Sign in on the host (`glab auth login` / `gh auth login`), or
 paste a personal access token in the UI: **Settings → GitLab and GitHub access**. The daemon verifies the
-token and hands it to the CLI, which stores it; revdeck never keeps a copy. Set `REVDECK_GLAB` or
-`REVDECK_GH` to an absolute path if the CLI lives in a mise/asdf/homebrew shim or a custom location.
+token and hands it to the CLI, which stores it; revdeck never keeps a copy. The access card also lists a
+missing CLI with an install link and, when a package manager is available on the host, a copyable
+command. Set `REVDECK_GLAB` or `REVDECK_GH` to an absolute path if the CLI lives in a
+mise/asdf/homebrew shim or a custom location.
+`revdeck tools status` shows what the daemon sees; `revdeck tools install gh --dry-run` prints the exact
+plan, manager and version before anything runs. `revdeck tools install gh --yes` installs only through a
+user-level manager (Homebrew/winget); pacman plans stay manual because they need sudo.
 
 ```bash
 # one-off
@@ -175,7 +190,8 @@ Russian READMEs live in this repository; translation fixes are welcome.
 | `revdeck checks <N> [--run --yes]` | project checks |
 | `revdeck export/import <N>` | legacy file exchange |
 | `revdeck ui [N]` | local web UI |
-| `revdeck daemon <start\|stop\|restart\|status\|logs\|install\|uninstall>` | daemon lifecycle |
+| `revdeck daemon <start\|stop\|restart\|status\|logs\|install\|uninstall>` | daemon lifecycle; `--port`, `logs --follow`, `status/logs --json` |
+| `revdeck tools [status\|install <glab\|gh\|all>] [--dry-run] [--yes] [--json]` | check/install platform CLIs without sudo |
 | `revdeck mcp` | MCP server over stdio |
 
 Common flags: `--json`, `--root`, `--review`, `--platform`, `--project`, `--host`, `--all`, `--lang ru|en`.
@@ -449,8 +465,9 @@ found. Full schema: [docs/configuration.md](docs/configuration.md).
   secrets are redacted from logs and errors.
 - A token pasted in the UI is checked with a `GET /user` request, then passed to `glab`/`gh` on stdin
   (never in argv) and stored by the CLI. revdeck does not keep a copy, `auth.status` returns only the
-  host and the account, and `auth.*` is human-only: the bridge answers `CAPABILITY`. The form is
-  disabled when the UI is not opened via `127.0.0.1`, because the token would travel over the network.
+  host, the account and install guidance, and `auth.*` is human-only: the bridge answers `CAPABILITY`.
+  The form is disabled when the UI is not opened via `127.0.0.1`, because the token would travel over
+  the network.
 - Rule/profile documents must be git-tracked, have a safe extension and are denied for local secrets
   (`.env*`, `.git/**`, `.npmrc`, `.revdeck.local.*`, keys); `.revdeck.local.yml` tracked by git is
   ignored as a repository file. Reads use an opened-fd realpath check to close symlink TOCTOU.
