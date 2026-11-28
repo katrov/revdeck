@@ -5,6 +5,7 @@ let report: typeof import('../src/cli/report.js');
 
 beforeAll(async () => {
     // Форматтеры проверяем без ANSI: в CI и pipe цвета и так выключены.
+    setLocale('ru');
     process.env.NO_COLOR = '1';
     report = await import('../src/cli/report.js');
 });

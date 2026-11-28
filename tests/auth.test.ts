@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RunOptions, Runner } from '../src/core/exec.js';
 import { authLogin, authStatus, authTargets, parseAuthTarget, parseToken } from '../src/providers/auth.js';
+import { setLocale } from '../src/core/locale.js';
 
 interface Call {
     command: string;
@@ -49,6 +50,7 @@ describe('platform auth', () => {
     });
 
     it('suggests a package-manager command only when that manager exists', async () => {
+        setLocale('ru');
         const withBrew = await authStatus(target, {
             resolve: async (command) => (command === 'brew' ? '/opt/homebrew/bin/brew' : null),
         });
