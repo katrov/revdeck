@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from 'node:fs';
-import { appendFile, open, readFile, unlink } from 'node:fs/promises';
+import { appendFile, open, readFile, rename, stat, unlink } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,9 +9,11 @@ import { daemonInfoPath, ensureDir, databasePath, logPath, runtimeDir, socketPat
 import { redactLine } from '../core/redact.js';
 import { PROTOCOL_VERSION, VERSION } from '../version.js';
 import { detectLocale, setLocale, tr } from '../core/locale.js';
+import { colors, daemonStartedLines, errorLine } from '../cli/report.js';
 import { Store } from './store.js';
 import { ReviewService } from './service.js';
-import { startHttpServer } from './http.js';
+import { startHttpServer, type HttpHandle } from './http.js';
+import { readPortHint, writePortHint } from './port.js';
 import { startRpcServer } from './rpc.js';
 import { startDevcontainerBridge } from './bridge.js';
 
@@ -47,11 +49,23 @@ async function main(): Promise<void> {
     if (values['runtime-dir']) process.env.REVDECK_RUNTIME_DIR = values['runtime-dir'];
 
     const foreground = values.foreground === true;
+    const file = logPath();
+    const maxLogBytes = 1024 * 1024;
+    let logSize: number | null = null;
     const log = async (line: string): Promise<void> => {
         const message = `${new Date().toISOString()} ${redactLine(line, 4000)}\n`;
         if (foreground) process.stderr.write(message);
         try {
-            await appendFile(logPath(), message, { mode: 0o600 });
+            const bytes = Buffer.byteLength(message);
+            // Один файл на мегабайт + предыдущий: `daemon logs` остаётся быстрым,
+            // а старые записи не теряются безвозвратно.
+            logSize ??= (await stat(file).catch(() => null))?.size ?? 0;
+            if (logSize + bytes > maxLogBytes) {
+                await rename(file, `${file}.1`).catch(() => undefined);
+                logSize = 0;
+            }
+            await appendFile(file, message, { mode: 0o600 });
+            logSize += bytes;
         } catch {
             // Лог не обязателен: демон должен работать и без него.
         }
@@ -59,7 +73,10 @@ async function main(): Promise<void> {
 
     const existing = await runningDaemon();
     if (existing) {
-        process.stdout.write(`revdeck daemon ${tr('уже запущен', 'is already running')} (pid ${existing.pid}): ${existing.url}/\n`);
+        process.stdout.write(
+            `  ${colors.green('●')} ${tr('Демон уже запущен', 'Daemon is already running')} ${colors.dim(`· pid ${existing.pid}`)}\n` +
+                `  ${colors.dim('revdeck ui --open')}\n`,
+        );
         return;
     }
 
@@ -67,7 +84,7 @@ async function main(): Promise<void> {
     await ensureDir(runtimeDir(), 0o700);
     const lock = await acquireLock();
     if (!lock) {
-        process.stdout.write(`revdeck daemon ${tr('уже запускается или запущен', 'is already starting or running')}\n`);
+        process.stdout.write(`  ${colors.dim('○')} ${tr('Демон уже запускается или запущен', 'Daemon is already starting or running')}\n`);
         return;
     }
     const token = (await import('node:crypto')).randomBytes(32).toString('hex');
@@ -80,18 +97,44 @@ async function main(): Promise<void> {
     const socket = socketPath();
     const rpc = await startRpcServer(service, socket);
     const uiDir = values['ui-dir'] ? path.resolve(values['ui-dir']) : path.join(packageRoot(), 'dist', 'ui');
-    const http = await startHttpServer({
-        service,
-        token,
-        agentToken,
-        uiDir,
-        ...(values.port ? { port: Number(values.port) } : {}),
-        ...(values.host ? { host: String(values.host) } : {}),
-        ...(process.env.REVDECK_HTTP_ALLOWED_HOSTS
-            ? { allowedHosts: process.env.REVDECK_HTTP_ALLOWED_HOSTS.split(',').map((item) => item.trim()).filter(Boolean) }
-            : {}),
-        version: VERSION,
-    });
+    const requestedPort = parsePort(values.port);
+    const preferredPort = requestedPort ?? (await readPortHint());
+    const listen = (port?: number): Promise<HttpHandle> =>
+        startHttpServer({
+            service,
+            token,
+            agentToken,
+            uiDir,
+            ...(port ? { port } : {}),
+            ...(values.host ? { host: String(values.host) } : {}),
+            ...(process.env.REVDECK_HTTP_ALLOWED_HOSTS
+                ? { allowedHosts: process.env.REVDECK_HTTP_ALLOWED_HOSTS.split(',').map((item) => item.trim()).filter(Boolean) }
+                : {}),
+            version: VERSION,
+        });
+    let http: HttpHandle;
+    try {
+        http = await listen(preferredPort ?? undefined);
+    } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (requestedPort) {
+            if (code === 'EADDRINUSE' || code === 'EACCES') {
+                throw new Error(
+                    tr(
+                        `не удалось занять порт ${requestedPort}: ${code === 'EADDRINUSE' ? 'он занят' : 'нет прав'}; выберите другой --port`,
+                        `cannot bind port ${requestedPort}: ${code === 'EADDRINUSE' ? 'already in use' : 'permission denied'}; choose another --port`,
+                    ),
+                );
+            }
+            throw error;
+        }
+        if (code !== 'EADDRINUSE' && code !== 'EACCES') throw error;
+        // Прошлый порт занят (другой процесс или старый демон): свежий origin
+        // лучше, чем неподнявшийся демон. Подсказку перезапишем ниже.
+        await log(`port ${preferredPort} is busy, falling back to a random port`);
+        http = await listen();
+    }
+    await writePortHint(http.port).catch((error) => log(`cannot remember port: ${redactLine(error instanceof Error ? error.message : error)}`));
     const info: DaemonInfo = {
         pid: process.pid,
         port: http.port,
@@ -114,13 +157,17 @@ async function main(): Promise<void> {
     service.startSync();
 
     process.stdout.write(
-        [
-            `revdeck daemon ${VERSION} (pid ${process.pid})`,
-            `UI:      ${http.url}/?t=${token}`,
-            `${tr('сокет', 'socket')}:   ${socket}`,
-            `${tr('состояние', 'state')}: ${stateDir()}`,
-            '',
-        ].join('\n'),
+        `${daemonStartedLines(
+            {
+                version: VERSION,
+                pid: process.pid,
+                url: `${http.url}/?t=${token}`,
+                socket,
+                stateDir: stateDir(),
+                logPath: logPath(),
+            },
+            'started',
+        ).join('\n')}\n`,
     );
     await log(`daemon started pid=${process.pid} port=${http.port}`);
 
@@ -147,6 +194,16 @@ async function main(): Promise<void> {
             void shutdown(signal);
         });
     }
+}
+
+/** Явный --port: кривой или занятый порт должен быть ошибкой, а не тихим фолбэком. */
+function parsePort(value: string | undefined): number | null {
+    if (value === undefined) return null;
+    const port = Number(value);
+    if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+        throw new Error(tr(`некорректный порт ${value}: нужно 1–65535`, `invalid port ${value}: expected 1–65535`));
+    }
+    return port;
 }
 
 function packageRoot(): string {
@@ -225,7 +282,14 @@ async function acquireLock(): Promise<Awaited<ReturnType<typeof open>> | null> {
     return null;
 }
 
+// Демон в foreground тоже может писать в закрытый pipe.
+for (const stream of [process.stdout, process.stderr]) {
+    stream.on('error', (error: NodeJS.ErrnoException) => {
+        if (error.code === 'EPIPE') process.exit(0);
+    });
+}
+
 void main().catch((error) => {
-    process.stderr.write(`revdeck: ${redactLine(error instanceof Error ? error.message : error)}\n`);
+    for (const line of errorLine(redactLine(error instanceof Error ? error.message : error))) process.stderr.write(`${line}\n`);
     process.exit(1);
 });

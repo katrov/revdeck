@@ -4,6 +4,56 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- A branded reconnect page replaces the bare `401` page after a daemon restart or an expired launch
+  token. It explains the rotated token/port, copies
+  `revdeck daemon start && revdeck ui --open` and reloads itself as soon as a fresh link authorizes
+  the browser. The page follows the browser language and the system theme.
+- The UI shows a full-screen “daemon unreachable / session expired” card instead of raw
+  `Failed to fetch` and `нет авторизации` errors. It probes `/api/health`, listens to browser
+  `online`/visibility changes and recovers by itself; the copy button and focus handling work on
+  plain-HTTP LAN origins too.
+- The daemon reuses its last port on restart when the port is free (`daemon.port` in the state
+  directory) and falls back to a random port when it is busy, so an open UI tab keeps its origin.
+- `revdeck daemon logs --follow` and `--json`; log rotation at 1 MiB (`daemon.log.1`).
+- `revdeck daemon start|restart --port <N>` and `revdeck daemon status --json` with a `/api/health`
+  probe and a CLI/daemon version-mismatch warning.
+- Unsaved replies and finding comments are backed up in `localStorage` and restored after a lost
+  connection; they are saved to the daemon once it is reachable again.
+- Tests for daemon report formatting, the launch page/CSP and the port hint.
+- `revdeck tools status|install [glab|gh|all]` with `--dry-run` and `--json`: shows the detected
+  versions and package manager, then installs only through user-level managers (Homebrew/winget) after
+  `--yes` or a TTY prompt. pacman plans are printed for manual sudo execution; the daemon, MCP and the
+  devcontainer bridge have no access to the command.
+- `revdeck daemon logs --lines N` and the tail of the rotated `daemon.log.1` when the current log is
+  short.
+- `--json` for `revdeck daemon start/stop/restart`.
+- Tests for install plans and rotated log tails.
+- The Settings access card now detects a missing `glab`/`gh` and shows an install banner: an official
+  installation link plus a copyable package-manager command when the host has Homebrew, pacman or
+  winget. Nothing is installed or executed automatically; the banner reminds you to run
+  `revdeck daemon restart`. `auth.status` returns this `install` guidance for humans only.
+
+### Changed
+
+- `revdeck daemon start|restart|status|logs|stop` and the foreground daemon banner print one compact,
+  aligned summary (pid, UI link, socket, state, health, log); ANSI colors appear only in a TTY.
+  A delayed “starting the daemon…” hint covers slow starts. `revdeck doctor` colors its checks and
+  truncates tool errors at word boundaries.
+- `npm run build:server` no longer deletes `dist/ui`, so the daemon cannot end up without the UI by
+  accident.
+- README and capabilities docs reflect that settings live in SQLite and the port is usually reused.
+
+### Fixed
+
+- A valid launch link (`/?t=…&review=…`) keeps non-token query parameters through the redirect; the
+  previous `new URL('/', url)` dropped them.
+- The UI URL in `daemon.json` and `/api/health` now use the host passed to `--host`, and the HTTP
+  `Host` allow-list accepts that interface instead of always reporting `127.0.0.1`.
+
 ## [0.17.0] - 2026-11-27
 
 ### Added

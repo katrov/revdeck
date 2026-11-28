@@ -12,6 +12,13 @@ export interface AuthTarget {
     host: string;
 }
 
+export interface AuthInstall {
+    /** Официальная инструкция по установке CLI. */
+    url: string;
+    /** Команда для найденного на хосте пакетного менеджера; ничего не запускает. */
+    command?: string;
+}
+
 export interface AuthState {
     platform: AuthPlatform;
     host: string;
@@ -24,6 +31,8 @@ export interface AuthState {
     hint?: string;
     /** Ответ CLI без токенов. */
     error?: string;
+    /** Как поставить отсутствующий CLI: ссылка и подсказка пакетного менеджера. */
+    install?: AuthInstall;
 }
 
 /** Подмена процесса для тестов. */
@@ -124,6 +133,24 @@ async function probe(target: AuthTarget, deps: AuthDeps, token?: string): Promis
  * Состояние доступа к хосту. Ничего не сохраняет и не меняет: годится и для UI,
  * и для `doctor`, и для проверки перед записью токена.
  */
+/** Ссылка на официальную инструкцию и команда, только если пакетный менеджер реально найден. */
+async function installHint(
+    platform: AuthPlatform,
+    resolve: (command: string) => Promise<string | null>,
+): Promise<AuthInstall> {
+    const bin = binaryFor(platform);
+    const url = platform === 'gitlab' ? 'https://docs.gitlab.com/cli/installation/' : 'https://cli.github.com/';
+    // Ничего не запускаем: UI лишь показывает команду, которую человек выполнит сам.
+    if (await resolve('brew')) return { url, command: `brew install ${bin}` };
+    if (process.platform === 'linux' && (await resolve('pacman'))) {
+        return { url, command: `sudo pacman -S ${platform === 'gitlab' ? 'glab' : 'github-cli'}` };
+    }
+    if (platform === 'github' && process.platform === 'win32' && (await resolve('winget'))) {
+        return { url, command: 'winget install --id GitHub.cli' };
+    }
+    return { url };
+}
+
 export async function authStatus(target: AuthTarget, deps: AuthDeps = {}): Promise<AuthState> {
     const bin = binaryFor(target.platform);
     const resolve = deps.resolve ?? resolveExecutable;
@@ -132,9 +159,10 @@ export async function authStatus(target: AuthTarget, deps: AuthDeps = {}): Promi
         return {
             ...base,
             hint: tr(
-                `${bin} не найден в PATH демона: установите его или задайте REVDECK_${bin.toUpperCase()}`,
-                `${bin} is not in the daemon PATH: install it or set REVDECK_${bin.toUpperCase()}`,
+                `${bin} не найден в PATH демона: установите его на хосте и перезапустите демон или задайте REVDECK_${bin.toUpperCase()}`,
+                `${bin} is not in the daemon PATH: install it on the host and restart the daemon, or set REVDECK_${bin.toUpperCase()}`,
             ),
+            install: await installHint(target.platform, resolve),
         };
     }
     const result = await probe(target, deps);

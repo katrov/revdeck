@@ -25,13 +25,14 @@ The core guarantees:
 - **Tokens stay on the host.** The daemon calls `glab`/`gh`; platform tokens are not passed over RPC
   and are scrubbed from child environments. A token pasted in Settings is verified with `GET /user` and
   forwarded to `glab`/`gh` on stdin; the CLI stores it, revdeck keeps no copy, and `auth.status` returns
-  only the host, the account and a hint.
+  only the host, the account, a hint and install guidance for a missing CLI.
 - **Project rules are explicit.** For changed paths revdeck selects repository documents and exact
   sections (`AGENTS.md`, architecture, style guides, ADRs).
 - **One local database.** Reviews, projects, features, drafts, approvals, audit and UI preferences
   (theme, language, hidden sections, auto-refresh, notifications) live in SQLite in the user's state
-  directory. The daemon picks a new port on every start, so browser `localStorage` cannot be the
-  source of truth for settings — the UI reads them from the daemon before the first paint.
+  directory. The daemon usually reuses its port but may switch it (busy port, `--port`, host
+  change), so browser `localStorage` cannot be the source of truth for settings — the UI reads them
+  from the daemon before the first paint.
 - **Agent work is review-only.** Checks are planned by the agent and run by a human in the UI or the
   host CLI; the bridge denies `checks.run`. Publishing, resolving and approvals remain human actions.
 
@@ -57,7 +58,7 @@ The core guarantees:
   read-only preview or a full review. Opening from the list records the origin, so preview/review
   show a clickable breadcrumb; returning restores filters and scroll.
 - Theme, interface language, command reference and Features-section visibility live on a separate
-  Settings page; theme and visibility are stored locally.
+  Settings page; the daemon stores the choices in SQLite and `localStorage` is only a cache.
 - Read-only MR/PR preview: `POST /api/previews/open` fetches info, diff and threads into a short-lived in-memory
   cache; the preview route hides findings, comments, reactions and publishing, and never creates a
   review record or metrics event.
@@ -210,6 +211,15 @@ a permanent project link; a project appears in a feature while at least one of i
   an update badge, review pages show a dismissible banner, and Settings has an About card with a
   manual check and the npm update command. `REVDECK_UPDATE_CHECK=0` disables the check; there is no
   telemetry and no automatic installation.
+- A restart rotates the launch token but reuses the last port when it is free (the hint lives in
+  `daemon.port` next to the database), so an open tab keeps its origin. If the port is taken, the
+  daemon falls back to a random one. The bare 401 page is replaced by a branded reconnect page: it
+  explains the rotation, copies `revdeck daemon start && revdeck ui --open` and reloads once
+  `/api/health` answers with a fresh session. An open tab shows the same explanation as an in-app card
+  instead of raw `Failed to fetch`/401 errors; it probes the daemon, listens to `online`/visibility
+  changes and recovers by itself. The page follows the browser language and the system theme.
+- A connection loss does not lose work: replies and finding comments that did not reach the daemon are
+  backed up in `localStorage` and restored (then saved) after the tab reconnects.
 - Responsive sidebar and mobile backdrop; dark/light theme via CSS variables.
 
 ## Security and trust
@@ -262,8 +272,24 @@ path.
 - `revdeck doctor`: Node, git, `glab`/`gh` auth, daemon, adapters; knows about devcontainers.
 - Platform access in the UI: Settings lists the GitLab/GitHub hosts from the project registry with their
   `glab`/`gh` state and lets a human paste a token; the daemon verifies it and stores it in the CLI.
+- When a required CLI is missing, the access card shows an install banner: the official installation
+  link plus, if the host has Homebrew or pacman, a copyable command (`brew install glab`,
+  `sudo pacman -S github-cli`). Nothing is executed automatically; the banner reminds the human to run
+  `revdeck daemon restart` after installing.
 - Daemon lifecycle: start/stop/restart/status/logs/install/uninstall; systemd user unit on Linux,
   launchd on macOS.
+- `revdeck tools status|install [glab|gh|all]`: a human-only, host-only installer. `status` shows
+  `git`/`glab`/`gh`, their versions and the available package manager; `install --dry-run` prints the
+  exact plan and never executes it. Without `--dry-run`, only user-level managers are executed
+  (Homebrew, winget) after `--yes` or a TTY confirmation; pacman plans are printed for manual sudo
+  execution. The daemon, MCP tools and the devcontainer bridge have no path to this command.
+- Lifecycle commands print one compact block (pid, UI link, socket, state, health, log) and use ANSI
+  colors only on a TTY. `logs` renders local timestamps, supports `--lines N`, `--follow` and `--json`,
+  and pulls the tail of the rotated `daemon.log.1` when the current log is short; the daemon rotates
+  the log at 1 MiB. `start/stop/restart/status/logs` accept `--json`, `start/restart` accept `--port`;
+  `status` probes `/api/health` (binding-aware, including a custom `--host`) and warns on a CLI/daemon
+  version mismatch. A delayed hint appears if starting takes longer than usual. `doctor` colors its
+  checks and truncates tool errors at word boundaries.
 - Devcontainer bridge: stable socket/state mounts; host-side `glab`/`gh`; no daemon in the container.
 - HTTP transport for containers where the socket is not forwarded (`REVDECK_URL`, `REVDECK_TOKEN`).
 - Export/import for sandboxes without a socket.

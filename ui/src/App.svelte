@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { app, applyRoute, backToMrList, bootstrap, flushPendingReload, forgetReview, initFeaturesHidden, isEditingText, loadFeature, loadFeatures, loadProjects, loadReview, loadReviews, notify, refreshCurrent, setActiveProject, setTab, showFeaturesHome, showHelp, showMrList, showProjectsHome, showSettings, subscribe, writeHash } from './lib/state.svelte';
+    import { app, applyRoute, backToMrList, bootstrap, flushPendingReload, forgetReview, initFeaturesHidden, isEditingText, loadFeature, loadFeatures, loadProjects, loadReview, loadReviews, notify, recoverDaemon, refreshCurrent, setActiveProject, setTab, showFeaturesHome, showHelp, showMrList, showProjectsHome, showSettings, subscribe, watchDaemon, writeHash } from './lib/state.svelte';
     import { removeProject as removeProjectApi, removeReview as removeReviewApi } from './lib/api';
     import type { ProjectSummary, ReviewListItem } from './lib/types';
     import type { Tab } from './lib/types';
@@ -26,6 +26,7 @@
     import FeatureList from './components/FeatureList.svelte';
     import MrList from './components/MrList.svelte';
     import Settings from './components/Settings.svelte';
+    import DaemonLost from './components/DaemonLost.svelte';
     import AddToFeatureDialog from './components/AddToFeatureDialog.svelte';
     import { projectColor, projectLabel } from './lib/projects';
 
@@ -344,6 +345,9 @@
         } catch {
             sidebarOpen = !narrow;
         }
+        // Слушатели ставим до bootstrap: первый же сетевой сбой должен
+        // открыть экран «нет связи», а не красную плашку с текстом ошибки.
+        const unwatchDaemon = watchDaemon();
         void bootstrap();
         const unsubscribe = subscribe();
         window.addEventListener('keydown', onKeydown);
@@ -355,6 +359,7 @@
         document.addEventListener('focusout', onFocusOut);
         return () => {
             unsubscribe();
+            unwatchDaemon();
             window.removeEventListener('keydown', onKeydown);
             window.removeEventListener('popstate', applyRoute);
             window.removeEventListener('hashchange', applyRoute);
@@ -377,16 +382,32 @@
         const timer = setInterval(() => {
             if (Date.now() - last < period) return;
             if (document.visibilityState !== 'visible') return;
-            // Не дёргаем сеть во время ввода и поверх диалогов публикации/выбора.
-            if (app.loading || isEditingText() || app.publishing || document.querySelector('.overlay, [role="dialog"]')) return;
+            // Не дёргаем сеть во время ввода, поверх диалогов и пока нет связи с демоном.
+            if (app.loading || isEditingText() || app.publishing || app.daemonLost || document.querySelector('.overlay, [role="dialog"]')) return;
             last = Date.now();
             refresh({ silent: true });
         }, checkEvery);
         return () => clearInterval(timer);
     });
+    // Пока экран потери связи открыт, сами проверяем доступ: после открытия
+    // свежей ссылки в другой вкладке cookie обновится и страница перезагрузится.
+    $effect(() => {
+        if (!app.daemonLost) return;
+        let cancelled = false;
+        const check = async (): Promise<void> => {
+            await recoverDaemon();
+            if (cancelled) return;
+        };
+        const timer = setInterval(() => void check(), 4000);
+        void check();
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
+        };
+    });
 </script>
 
-<div class="shell" class:sidebar-collapsed={!sidebarOpen}>
+<div class="shell" class:sidebar-collapsed={!sidebarOpen} inert={app.daemonLost}>
     {#if sidebarOpen}
         <button class="sidebar-backdrop" type="button" aria-label={t('Закрыть сайдбар', 'Close sidebar')} onclick={toggleSidebar}></button>
     {/if}
@@ -773,6 +794,10 @@ revdeck open https://gitlab.com/group/project/-/merge_requests/42</pre>
 
 {#if editingProject}
     <EditProjectDialog project={editingProject} onclose={() => (editingProject = null)} />
+{/if}
+
+{#if app.daemonLost}
+    <DaemonLost kind={app.daemonLostKind} />
 {/if}
 
 {#if app.toast}

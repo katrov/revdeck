@@ -8,6 +8,7 @@
     import { AUTO_REFRESH_CHOICES, autoRefresh, setAutoRefreshMinutes } from '../lib/auto-refresh.svelte';
     import { checkForUpdates, update } from '../lib/update.svelte';
     import { notifications, setNotificationsEnabled } from '../lib/notifications.svelte';
+    import { copyToClipboard } from '../lib/clipboard';
 
     const themes: { id: ThemeMode; label: string; icon: string }[] = [
         { id: 'auto', label: 'Auto', icon: '◐' },
@@ -29,6 +30,21 @@
     // Проверка запускается только с loopback: иначе токен поедет по сети без TLS.
     const loopback = typeof location === 'undefined' || ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
     const targets = $derived(projectTargets());
+    /** Платформы, для которых в PATH демона нет CLI; по одной строке на платформу. */
+    const missingTools = $derived.by(() => {
+        const map = new Map<Platform, { platform: Platform; bin: string; url: string; command?: string }>();
+        for (const item of authHosts) {
+            if (item.binary || map.has(item.platform)) continue;
+            const bin = item.platform === 'gitlab' ? 'glab' : 'gh';
+            map.set(item.platform, {
+                platform: item.platform,
+                bin,
+                url: item.install?.url ?? (item.platform === 'gitlab' ? 'https://docs.gitlab.com/cli/installation/' : 'https://cli.github.com/'),
+                ...(item.install?.command ? { command: item.install.command } : {}),
+            });
+        }
+        return [...map.values()];
+    });
 
     function platformLabel(platform: Platform): string {
         return platform === 'gitlab' ? 'GitLab' : 'GitHub';
@@ -131,11 +147,14 @@
         void loadAuth();
     });
 
-    function copyUpdateCommand(): void {
-        void navigator.clipboard?.writeText('npm install -g revdeck@latest').then(
-            () => notify(t('Команда скопирована', 'Command copied'), 'ok'),
-            () => notify(t('Не удалось скопировать', 'Could not copy'), 'error'),
+    function copyCommand(command: string): void {
+        void copyToClipboard(command).then((copied) =>
+            notify(copied ? t('Команда скопирована', 'Command copied') : t('Не удалось скопировать', 'Could not copy'), copied ? 'ok' : 'error'),
         );
+    }
+
+    function copyUpdateCommand(): void {
+        copyCommand('npm install -g revdeck@latest');
     }
 </script>
 
@@ -158,6 +177,43 @@
                     'The page is not served from 127.0.0.1: the token reaches the daemon over the network without TLS. Enter it only on a trusted network.',
                 )}
             </p>
+        {/if}
+
+        {#if authLoaded && missingTools.length}
+            <div class="auth-missing" role="status">
+                <div class="auth-missing-head">
+                    <span class="auth-missing-mark" aria-hidden="true">!</span>
+                    <strong>{t('Не хватает CLI на хосте', 'A required CLI is missing on the host')}</strong>
+                </div>
+                <p class="muted small">
+                    {t(
+                        'Чтобы проверять токены и работать с платформой, демону нужен CLI в PATH. Установите его на хосте и перезапустите демон.',
+                        'The daemon needs the CLI in its PATH to verify tokens and talk to the platform. Install it on the host and restart the daemon.',
+                    )}
+                </p>
+                <ul class="auth-tools">
+                    {#each missingTools as tool (tool.platform)}
+                        <li class="auth-tool">
+                            <span class="auth-tool-name"><span class="mono">{tool.bin}</span><span class="muted small">{platformLabel(tool.platform)}</span></span>
+                            {#if tool.command}
+                                <code class="auth-tool-command">{tool.command}</code>
+                                <button class="btn" type="button" onclick={() => copyCommand(tool.command!)}>{t('Скопировать', 'Copy')}</button>
+                            {/if}
+                            <a class="btn" href={tool.url} target="_blank" rel="noreferrer noopener">{t('Как установить', 'How to install')}</a>
+                        </li>
+                    {/each}
+                </ul>
+                <p class="muted small auth-restart">
+                    {t('После установки:', 'After installing:')} <code>revdeck daemon restart</code>
+                    <button
+                        class="btn icon"
+                        type="button"
+                        title={t('Скопировать команду перезапуска', 'Copy the restart command')}
+                        aria-label={t('Скопировать команду перезапуска', 'Copy the restart command')}
+                        onclick={() => copyCommand('revdeck daemon restart')}
+                    >⧉</button>
+                </p>
+            </div>
         {/if}
 
         {#if authLoading && !authLoaded}

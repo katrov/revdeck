@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-import { readFile, stat } from 'node:fs/promises';
+import { open, readFile, stat } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import path from 'node:path';
-import { daemonInfoPath, findRepoRoot, logPath, toHostRoot } from '../core/paths.js';
+import { daemonInfoPath, findRepoRoot, logPath, stateDir, toHostRoot } from '../core/paths.js';
 import { loadConfig } from '../core/config.js';
 import { buildEffectiveRules, renderRules } from '../core/rules.js';
 import { changedPaths } from '../core/diff.js';
@@ -16,7 +16,24 @@ import { reviewId as makeReviewId, parseReviewUrl } from '../core/refs.js';
 import { VERSION } from '../version.js';
 import { detectLocale, locale, plural, setLocale, tr } from '../core/locale.js';
 import { fail, parseList, printJson, reviewLine, truncate, usage, when, writers } from './format.js';
+import {
+    compactDetail,
+    daemonLogEmptyLines,
+    daemonLogHeader,
+    daemonNotRunningLine,
+    daemonNotRunningLines,
+    daemonStartedLines,
+    daemonStatusLines,
+    daemonStoppedLines,
+    doctorLines,
+    durationSince,
+    errorColors,
+    formatLogLine,
+    warningLine,
+} from './report.js';
 import { installService, runInit } from './init.js';
+import { tools } from './tools.js';
+import { logTail } from './log-tail.js';
 import { runEject } from './eject.js';
 import { runDevcontainer } from './devcontainer.js';
 import { exportReview, importReview } from './export.js';
@@ -25,8 +42,17 @@ import { contextPayload, renderContext } from '../context.js';
 import type { ResolvedReviewRole } from '../core/review-roles.js';
 import { isReviewScenario, scenarioLabel, suggestedScenario, type ReviewScenario } from '../core/scenario.js';
 
+// `revdeck ... | head` не должен печатать стек EPIPE вместо результата.
+for (const stream of [process.stdout, process.stderr]) {
+    stream.on('error', (error: NodeJS.ErrnoException) => {
+        if (error.code === 'EPIPE') process.exit(0);
+    });
+}
+
 const OPTIONS = {
     json: { type: 'boolean', default: false },
+    follow: { type: 'boolean', default: false },
+    lines: { type: 'string' },
     help: { type: 'boolean', default: false },
     yes: { type: 'boolean', default: false },
     'dry-run': { type: 'boolean', default: false },
@@ -37,6 +63,7 @@ const OPTIONS = {
     provider: { type: 'string' },
     project: { type: 'string' },
     host: { type: 'string' },
+    port: { type: 'string' },
     branch: { type: 'string' },
     file: { type: 'string' },
     body: { type: 'string' },
@@ -100,7 +127,9 @@ const HELP_RU = `revdeck ${VERSION} — ревью GitLab/GitHub для люде
   revdeck eject           удалить revdeck из проекта (--yes; --keep-config)
   revdeck devcontainer    подключить devcontainer к демону хоста (--write; путь хоста в REVDECK_HOST_ROOT)
   revdeck doctor          проверить окружение и доступы
-  revdeck daemon <start|stop|restart|status|logs|install|uninstall>
+  revdeck daemon <start|stop|restart|status|logs|install|uninstall> [--port N] [--json]
+  revdeck daemon logs [--lines N] [--follow]     хвост лога (--json — машинный вывод)
+  revdeck tools [status|install <glab|gh|all>] [--dry-run] [--yes] [--json]   окружение платформ
   revdeck projects        проекты и их рабочие копии (add <path> — зарегистрировать)
   revdeck feature         фичи: list|create|get|add|remove|reorder|notes|note|note-delete|context|update|archive|delete
   revdeck list            ревью текущего проекта (--all — все проекты; --remote — с платформы)
@@ -139,7 +168,9 @@ const HELP_EN = `revdeck ${VERSION} — code review for GitLab/GitHub, for human
   revdeck eject           remove revdeck from the project (--yes; --keep-config)
   revdeck devcontainer    connect a devcontainer to the host daemon (--write; host path in REVDECK_HOST_ROOT)
   revdeck doctor          check the environment and access
-  revdeck daemon <start|stop|restart|status|logs|install|uninstall>
+  revdeck daemon <start|stop|restart|status|logs|install|uninstall> [--port N] [--json]
+  revdeck daemon logs [--lines N] [--follow]     хвост лога (--json — машинный вывод)
+  revdeck tools [status|install <glab|gh|all>] [--dry-run] [--yes] [--json]   окружение платформ
   revdeck projects        projects and their working copies (add <path> — register)
   revdeck feature         features: list|create|get|add|remove|reorder|notes|note|note-delete|context|update|archive|delete
   revdeck list            reviews of the current project (--all — all projects; --remote — from the platform)
@@ -249,6 +280,8 @@ async function main(): Promise<void> {
             return runDevcontainer(root, { write: values.write === true });
         case 'doctor':
             return doctor(root);
+        case 'tools':
+            return tools(positionals, values);
         case 'daemon':
             return daemon(positionals[0] ?? 'status', values);
         case 'projects':
@@ -730,27 +763,62 @@ async function daemon(action: string, values: Values = {}): Promise<void> {
         );
     }
     if (action === 'start') {
-        const { client, started } = await ensureDaemon({
-            ...(values.host ? { daemonArgs: ['--host', String(values.host)] } : {}),
-        });
-        const ping = await client.request<{ pid: number; version: string }>('ping');
-        client.close();
-        const info = await daemonInfo();
-        writers.out(`${started ? tr('запущен', 'started') : tr('уже работает', 'already running')} ${tr('демон', 'daemon')} pid ${ping.pid}, ${tr('версия', 'version')} ${ping.version}`);
-        if (values.host && !started) {
-            writers.err(tr('! уже запущенный демон не меняет bind-адрес: используйте revdeck daemon restart --host 0.0.0.0', '! a running daemon does not rebind: use revdeck daemon restart --host 0.0.0.0'));
-        }
-        if (info) writers.out(`${uiBaseUrl(info)}/?t=${info.token}`);
+        await startDaemon(values, 'started');
+        return;
+    }
+    if (action === 'restart') {
+        const previous = await stopDaemon();
+        await startDaemon(values, previous ? 'restarted' : 'started');
         return;
     }
     if (action === 'status') {
         const running = await isDaemonRunning();
         const info = await daemonInfo();
         if (!running || !info) {
-            writers.out(tr('демон не запущен', 'the daemon is not running'));
-            process.exit(1);
+            if (values.json) printJson({ running: false });
+            else for (const line of daemonNotRunningLines()) writers.out(line);
+            process.exitCode = 1;
+            return;
         }
-        writers.out(`pid ${info.pid} · ${info.url} · ${when(info.startedAt)}`);
+        const health = await daemonHealth(info);
+        if (values.json) {
+            printJson({
+                running: true,
+                pid: info.pid,
+                version: info.version,
+                protocol: info.protocol,
+                url: uiBaseUrl(info),
+                socket: info.socket,
+                stateDir: stateDir(),
+                logPath: logPath(),
+                startedAt: info.startedAt,
+                health,
+                versionMismatch: Boolean(health && health.version && health.version !== VERSION),
+            });
+            return;
+        }
+        const healthField = health ? (health.ok ? `ok · ${health.reviews} ${plural(health.reviews, 'ревью', 'ревью', 'ревью', 'review', 'reviews')}` : tr('не отвечает', 'not responding')) : tr('не отвечает', 'not responding');
+        for (const line of daemonStatusLines({
+            version: info.version,
+            pid: info.pid,
+            url: uiBaseUrl(info),
+            socket: info.socket,
+            stateDir: stateDir(),
+            logPath: logPath(),
+            startedAt: when(info.startedAt),
+            health: healthField,
+        })) writers.out(line);
+        if (health && health.version && health.version !== VERSION) {
+            writers.out(
+                `  ${warningLine(
+                    tr(
+                        `демон сообщает версию ${health.version}, CLI — ${VERSION}: перезапустите демон`,
+                        `the daemon reports ${health.version}, the CLI is ${VERSION}: restart the daemon`,
+                    ),
+                )}`,
+            );
+            writers.out('');
+        }
         return;
     }
     if (action === 'install') {
@@ -758,41 +826,249 @@ async function daemon(action: string, values: Values = {}): Promise<void> {
         return;
     }
     if (action === 'uninstall') {
-        writers.out(tr('удалите unit вручную: systemctl --user disable --now revdeck (Linux) или launchctl unload (macOS)', 'remove the unit manually: systemctl --user disable --now revdeck (Linux) or launchctl unload (macOS)'));
+        writers.out(tr('Удалите автозапуск вручную:', 'Remove the autostart manually:'));
+        writers.out(`  ${tr('Linux', 'Linux')}  systemctl --user disable --now revdeck`);
+        writers.out(`  ${tr('macOS', 'macOS')}  launchctl unload ~/Library/LaunchAgents/io.revdeck.daemon.plist`);
         return;
     }
     if (action === 'stop') {
-        const info = await daemonInfo();
-        if (!info) {
-            writers.out(tr('демон не запущен', 'the daemon is not running'));
+        const stopped = await stopDaemon();
+        if (values.json) {
+            printJson(
+                stopped
+                    ? { stopped: true, pid: stopped.pid, startedAt: stopped.startedAt, uptime: durationSince(stopped.startedAt) }
+                    : { stopped: false },
+            );
             return;
         }
-        try {
-            process.kill(info.pid, 'SIGTERM');
-        } catch {
-            // уже остановлен
+        if (!stopped) {
+            writers.out(daemonNotRunningLine());
+            return;
         }
-        const deadline = Date.now() + 5000;
-        while (Date.now() < deadline && (await isDaemonRunning())) {
-            await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-        writers.out(tr('демон остановлен', 'daemon stopped'));
+        for (const line of daemonStoppedLines({ pid: stopped.pid, uptime: durationSince(stopped.startedAt) })) writers.out(line);
         return;
     }
-    if (action === 'restart') {
-        await daemon('stop');
-        return daemon('start', values);
-    }
     if (action === 'logs') {
-        try {
-            const text = await readFile(logPath(), 'utf8');
-            writers.out(text.split('\n').slice(-80).join('\n'));
-        } catch {
-            writers.out(tr('лог пуст', 'the log is empty'));
-        }
+        await daemonLogs(values.follow === true, values.json === true, parseLogLines(values.lines));
         return;
     }
     usage(['daemon <start|stop|status|restart|logs|install|uninstall>']);
+}
+
+function parseCliPort(value: string | boolean | undefined): number | null {
+    if (value === undefined || value === false) return null;
+    const port = Number(value);
+    if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+        fail(tr(`некорректный порт ${String(value)}: нужно 1–65535`, `invalid port ${String(value)}: expected 1–65535`));
+    }
+    return port;
+}
+
+interface DaemonHealth {
+    ok: boolean;
+    version?: string;
+    reviews: number;
+}
+
+/** /api/health с человеческим токеном из daemon.json; null — демон не ответил. */
+async function daemonHealth(info: { url: string; token?: string }): Promise<DaemonHealth | null> {
+    if (!info.token) return null;
+    try {
+        const response = await fetch(`${info.url}/api/health`, {
+            headers: { cookie: `revdeck_session=${encodeURIComponent(info.token)}` },
+            signal: AbortSignal.timeout(1500),
+        });
+        const data = (await response.json()) as { ok?: boolean; version?: string; reviews?: number };
+        if (!response.ok || data.ok !== true) return null;
+        return { ok: true, ...(data.version ? { version: data.version } : {}), reviews: Number(data.reviews ?? 0) };
+    } catch {
+        return null;
+    }
+}
+
+const LOG_TAIL = 80;
+const LOG_FOLLOW_MS = 500;
+
+function parseLogLines(value: string | boolean | undefined): number {
+    if (value === undefined || value === false) return LOG_TAIL;
+    const lines = Number(value);
+    if (!Number.isInteger(lines) || lines < 1 || lines > 5000) {
+        fail(tr(`некорректное число строк: ${String(value)}`, `invalid line count: ${String(value)}`), tr('допустимо 1–5000', 'expected 1–5000'));
+    }
+    return lines;
+}
+
+
+
+/**
+ * `daemon logs [--lines N] [--follow] [--json]`: последние строки, затем — при
+ * --follow — хвост файла. Ротация и truncate отслеживаются по inode/размеру.
+ */
+async function daemonLogs(follow: boolean, json: boolean, limit: number): Promise<void> {
+    const file = logPath();
+    const tail = await logTail(file, limit);
+    const size = await stat(file).catch(() => null);
+
+    if (json && !follow) {
+        printJson({ path: file, lines: tail.lines });
+        return;
+    }
+    if (!follow) {
+        if (!tail.lines.length) {
+            for (const line of daemonLogEmptyLines(file)) writers.out(line);
+            return;
+        }
+        for (const line of daemonLogHeader(file, limit, false, tail.rotated ?? undefined)) writers.out(line);
+        for (const line of tail.lines) writers.out(formatLogLine(line));
+        writers.out('');
+        return;
+    }
+
+    let inode = size?.ino ?? 0;
+    let offset = size?.size ?? 0;
+    if (!json) for (const line of daemonLogHeader(file, limit, true, tail.rotated ?? undefined)) writers.out(line);
+    const print = (line: string): void => {
+        if (json) writers.out(JSON.stringify({ path: file, line }));
+        else writers.out(formatLogLine(line));
+    };
+    for (const line of tail.lines) print(line);
+
+    let remainder = '';
+    let busy = false;
+    const readNew = async (): Promise<string> => {
+        const handle = await open(file, 'r').catch(() => null);
+        if (!handle) return '';
+        try {
+            const info = await handle.stat();
+            if ((info.ino && info.ino !== inode) || info.size < offset) {
+                inode = info.ino;
+                offset = 0;
+            }
+            if (info.size <= offset) return '';
+            const length = Math.min(info.size - offset, 256 * 1024);
+            const buffer = Buffer.alloc(length);
+            const { bytesRead } = await handle.read(buffer, 0, length, offset);
+            offset += bytesRead;
+            return buffer.subarray(0, bytesRead).toString('utf8');
+        } finally {
+            await handle.close();
+        }
+    };
+    const tick = async (): Promise<void> => {
+        if (busy) return;
+        busy = true;
+        try {
+            const chunk = await readNew();
+            if (!chunk) return;
+            remainder += chunk;
+            const parts = remainder.split('\n');
+            remainder = parts.pop() ?? '';
+            for (const line of parts) print(line);
+        } finally {
+            busy = false;
+        }
+    };
+    const timer = setInterval(() => void tick(), LOG_FOLLOW_MS);
+    await new Promise<void>((resolve) => {
+        const stop = (): void => resolve();
+        process.once('SIGINT', stop);
+        process.once('SIGTERM', stop);
+    });
+    clearInterval(timer);
+    if (remainder) print(remainder);
+}
+
+async function startDaemon(values: Values, mode: 'started' | 'restarted'): Promise<void> {
+    const port = parseCliPort(values.port);
+    const daemonArgs = [
+        ...(values.host ? ['--host', String(values.host)] : []),
+        ...(port ? ['--port', String(port)] : []),
+    ];
+    // Быстрый старт не должен печатать лишнюю строку; медленный — не должен
+    // выглядеть как зависание.
+    const hint = setTimeout(
+        () => writers.err(errorColors.dim(tr('  запускаю демон…', '  starting the daemon…'))),
+        700,
+    );
+    const { client, started } = await ensureDaemon({ ...(daemonArgs.length ? { daemonArgs } : {}) }).finally(() => clearTimeout(hint));
+    const ping = await client.request<{ pid: number; version: string }>('ping');
+    client.close();
+    const info = await daemonInfo();
+    if (!info) {
+        // Старый демон без daemon.json: показываем хотя бы то, что знаем из ping.
+        if (values.json) {
+            printJson({ running: true, started, restarted: mode === 'restarted', pid: ping.pid, version: ping.version });
+        } else {
+            writers.out(`  ${tr('демон запущен', 'daemon started')} · pid ${ping.pid} · ${tr('версия', 'version')} ${ping.version}`);
+        }
+        return;
+    }
+    if (values.json) {
+        const base = uiBaseUrl(info);
+        printJson({
+            running: true,
+            started,
+            restarted: mode === 'restarted',
+            pid: ping.pid,
+            version: ping.version,
+            url: base,
+            ui: `${base}${info.token ? `/?t=${info.token}` : ''}`,
+            socket: info.socket,
+            stateDir: stateDir(),
+            logPath: logPath(),
+        });
+        return;
+    }
+    for (const line of daemonStartedLines(
+        {
+            version: ping.version,
+            pid: ping.pid,
+            url: `${uiBaseUrl(info)}${info.token ? `/?t=${info.token}` : ''}`,
+            socket: info.socket,
+            stateDir: stateDir(),
+            logPath: logPath(),
+        },
+        mode === 'restarted' ? 'restarted' : started ? 'started' : 'running',
+    )) {
+        writers.out(line);
+    }
+    if (!started && values.host) {
+        writers.err(
+            warningLine(
+                tr(
+                    'уже запущенный демон не меняет bind-адрес: используйте revdeck daemon restart --host 0.0.0.0',
+                    'a running daemon does not rebind: use revdeck daemon restart --host 0.0.0.0',
+                ),
+            ),
+        );
+    }
+    if (!started && port) {
+        writers.err(
+            warningLine(
+                tr(
+                    `уже запущенный демон не меняет порт: используйте revdeck daemon restart --port ${port}`,
+                    `a running daemon does not rebind: use revdeck daemon restart --port ${port}`,
+                ),
+            ),
+        );
+    }
+}
+
+/** Остановить демон и дождаться, пока сокет перестанет отвечать. */
+async function stopDaemon(): Promise<Awaited<ReturnType<typeof daemonInfo>>> {
+    if (!(await isDaemonRunning())) return null;
+    const info = await daemonInfo();
+    if (!info) return null;
+    try {
+        process.kill(info.pid, 'SIGTERM');
+    } catch {
+        // уже остановлен
+    }
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && (await isDaemonRunning())) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return info;
 }
 
 async function status(root: string, values: Values): Promise<void> {
@@ -1352,7 +1628,11 @@ async function doctor(root: string): Promise<void> {
                 await run('glab', ['auth', 'status', '--hostname', host], { timeoutMs: 15_000 });
                 rows.push(['glab auth', 'ok', host]);
             } catch (error) {
-                rows.push(['glab auth', 'warn', `${tr('нет доступа к', 'no access to')} ${host}: ${redactLine(error).slice(0, 120)}; ${uiHint}`]);
+                rows.push([
+                    'glab auth',
+                    'warn',
+                    [tr(`нет доступа к ${host}`, `no access to ${host}`), compactDetail(redactLine(error), 120), uiHint].join('\n'),
+                ]);
             }
         }
         if (host && binaries.gh && platform !== 'gitlab') {
@@ -1360,7 +1640,11 @@ async function doctor(root: string): Promise<void> {
                 await run('gh', ['auth', 'status'], { timeoutMs: 15_000, env: { GH_HOST: host } });
                 rows.push(['gh auth', 'ok', host]);
             } catch (error) {
-                rows.push(['gh auth', 'warn', `${tr('нет доступа к', 'no access to')} ${host}: ${redactLine(error).slice(0, 120)}; ${uiHint}`]);
+                rows.push([
+                    'gh auth',
+                    'warn',
+                    [tr(`нет доступа к ${host}`, `no access to ${host}`), compactDetail(redactLine(error), 120), uiHint].join('\n'),
+                ]);
             }
         }
     }
@@ -1372,7 +1656,7 @@ async function doctor(root: string): Promise<void> {
         'daemon',
         daemonStatus,
         running && info
-            ? `${uiBaseUrl(info)} (pid ${info.pid})`
+            ? `${uiBaseUrl(info)} · pid ${info.pid}`
             : container
               ? tr('не найден: на хосте выполните revdeck daemon start', 'not found: run revdeck daemon start on the host')
               : tr('не запущен (запустится сам)', 'not running (starts on demand)'),
@@ -1400,10 +1684,12 @@ async function doctor(root: string): Promise<void> {
         existsSync(path.join(root, '.cursor', 'commands', 'revdeck.md'));
     rows.push(['adapter', skill ? 'ok' : 'warn', skill ? tr('установлен', 'installed') : tr('нет: revdeck init', 'missing: revdeck init')]);
 
-    for (const [name, status, detail] of rows) {
-        writers.out(`${status === 'ok' ? '✔' : status === 'warn' ? '!' : '✖'} ${name.padEnd(10)} ${detail}`);
+    for (const [name, status, detail] of rows) for (const line of doctorLines(name, status, detail)) writers.out(line);
+    if (!host) {
+        writers.out(
+            warningLine(tr('хост платформы не определён: укажите provider.host в .revdeck.yml', 'platform host is unknown: set provider.host in .revdeck.yml')),
+        );
     }
-    if (!host) writers.out(tr('! хост платформы не определён: укажите provider.host в .revdeck.yml', '! platform host is unknown: set provider.host in .revdeck.yml'));
 }
 
 main().catch((error) => {

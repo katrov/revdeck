@@ -48,6 +48,17 @@ describe('platform auth', () => {
         expect(state.hint).toContain('glab');
     });
 
+    it('suggests a package-manager command only when that manager exists', async () => {
+        const withBrew = await authStatus(target, {
+            resolve: async (command) => (command === 'brew' ? '/opt/homebrew/bin/brew' : null),
+        });
+        expect(withBrew.install).toEqual({ url: 'https://docs.gitlab.com/cli/installation/', command: 'brew install glab' });
+        expect(withBrew.hint).toContain('перезапустите демон');
+
+        const without = await authStatus(target, { resolve: async () => null });
+        expect(without.install).toEqual({ url: 'https://docs.gitlab.com/cli/installation/' });
+    });
+
     it('explains why the check failed and suggests a way in', async () => {
         const run: Runner = async () => {
             throw new Error('HTTP 401: Unauthorized');

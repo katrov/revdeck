@@ -45,7 +45,7 @@ bridge is authorized by transport capability: `agent` may read and draft, but hu
 | Method | Parameters | Result |
 |---|---|---|
 | `ping` | — | version, protocol, pid |
-| `auth.status` | — / `platform`, `host` | `glab`/`gh` state per host from the project registry (or one explicit host): binary, authenticated, account, hint. Never returns a token |
+| `auth.status` | — / `platform`, `host` | `glab`/`gh` state per host from the project registry (or one explicit host): binary, authenticated, account, hint; for a missing CLI also `install` (official URL and an optional package-manager command, never executed). Never returns a token |
 | `auth.login` | `platform`, `host`, `token` | checks the token with `GET /user`, stores it via `glab`/`gh` stdin, returns the new state; the token is not kept or echoed (human-only) |
 | `settings.get` | — | UI preferences stored on the daemon: theme, locale, hidden sections, auto-refresh, notifications |
 | `settings.put` | `patch` | merges one or more preference keys and returns the full set (human-only) |
